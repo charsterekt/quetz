@@ -1,0 +1,46 @@
+name: Auto-merge
+
+on:
+  # Trigger explicitly when the named check workflows complete — more reliable
+  # than check_suite, which won't re-fire for Actions-triggered suites.
+  workflow_run:
+    workflows: ["CI", "Claude Code Review"]
+    types: [completed]
+  # Also trigger when PR reviews are submitted (Claude approvals)
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    name: Auto-merge if all checks pass
+    runs-on: ubuntu-latest
+    # Only attempt merge when Claude Code Review finishes (it's the slowest check,
+    # so CI will already be done by then). Without this condition the job fires on
+    # CI completion too — and since there's no branch-protection rule requiring the
+    # review, mergeable_state is already 'clean' at that point and the PR merges
+    # before the review has had a chance to run.
+    if: |
+      github.event_name == 'pull_request_review' ||
+      github.event.workflow_run.name == 'Claude Code Review'
+
+    steps:
+      - uses: pascalgn/automerge-action@v0.16.4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Merge method: squash keeps history clean
+          MERGE_METHOD: squash
+          # Only merge if ALL checks pass
+          MERGE_REQUIRED_APPROVALS: 0
+          # Require these labels to auto-merge (safety — only labeled PRs merge)
+          MERGE_LABELS: "automerge"
+          # Delete branch after merge
+          MERGE_DELETE_BRANCH: true
+          # Retry if merge fails due to race condition
+          MERGE_RETRY_SLEEP: 10000
+          MERGE_RETRIES: 3
+          # Update branch before merging (rebase on latest main)
+          UPDATE_METHOD: rebase
