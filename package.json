@@ -10,6 +10,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepublishOnly": "npm run build"
   },
   "files": [
@@ -39,6 +41,7 @@
   "devDependencies": {
     "@types/handlebars": "^4.1.0",
     "@types/node": "^20.14.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vitest": "^4.1.0"
   }
 }

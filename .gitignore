@@ -14,7 +14,6 @@ dist/
 
 # npm
 .npmrc
-package-lock.json
 
 # TypeScript
 *.tsbuildinfo
