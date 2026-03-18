@@ -5,3 +5,27 @@
 
 # Claude
 .claude/
+
+# Node
+node_modules/
+dist/
+*.js.map
+*.d.ts.map
+
+# npm
+.npmrc
+package-lock.json
+
+# TypeScript
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Quetz config (user-specific)
+.quetzrc.yml

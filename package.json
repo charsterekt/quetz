@@ -1,0 +1,44 @@
+{
+  "name": "quetz",
+  "version": "0.1.0",
+  "description": "The Feathered Serpent Dev Loop — wraps Claude Code into a self-feeding development loop",
+  "main": "dist/cli.js",
+  "bin": {
+    "quetz": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "claude",
+    "ai",
+    "automation",
+    "developer-tools",
+    "beads"
+  ],
+  "author": "DK + Claude",
+  "license": "MIT",
+  "dependencies": {
+    "@octokit/rest": "^20.1.1",
+    "chalk": "^5.3.0",
+    "handlebars": "^4.7.8",
+    "ora": "^8.1.1",
+    "yaml": "^2.4.5"
+  },
+  "devDependencies": {
+    "@types/handlebars": "^4.1.0",
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5"
+  }
+}
