@@ -18,14 +18,10 @@ jobs:
   automerge:
     name: Auto-merge if all checks pass
     runs-on: ubuntu-latest
-    # Only attempt merge when Claude Code Review finishes (it's the slowest check,
-    # so CI will already be done by then). Without this condition the job fires on
-    # CI completion too — and since there's no branch-protection rule requiring the
-    # review, mergeable_state is already 'clean' at that point and the PR merges
-    # before the review has had a chance to run.
+    # Trigger when CI finishes (Claude Code Review is disabled).
     if: |
       github.event_name == 'pull_request_review' ||
-      github.event.workflow_run.name == 'Claude Code Review'
+      github.event.workflow_run.name == 'CI'
 
     steps:
       - uses: pascalgn/automerge-action@v0.16.4
