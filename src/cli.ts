@@ -6,43 +6,12 @@ export const EXIT_FAILURE = 1;
 export const EXIT_CONFIG_ERROR = 2;
 export const EXIT_PREFLIGHT_FAILURE = 3;
 
-const BANNER = `
- ╔══════════════════════════════════════════╗
- ║   QUETZ — The Feathered Serpent Loop     ║
- ║                                          ║
- ║   init       Setup config & checks       ║
- ║   run        Start the dev loop          ║
- ║   run --dry  Preview without executing   ║
- ║   status     Show loop progress          ║
- ║   help       Show all commands           ║
- ╚══════════════════════════════════════════╝
-`;
-
-function printBanner(): void {
-  process.stdout.write(BANNER + '\n');
-}
-
-function printHelp(): void {
-  printBanner();
-  process.stdout.write(
-    'Commands:\n' +
-    '  quetz init           First-time setup. Generates .quetzrc.yml, runs preflight\n' +
-    '                       checks, optionally scaffolds GitHub Actions.\n\n' +
-    '  quetz run            Start the dev loop. Runs until all issues are resolved\n' +
-    '                       or a failure occurs.\n\n' +
-    '  quetz run --dry      Show what would happen: lists issues in order, prints\n' +
-    '                       the prompt for the first one, exits without spawning.\n\n' +
-    '  quetz status         Show current loop state: issues remaining, what\'s in\n' +
-    '                       progress, last completed issue.\n\n' +
-    '  quetz help           Show all commands with descriptions.\n'
-  );
-}
-
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const command = args[0];
 
   if (!command || command === 'help' || command === '--help' || command === '-h') {
+    const { printHelp } = await import('./display/banner.js');
     printHelp();
     process.exit(EXIT_SUCCESS);
   }
@@ -55,6 +24,12 @@ async function main(): Promise<void> {
     }
     case 'run': {
       const dry = args.includes('--dry');
+      const noAnimate = args.includes('--no-animate');
+
+      // Show startup serpent animation on `quetz run` (spec 6.2)
+      const { printSerpentAnimated } = await import('./display/banner.js');
+      await printSerpentAnimated(!noAnimate);
+
       const { runLoop } = await import('./loop.js');
       await runLoop({ dry });
       break;
@@ -66,6 +41,7 @@ async function main(): Promise<void> {
     }
     default: {
       process.stderr.write(`Unknown command: ${command}\n`);
+      const { printHelp } = await import('./display/banner.js');
       printHelp();
       process.exit(EXIT_FAILURE);
     }
