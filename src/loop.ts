@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import { loadConfig } from './config.js';
-import { getReadyIssues, getPrimeContext } from './beads.js';
+import { getReadyIssues, getIssueDetails, getPrimeContext } from './beads.js';
 import { checkoutDefault, pullDefault } from './git.js';
 import { assemblePrompt } from './prompt.js';
 import { spawnAgent } from './agent.js';
@@ -57,8 +57,52 @@ export async function showStatus(): Promise<void> {
 export async function runLoop(opts: { dry: boolean }): Promise<void> {
   const projectRoot = process.cwd();
   const config = loadConfig(projectRoot);
-  const octokit = createOctokit();
 
+  // ── Dry-run: print issue list + first prompt, then exit ─────────────────
+  if (opts.dry) {
+    let issues: ReturnType<typeof getReadyIssues>;
+    try {
+      issues = getReadyIssues();
+    } catch (err) {
+      process.stderr.write(chalk.red(`\nbd ready failed: ${(err as Error).message}\n`));
+      process.exit(1);
+    }
+
+    if (issues.length === 0) {
+      process.stdout.write(chalk.yellow('\nNo ready issues found. The serpent sleeps.\n'));
+      process.exit(0);
+    }
+
+    process.stdout.write(chalk.bold('\nIssue Queue (priority order):\n'));
+    process.stdout.write('─'.repeat(50) + '\n');
+    for (const [i, issue] of issues.entries()) {
+      process.stdout.write(
+        chalk.cyan(`${i + 1}. ${issue.id}`) +
+        ` [P${issue.priority}] [${issue.issue_type}] ${issue.title}\n`
+      );
+    }
+    process.stdout.write('─'.repeat(50) + '\n\n');
+
+    const firstIssue = issues[0];
+    let issueDetails = firstIssue;
+    try {
+      issueDetails = getIssueDetails(firstIssue.id);
+    } catch {
+      // fall back to ready data
+    }
+    const bdPrime = getPrimeContext();
+    const prompt = assemblePrompt(issueDetails, bdPrime, config);
+
+    process.stdout.write(chalk.bold('Prompt for first issue:\n'));
+    process.stdout.write('─'.repeat(50) + '\n');
+    process.stdout.write(prompt + '\n');
+    process.stdout.write('─'.repeat(50) + '\n');
+    process.stdout.write(chalk.bold('\n--- Dry run complete (no agent spawned) ---\n'));
+    process.exit(0);
+  }
+
+  // ── Normal run loop ──────────────────────────────────────────────────────
+  const octokit = createOctokit();
   let iteration = 0;
 
   while (true) {
@@ -94,27 +138,24 @@ export async function runLoop(opts: { dry: boolean }): Promise<void> {
     );
 
     // 2. Git reset to default branch
-    if (!opts.dry) {
-      process.stdout.write(chalk.gray(`  git checkout ${config.github.defaultBranch} && git pull...\n`));
-      try {
-        checkoutDefault(config.github.defaultBranch, projectRoot);
-        pullDefault(config.github.defaultBranch, projectRoot);
-      } catch (err) {
-        process.stderr.write(chalk.red(`\nGit error: ${(err as Error).message}\n`));
-        process.exit(1);
-      }
+    process.stdout.write(chalk.gray(`  git checkout ${config.github.defaultBranch} && git pull...\n`));
+    try {
+      checkoutDefault(config.github.defaultBranch, projectRoot);
+      pullDefault(config.github.defaultBranch, projectRoot);
+    } catch (err) {
+      process.stderr.write(chalk.red(`\nGit error: ${(err as Error).message}\n`));
+      process.exit(1);
     }
 
-    // 3. Assemble prompt
+    // 3. Get full issue details and assemble prompt
+    let issueDetails = issue;
+    try {
+      issueDetails = getIssueDetails(issue.id);
+    } catch {
+      // fall back to ready data
+    }
     const bdPrime = getPrimeContext();
-    const prompt = assemblePrompt(issue, bdPrime, config);
-
-    if (opts.dry) {
-      process.stdout.write(chalk.bold('\n--- Dry run: prompt for first issue ---\n\n'));
-      process.stdout.write(prompt + '\n');
-      process.stdout.write(chalk.bold('\n--- Dry run complete (no agent spawned) ---\n'));
-      process.exit(0);
-    }
+    const prompt = assemblePrompt(issueDetails, bdPrime, config);
 
     // 4. Spawn agent
     process.stdout.write(chalk.gray('\n  Spawning agent...\n'));
