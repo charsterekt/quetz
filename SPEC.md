@@ -91,7 +91,7 @@ If `git pull` fails (e.g. merge conflict from manual changes), Quetz prints an e
 
 The prompt sent to the agent is assembled from three sources:
 
-1. **`bd prime` output** — dynamic project context (ready work, recent activity, project state). Captured via `bd prime --json` or plain text.
+1. **`bd prime` output** — AI-optimized workflow instructions that teach the agent how to use beads commands (`bd ready`, `bd create`, `bd close`, etc.) and enforce session discipline (commit + push before done). This is a command reference and behavioral primer, not dynamic project state. It adapts its verbosity based on context (brief in MCP mode, full reference in CLI mode). Can be customized via `.beads/PRIME.md`.
 
 2. **Issue details** — from `bd show <issue-id> --json`. Includes title, description, priority, type, dependencies, and any linked context.
 
