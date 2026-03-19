@@ -2,7 +2,7 @@
 
 **Quetz** is a local npm package that wraps the Claude Code CLI into a self-feeding development loop. It reads prioritized issues from a Beads issue graph, spawns a fully autonomous Claude Code agent for each one, monitors the resulting GitHub PR through to merge, and repeats until done.
 
-> *Quetzalcoatl, the feathered serpent — a winged reptile that bridges earth and sky. Fitting for a tool that bridges the gap between a human's intent and an autonomous agent's execution.*
+> *Quetzalcoatl, the feathered serpent — a winged reptile that bridges earth and sky.*
 
 ## Table of Contents
 
