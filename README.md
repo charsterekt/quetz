@@ -6,23 +6,35 @@
 
 ## Table of Contents
 
-- [What Quetz Does](#what-quetz-does)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-  - [Setup](#setup)
-  - [Run](#run)
-  - [Check Status](#check-status)
-- [Usage](#usage)
-  - [Commands](#commands)
-  - [Dry Run](#dry-run)
-- [How the Loop Works](#how-the-loop-works)
-- [Configuration](#configuration)
-  - [Config Schema](#config-schema)
-  - [Example Config](#example-config)
-- [Exit Codes](#exit-codes)
-- [Architecture](#architecture)
-- [License](#license)
+- [Quetz — The Feathered Serpent Dev Loop](#quetz--the-feathered-serpent-dev-loop)
+  - [Table of Contents](#table-of-contents)
+  - [What Quetz Does](#what-quetz-does)
+  - [Prerequisites](#prerequisites)
+    - [Claude Code CLI](#claude-code-cli)
+    - [GitHub CLI (`gh`)](#github-cli-gh)
+    - [Beads CLI (`bd`)](#beads-cli-bd)
+  - [Installation](#installation)
+  - [Quick Start](#quick-start)
+    - [Setup](#setup)
+    - [Run](#run)
+  - [Usage](#usage)
+    - [Commands](#commands)
+    - [Dry Run](#dry-run)
+  - [How the Loop Works](#how-the-loop-works)
+    - [Issue Selection](#issue-selection)
+    - [Agent Spawning](#agent-spawning)
+    - [PR Detection](#pr-detection)
+    - [Merge Polling](#merge-polling)
+  - [Configuration](#configuration)
+    - [Config Schema](#config-schema)
+    - [Example Config](#example-config)
+    - [GitHub Actions for Auto-Merge](#github-actions-for-auto-merge)
+  - [Exit Codes](#exit-codes)
+  - [Architecture](#architecture)
+    - [Project Structure](#project-structure)
+    - [Dependencies](#dependencies)
+    - [Key Design Constraints](#key-design-constraints)
+  - [License](#license)
 
 ---
 
@@ -416,6 +428,6 @@ MIT — See LICENSE file for details.
 
 ---
 
-**Questions?** Check the [Quetz specification](spec.md) for deeper details on design decisions and edge cases.
+**Questions?** Check the [Quetz specification](SPEC.md) for deeper details on design decisions and edge cases.
 
 Happy automating! 🐉

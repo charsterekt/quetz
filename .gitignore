@@ -1,3 +1,5 @@
+# Beads
+.beads/
 
 # Dolt database files (added by bd init)
 .dolt/
@@ -28,3 +30,6 @@ Thumbs.db
 
 # Quetz config (user-specific)
 .quetzrc.yml
+
+# CI
+.github/workflows/
