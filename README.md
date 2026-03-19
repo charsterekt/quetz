@@ -1,6 +1,6 @@
 # Quetz — The Feathered Serpent Dev Loop
 
-**Quetz** is a local npm package that wraps the Claude Code CLI into a self-feeding development loop. It reads prioritized issues from a Beads issue graph, spawns a fully autonomous Claude Code agent for each one, monitors the resulting GitHub PR through to merge, and repeats until done.
+**Quetz** is a local npm package that wraps the Claude Code CLI into a self-feeding development loop. It reads prioritized issues from a Beads issue graph, spawns a fully autonomous Claude Code agent for each one, monitors the resulting GitHub PR through to merge, and repeats until done. This is very much a tool for a one-dev workflow. Auto-merging PRs per Beads issues allows for isolation of changes and rollbacks, but does not wait for or consider approvals.
 
 > *Quetzalcoatl, the feathered serpent — a winged reptile that bridges earth and sky.*
 
@@ -173,7 +173,7 @@ quetz run               Start the dev loop. Runs until all issues are resolved
 quetz run --dry         Preview without executing. Lists issues in order, prints
                         the first agent prompt, then exits cleanly.
 
-quetz status            Show current loop state: issues remaining, what's in
+quetz status            Show current loop state: issues remaining, what is in
                         progress, and the last completed issue.
 
 quetz help              Show all commands with descriptions.
