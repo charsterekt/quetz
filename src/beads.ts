@@ -42,7 +42,9 @@ export function getReadyIssues(): BeadsIssue[] {
 
 export function getIssueDetails(id: string): BeadsIssue {
   const output = exec(`bd show ${id} --json`);
-  return JSON.parse(output) as BeadsIssue;
+  const parsed: unknown = JSON.parse(output);
+  const issue = Array.isArray(parsed) ? parsed[0] : parsed;
+  return issue as BeadsIssue;
 }
 
 export function getPrimeContext(): string {
