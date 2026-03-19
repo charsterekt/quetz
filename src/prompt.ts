@@ -1,3 +1,60 @@
-// Prompt template assembly + variable injection
+import Handlebars from 'handlebars';
+import type { BeadsIssue } from './beads.js';
+import type { QuetzConfig } from './config.js';
 
-export {};
+// Default prompt template per spec section 2.3
+const DEFAULT_TEMPLATE = `{{bdPrime}}
+
+---
+
+You are picking up Beads issue {{issue.id}}: "{{issue.title}}"
+Priority: {{issue.priority}} | Type: {{issue.type}}
+
+{{#if issue.description}}
+Description:
+{{issue.description}}
+{{/if}}
+
+{{#if issue.dependencies}}
+Dependencies (already resolved):
+{{issue.dependencies}}
+{{/if}}
+
+Your task:
+1. Claim this issue: bd update {{issue.id}} --claim
+2. Review the project spec and relevant code to understand context.
+3. Create a new branch for this work.
+4. Implement the solution.
+5. Run tests. Fix any failures.
+6. Commit with a conventional commit message referencing the issue, e.g.: feat: add auth middleware ({{issue.id}})
+7. Push your branch to origin.
+8. Open a pull request with the "{{automergeLabel}}" label.
+9. Close the issue: bd close {{issue.id}} --reason "Completed — PR raised"
+
+Do not ask for confirmation. Complete all steps autonomously.`;
+
+export function assemblePrompt(
+  issue: BeadsIssue,
+  bdPrime: string,
+  config: QuetzConfig
+): string {
+  const templateSource = config.agent.prompt ?? DEFAULT_TEMPLATE;
+  const template = Handlebars.compile(templateSource, { noEscape: true });
+
+  const dependenciesText = issue.dependencies && issue.dependencies.length > 0
+    ? issue.dependencies.map(d => `  - ${d.depends_on_id}`).join('\n')
+    : '';
+
+  return template({
+    bdPrime,
+    issue: {
+      id: issue.id,
+      title: issue.title,
+      priority: issue.priority,
+      type: issue.issue_type,
+      description: issue.description ?? '',
+      dependencies: dependenciesText,
+    },
+    automergeLabel: config.github.automergeLabel,
+  });
+}
