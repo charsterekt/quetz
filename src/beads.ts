@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 
 export interface BeadsIssue {
   id: string;
@@ -41,10 +41,21 @@ export function getReadyIssues(): BeadsIssue[] {
 }
 
 export function getIssueDetails(id: string): BeadsIssue {
-  const output = exec(`bd show ${id} --json`);
-  const parsed: unknown = JSON.parse(output);
-  const issue = Array.isArray(parsed) ? parsed[0] : parsed;
-  return issue as BeadsIssue;
+  // Validate issue ID to prevent command injection (alphanumeric, hyphens, underscores only)
+  if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
+    throw new Error(`Invalid issue ID format: ${id}`);
+  }
+  try {
+    const output = execFileSync('bd', ['show', id, '--json'], { encoding: 'utf-8' });
+    const parsed: unknown = JSON.parse(output);
+    const issue = Array.isArray(parsed) ? parsed[0] : parsed;
+    return issue as BeadsIssue;
+  } catch (err) {
+    const msg = (err as { stderr?: string; message?: string }).stderr
+      ?? (err as Error).message
+      ?? String(err);
+    throw new Error(`bd command failed: bd show ${id} --json\n${msg}`);
+  }
 }
 
 export function getPrimeContext(): string {
