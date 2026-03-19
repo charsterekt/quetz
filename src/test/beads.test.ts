@@ -2,12 +2,14 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('child_process', () => ({
   execSync: vi.fn(),
+  execFileSync: vi.fn(),
 }));
 
 import * as childProcess from 'child_process';
 import { getReadyIssues, getIssueDetails, getPrimeContext } from '../beads.js';
 
 const mockExecSync = vi.mocked(childProcess.execSync);
+const mockExecFileSync = vi.mocked(childProcess.execFileSync);
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -41,15 +43,21 @@ describe('getReadyIssues', () => {
 describe('getIssueDetails', () => {
   it('returns parsed issue', () => {
     const issue = { id: 'bd-001', title: 'Fix bug', description: 'Details', status: 'open', priority: 1, issue_type: 'bug', created_at: '', updated_at: '' };
-    mockExecSync.mockReturnValue(JSON.stringify(issue) as never);
+    mockExecFileSync.mockReturnValue(JSON.stringify(issue) as never);
     const result = getIssueDetails('bd-001');
     expect(result.id).toBe('bd-001');
-    expect(mockExecSync).toHaveBeenCalledWith('bd show bd-001 --json', expect.any(Object));
+    expect(mockExecFileSync).toHaveBeenCalledWith('bd', ['show', 'bd-001', '--json'], expect.any(Object));
   });
 
   it('throws descriptively on failure', () => {
-    mockExecSync.mockImplementation(() => { throw new Error('not found'); });
+    mockExecFileSync.mockImplementation(() => { throw new Error('not found'); });
     expect(() => getIssueDetails('bd-999')).toThrow('bd command failed');
+  });
+
+  it('rejects invalid issue ID format to prevent injection', () => {
+    expect(() => getIssueDetails('bd-001; rm -rf /')).toThrow('Invalid issue ID format');
+    expect(() => getIssueDetails('bd-001 && echo hacked')).toThrow('Invalid issue ID format');
+    expect(() => getIssueDetails('bd-001$(cat /etc/passwd)')).toThrow('Invalid issue ID format');
   });
 });
 
