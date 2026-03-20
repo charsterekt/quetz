@@ -51,12 +51,14 @@ export interface VictoryStats {
 
 export function printVictory(stats: VictoryStats): void {
   process.stdout.write(
-    `\n   ${brand('╔══════════════════════════════════════╗')}\n` +
+    `\n${success('✓ All issues resolved. The serpent rests.')}\n` +
+    `${brand('~~~ QUETZ VICTORY ~~~')}\n\n` +
+    `   ${brand('╔══════════════════════════════════════╗')}\n` +
     `   ${brand('║')}                                      ${brand('║')}\n` +
-    `   ${brand('║')}    ${success('ALL ISSUES RESOLVED')}               ${brand('║')}\n` +
+    `   ${brand('║')}    ${success('COMPLETED')}                        ${brand('║')}\n` +
     `   ${brand('║')}                                      ${brand('║')}\n` +
-    `   ${brand('║')}    Issues completed: ${String(stats.issuesCompleted).padEnd(15)} ${brand('║')}\n` +
-    `   ${brand('║')}    Total time: ${stats.totalTime.padEnd(21)} ${brand('║')}\n` +
+    `   ${brand('║')}    Issues: ${String(stats.issuesCompleted).padEnd(26)} ${brand('║')}\n` +
+    `   ${brand('║')}    Time: ${stats.totalTime.padEnd(29)} ${brand('║')}\n` +
     `   ${brand('║')}    PRs merged: ${String(stats.prsMerged).padEnd(21)} ${brand('║')}\n` +
     `   ${brand('║')}                                      ${brand('║')}\n` +
     `   ${brand('║')}    ${dim('The serpent rests. 🐉')}              ${brand('║')}\n` +

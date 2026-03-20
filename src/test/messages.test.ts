@@ -73,7 +73,8 @@ describe('printVictory', () => {
   it('displays victory screen with stats', () => {
     printVictory({ issuesCompleted: 14, totalTime: '3h 42m', prsMerged: 14 });
     const out = getOutput();
-    expect(out).toContain('ALL ISSUES RESOLVED');
+    expect(out).toContain('QUETZ VICTORY');
+    expect(out).toContain('All issues resolved');
     expect(out).toContain('14');
     expect(out).toContain('3h 42m');
     expect(out).toContain('serpent rests');
