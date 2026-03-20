@@ -107,7 +107,9 @@ describe('printHelp', () => {
     expect(out).toContain('Commands:');
     expect(out).toContain('quetz init');
     expect(out).toContain('quetz run');
-    expect(out).toContain('quetz run --dry');
+    expect(out).toContain('--dry');
+    expect(out).toContain('--model');
+    expect(out).toContain('--timeout');
     expect(out).toContain('quetz status');
     expect(out).toContain('quetz help');
   });
