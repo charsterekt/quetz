@@ -21,7 +21,7 @@ vi.mock('../display/tui.js', () => ({
   HEADER_ROWS: 3,
 }));
 
-import { printPickup, printAgentComplete, printPRFound, printMerged, printVictory, printFailure } from '../display/messages.js';
+import { printPickup, printAgentComplete, printPRFound, printMerged, printVictory, printFailure, printAmendComplete } from '../display/messages.js';
 
 let stdoutSpy: ReturnType<typeof vi.spyOn>;
 
@@ -79,6 +79,15 @@ describe('printMerged', () => {
   });
 });
 
+describe('printAmendComplete', () => {
+  it('displays amend complete with issue id and iteration number', () => {
+    printAmendComplete('quetz-abc', 2);
+    const out = getOutput();
+    expect(out).toContain('Amend 2 complete');
+    expect(out).toContain('quetz-abc');
+  });
+});
+
 describe('printVictory', () => {
   it('displays victory screen with stats', () => {
     printVictory({ issuesCompleted: 14, totalTime: '3h 42m', prsMerged: 14 });
@@ -88,6 +97,15 @@ describe('printVictory', () => {
     expect(out).toContain('14');
     expect(out).toContain('3h 42m');
     expect(out).toContain('serpent rests');
+  });
+
+  it('displays amend victory with commit hash and push message', () => {
+    printVictory({ issuesCompleted: 3, totalTime: '12m 00s', prsMerged: 0, mode: 'amend', commitHash: 'abc1234def567', commitMsg: 'wip: accumulated changes' });
+    const out = getOutput();
+    expect(out).toContain('QUETZ VICTORY');
+    expect(out).toContain('1 commit ready to push');
+    expect(out).toContain('abc1234');
+    expect(out).toContain('accumulated changes');
   });
 });
 

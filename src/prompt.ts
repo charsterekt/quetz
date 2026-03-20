@@ -27,7 +27,15 @@ Your task:
 4. Implement the solution.
 5. Run tests. Fix any failures.
 6. Commit with a conventional commit message referencing the issue, e.g.: feat: add auth middleware ({{issue.id}})
-{{#if localCommits}}
+{{#if amend}}
+{{#if isFirstIssue}}
+7. Stage and commit: git add -A && git commit -m 'wip: accumulated changes ({{issue.id}} and others to follow)'
+{{else}}
+7. Amend the existing commit: git add -A && git commit --amend --no-edit
+{{/if}}
+8. Close the issue: bd close {{issue.id}} --reason 'Completed — amend'
+Do NOT push. Do NOT open a PR.
+{{else if localCommits}}
 7. Stage and commit your work: git add -A && git commit -m 'type: description ({{issue.id}})'
 8. Close the issue: bd close {{issue.id}} --reason 'Completed — local commit'
 Do NOT push. Do NOT open a PR.
@@ -42,7 +50,9 @@ export function assemblePrompt(
   issue: BeadsIssue,
   bdPrime: string,
   config: QuetzConfig,
-  localCommits: boolean = false
+  localCommits: boolean = false,
+  amend: boolean = false,
+  isFirstIssue: boolean = true
 ): string {
   const templateSource = config.agent.prompt ?? DEFAULT_TEMPLATE;
   const template = Handlebars.compile(templateSource, { noEscape: true });
@@ -63,5 +73,7 @@ export function assemblePrompt(
     },
     automergeLabel: config.github.automergeLabel,
     localCommits,
+    amend,
+    isFirstIssue,
   });
 }

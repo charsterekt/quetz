@@ -53,6 +53,11 @@ export function countNewCommits(defaultBranch: string, cwd: string = process.cwd
   }
 }
 
+/** Count commits ahead of defaultBranch (alias for countNewCommits, used by amend path). */
+export function getCommitCountAhead(defaultBranch: string, cwd: string = process.cwd()): number {
+  return countNewCommits(defaultBranch, cwd);
+}
+
 /** Parse "owner" and "repo" from a GitHub remote URL (HTTPS or SSH). */
 export function parseOwnerRepo(remoteUrl: string): { owner: string; repo: string } {
   // HTTPS: https://github.com/owner/repo.git

@@ -88,4 +88,32 @@ describe('assemblePrompt', () => {
     expect(prompt).toContain('bd close quetz-abc');
     expect(prompt).toContain('local commit');
   });
+
+  it('includes initial commit step when amend=true and isFirstIssue=true', () => {
+    const prompt = assemblePrompt(baseIssue, '', baseConfig, false, true, true);
+    expect(prompt).toContain('git commit -m');
+    expect(prompt).toContain('Do NOT push');
+    expect(prompt).not.toContain('--amend');
+    expect(prompt).not.toContain('Push your branch to origin');
+  });
+
+  it('includes amend step when amend=true and isFirstIssue=false', () => {
+    const prompt = assemblePrompt(baseIssue, '', baseConfig, false, true, false);
+    expect(prompt).toContain('git commit --amend --no-edit');
+    expect(prompt).toContain('Do NOT push');
+    expect(prompt).not.toContain('Push your branch to origin');
+  });
+
+  it('includes amend close reason when amend=true', () => {
+    const prompt = assemblePrompt(baseIssue, '', baseConfig, false, true, true);
+    expect(prompt).toContain("bd close quetz-abc");
+    expect(prompt).toContain('amend');
+  });
+
+  it('amend mode takes precedence over localCommits', () => {
+    // amend=true, localCommits=true — amend block should win
+    const prompt = assemblePrompt(baseIssue, '', baseConfig, true, true, false);
+    expect(prompt).toContain('git commit --amend --no-edit');
+    expect(prompt).not.toContain('Stage and commit your work');
+  });
 });

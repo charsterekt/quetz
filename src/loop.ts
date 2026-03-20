@@ -1,6 +1,6 @@
 import { loadConfig } from './config.js';
 import { getReadyIssues, getIssueDetails, getPrimeContext } from './beads.js';
-import { checkoutDefault, pullDefault, countNewCommits } from './git.js';
+import { checkoutDefault, pullDefault, countNewCommits, getCommitCountAhead } from './git.js';
 import { assemblePrompt } from './prompt.js';
 import { spawnAgent } from './agent.js';
 import { createOctokit, findPR, pollForMerge } from './github.js';
@@ -12,6 +12,7 @@ import {
   printPRFound,
   printMerged,
   printCommitVerified,
+  printAmendComplete,
   printFailure,
   printVictory,
   type VictoryStats,
@@ -150,7 +151,7 @@ export async function showStatus(watch: boolean = false): Promise<void> {
 
 // ── Run loop ─────────────────────────────────────────────────────────────────
 
-export async function runLoop(opts: { dry: boolean; model?: string; timeout?: number; verbose?: boolean; localCommits?: boolean }): Promise<void> {
+export async function runLoop(opts: { dry: boolean; model?: string; timeout?: number; verbose?: boolean; localCommits?: boolean; amend?: boolean }): Promise<void> {
   if (opts.verbose) {
     setVerbose(true);
     log('QUETZ', 'Verbose mode enabled');
@@ -196,7 +197,7 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
       // fall back to ready data
     }
     const bdPrime = getPrimeContext();
-    const prompt = assemblePrompt(issueDetails, bdPrime, config, opts.localCommits ?? false);
+    const prompt = assemblePrompt(issueDetails, bdPrime, config, opts.localCommits ?? false, opts.amend ?? false, true);
 
     process.stdout.write(brand('Prompt for first issue:\n'));
     process.stdout.write('─'.repeat(50) + '\n');
@@ -208,12 +209,15 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
   // ── Normal run loop ───────────────────────────────────────────────────────
   const localCommits = opts.localCommits ?? false;
-  const octokit = localCommits ? null : createOctokit();
+  const amend = opts.amend ?? false;
+  const localMode = localCommits || amend; // no GitHub API needed
+  const octokit = localMode ? null : createOctokit();
   let iteration = 0;
   const loopStart = Date.now();
   let totalIssuesCompleted = 0;
   let totalPrsMerged = 0;
   let totalCommitsLanded = 0;
+  let isFirstIssue = true; // tracks first vs. subsequent issues in amend mode
 
   while (true) {
     iteration++;
@@ -231,12 +235,26 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
       if (iteration === 1) {
         process.stdout.write(waiting('\nNo ready issues found. The serpent sleeps.\n'));
       } else {
+        let finalCommitHash: string | undefined;
+        let finalCommitMsg: string | undefined;
+        if (amend) {
+          try {
+            const gitLog = execSync(`git log -1 --format=%H %s`, { encoding: 'utf-8', cwd: projectRoot }).trim();
+            const spaceIdx = gitLog.indexOf(' ');
+            finalCommitHash = spaceIdx > -1 ? gitLog.slice(0, spaceIdx) : gitLog;
+            finalCommitMsg = spaceIdx > -1 ? gitLog.slice(spaceIdx + 1) : '';
+          } catch {
+            // not critical
+          }
+        }
         const stats: VictoryStats = {
           issuesCompleted: totalIssuesCompleted,
           totalTime: formatElapsed(Date.now() - loopStart),
           prsMerged: totalPrsMerged,
-          mode: localCommits ? 'local-commits' : 'pr',
+          mode: amend ? 'amend' : (localCommits ? 'local-commits' : 'pr'),
           commitsLanded: totalCommitsLanded,
+          commitHash: finalCommitHash,
+          commitMsg: finalCommitMsg,
         };
         if (tui.isActive()) {
           tui.writeHeader({
@@ -288,21 +306,23 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
     printPickup(issue.id, issue.title, issue.priority, issue.issue_type);
 
-    // 4. Git reset to default branch
-    if (!tui.isActive()) {
-      process.stdout.write(dim(`  git checkout ${config.github.defaultBranch} && git pull…\n`));
-    }
-    try {
-      checkoutDefault(config.github.defaultBranch, projectRoot);
-      pullDefault(config.github.defaultBranch, projectRoot);
-    } catch (err) {
-      process.stderr.write(error(`\nGit error: ${(err as Error).message}\n`));
-      process.exit(1);
+    // 4. Git reset to default branch (skip in amend mode — we accumulate on current branch)
+    if (!amend) {
+      if (!tui.isActive()) {
+        process.stdout.write(dim(`  git checkout ${config.github.defaultBranch} && git pull…\n`));
+      }
+      try {
+        checkoutDefault(config.github.defaultBranch, projectRoot);
+        pullDefault(config.github.defaultBranch, projectRoot);
+      } catch (err) {
+        process.stderr.write(error(`\nGit error: ${(err as Error).message}\n`));
+        process.exit(1);
+      }
     }
 
     // 5. Assemble prompt
     const bdPrime = getPrimeContext();
-    const prompt = assemblePrompt(issueDetails, bdPrime, config, localCommits);
+    const prompt = assemblePrompt(issueDetails, bdPrime, config, localCommits, amend, isFirstIssue);
 
     // 6. Spawn agent — set up TUI for streaming output
     printAgentStarting();
@@ -326,7 +346,7 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
     if (exitCode !== 0) {
       if (!tui.isActive()) {
-        const hint = localCommits ? 'Checking for local commit…' : 'Attempting PR detection…';
+        const hint = localMode ? 'Checking for local commit…' : 'Attempting PR detection…';
         process.stdout.write(waiting(`\n  Agent exited with code ${exitCode}. ${hint}\n`));
       }
     }
@@ -335,7 +355,43 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
     const agentElapsed = formatElapsed(Date.now() - agentStart);
 
-    if (localCommits) {
+    if (amend) {
+      // ── Amend path: verify commit count, update isFirstIssue, then continue ─
+      if (tui.isActive()) {
+        tui.writeHeader({
+          issueIdStr: issue.id,
+          issueTitle: issueDetails.title ?? issue.title,
+          iteration,
+          total: issueTotal,
+          elapsed: agentElapsed,
+          phase: 'commit',
+        });
+        tui.writeFooter({
+          issueIdStr: issue.id,
+          phase: 'commit',
+          elapsed: agentElapsed,
+        });
+      }
+
+      const commitCount = getCommitCountAhead(config.github.defaultBranch, projectRoot);
+      log('GIT', `Commits ahead of ${config.github.defaultBranch}: ${commitCount}`);
+
+      if (commitCount === 0) {
+        process.stdout.write(waiting(`\n  Warning: no commit found for ${issue.id}. Next issue will create a fresh commit.\n`));
+        // isFirstIssue stays true so next iteration creates a new commit
+      } else if (commitCount === 1) {
+        printAmendComplete(issue.id, totalIssuesCompleted + 1);
+        isFirstIssue = false;
+      } else {
+        // Agent created multiple commits — warn but proceed
+        process.stdout.write(waiting(`\n  Warning: ${commitCount} commits found for ${issue.id} (expected 1). Amend semantics may not have been followed.\n`));
+        isFirstIssue = false;
+      }
+
+      totalIssuesCompleted++;
+      await sleep(1000);
+
+    } else if (localCommits) {
       // ── Local-commits path: verify a commit landed, then continue ──────────
       if (tui.isActive()) {
         tui.writeHeader({

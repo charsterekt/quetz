@@ -58,6 +58,13 @@ async function main(): Promise<void> {
       const noAnimate = args.includes('--no-animate');
       const verbose = args.includes('--verbose');
       const localCommits = args.includes('--local-commits');
+      const amend = args.includes('--amend');
+
+      // Validate mutual exclusion: --amend and --local-commits cannot be used together
+      if (amend && localCommits) {
+        process.stderr.write('Error: --amend and --local-commits are mutually exclusive. Use one or the other.\n');
+        process.exit(EXIT_FAILURE);
+      }
 
       // Parse --model flag
       let model: string | undefined;
@@ -84,7 +91,7 @@ async function main(): Promise<void> {
       await printSerpentAnimated(!noAnimate && process.stdout.isTTY && !dry);
 
       const { runLoop } = await import('./loop.js');
-      await runLoop({ dry, model, timeout, verbose, localCommits });
+      await runLoop({ dry, model, timeout, verbose, localCommits, amend });
       break;
     }
     case 'status': {
