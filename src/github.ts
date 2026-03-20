@@ -1,6 +1,7 @@
 import { Octokit } from '@octokit/rest';
 import { execSync } from 'child_process';
 import type { QuetzConfig } from './config.js';
+import { log } from './verbose.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ export function createOctokit(): Octokit {
 /**
  * Search recent open PRs for one referencing the given issueId, created after
  * spawnTime. Retries every retryIntervalMs until prDetectionTimeout seconds
- * have elapsed.
+ * have elapsed. Searches increasingly more PRs if needed.
  *
  * Returns the matched PR or null on timeout.
  */
@@ -59,15 +60,24 @@ export async function findPR(
   retryIntervalMs: number = 5000
 ): Promise<PR | null> {
   const deadline = spawnTime.getTime() + prDetectionTimeoutSec * 1000;
+  let searchPageSize = 10; // Start with 10 PRs
 
   while (Date.now() < deadline) {
-    const pr = await queryForPR(octokit, owner, repo, issueId, spawnTime);
+    const pr = await queryForPR(octokit, owner, repo, issueId, spawnTime, searchPageSize);
     if (pr) return pr;
+
+    // Gradually expand search scope if we haven't found anything
+    if (searchPageSize < 50) {
+      searchPageSize = Math.min(searchPageSize + 10, 50);
+      log('DETECTION', `No PR found yet, expanding search to ${searchPageSize} PRs`);
+    }
+
     await delay(retryIntervalMs);
   }
 
-  // Final attempt at deadline
-  return queryForPR(octokit, owner, repo, issueId, spawnTime);
+  // Final attempt at deadline with full search
+  log('DETECTION', `Final attempt: searching up to 50 PRs`);
+  return queryForPR(octokit, owner, repo, issueId, spawnTime, 50);
 }
 
 async function queryForPR(
@@ -75,7 +85,8 @@ async function queryForPR(
   owner: string,
   repo: string,
   issueId: string,
-  spawnTime: Date
+  spawnTime: Date,
+  perPage: number = 10
 ): Promise<PR | null> {
   const { data } = await octokit.pulls.list({
     owner,
@@ -83,15 +94,26 @@ async function queryForPR(
     state: 'open',
     sort: 'created',
     direction: 'desc',
-    per_page: 10,
+    per_page: Math.min(perPage, 100), // GitHub API max is 100
   });
+
+  log('DETECTION', `Found ${data.length} recent open PRs`);
 
   for (const pr of data) {
     const createdAfterSpawn = new Date(pr.created_at) >= spawnTime;
-    const referencesIssue =
-      pr.title.includes(issueId) ||
-      (pr.body ?? '').includes(issueId) ||
-      pr.head.ref.includes(issueId);
+    const titleMatch = pr.title.includes(issueId);
+    const bodyMatch = (pr.body ?? '').includes(issueId);
+    const branchMatch = pr.head.ref.includes(issueId);
+    const referencesIssue = titleMatch || bodyMatch || branchMatch;
+
+    if (createdAfterSpawn) {
+      log('DETECTION', `  PR #${pr.number} created after spawn: "${pr.title}" (branch: ${pr.head.ref})`);
+      if (!referencesIssue) {
+        log('DETECTION', `    → No match for ${issueId} in title/body/branch`);
+      } else {
+        log('DETECTION', `    → Matches! (title: ${titleMatch}, body: ${bodyMatch}, branch: ${branchMatch})`);
+      }
+    }
 
     if (createdAfterSpawn && referencesIssue) {
       return {
@@ -107,6 +129,7 @@ async function queryForPR(
     }
   }
 
+  log('DETECTION', `No matching PR found for ${issueId}`);
   return null;
 }
 
