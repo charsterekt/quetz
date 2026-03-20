@@ -1,6 +1,7 @@
 // Persistent status line management (spec 6.4)
 
 import { brand, issueId, waiting, dim } from './terminal.js';
+import * as tui from './tui.js';
 
 export interface StatusState {
   iteration: number;
@@ -14,15 +15,15 @@ export interface StatusState {
 let lastLineLength = 0;
 
 export function formatStatusLine(state: StatusState): string {
-  const counter = `Issue ${state.iteration}/${state.total}`;
+  const counter = `[quetz] Issue ${state.iteration}/${state.total}`;
   const id = state.issueIdStr;
 
   if (state.phase === 'agent') {
-    return `[quetz] ${counter} | ${id} | Agent running... (${state.elapsed})`;
+    return `${counter} | ${id} | Agent running... (${state.elapsed})`;
   }
 
   const prLabel = state.prNumber ? `PR #${state.prNumber} — ` : '';
-  return `[quetz] ${counter} | ${id} | ${prLabel}waiting for merge (${state.elapsed})`;
+  return `${counter} | ${id} | ${prLabel}waiting for merge (${state.elapsed})`;
 }
 
 export function renderStatusLine(state: StatusState): string {
@@ -38,15 +39,27 @@ export function renderStatusLine(state: StatusState): string {
 }
 
 export function updateStatusLine(state: StatusState): void {
+  if (tui.isActive()) {
+    // Use absolute cursor positioning to update sticky footer
+    tui.writeFooter({
+      issueIdStr: state.issueIdStr,
+      phase: state.phase,
+      elapsed: state.elapsed,
+      prNumber: state.prNumber,
+    });
+    return;
+  }
+
+  // Fallback: carriage-return overwrite for non-TUI mode
   const line = renderStatusLine(state);
   const plain = formatStatusLine(state);
-  // Clear previous line and write new one
   const clearLen = Math.max(lastLineLength, plain.length);
   process.stdout.write(`\r${' '.repeat(clearLen)}\r${line}`);
   lastLineLength = plain.length;
 }
 
 export function clearStatusLine(): void {
+  if (tui.isActive()) return; // Footer persists in TUI mode
   if (lastLineLength > 0) {
     process.stdout.write(`\r${' '.repeat(lastLineLength)}\r`);
     lastLineLength = 0;

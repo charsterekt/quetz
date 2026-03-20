@@ -4,6 +4,22 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('../display/terminal.js', () => ({
   brand: (t: string) => t,
   dim: (t: string) => t,
+  chrome: (t: string) => t,
+}));
+
+// Mock tui to avoid alt-screen side effects and provide ANSI helpers
+vi.mock('../display/tui.js', () => ({
+  ANSI: {
+    move: (row: number, col: number) => `\x1b[${row};${col}H`,
+    clearEol: '\x1b[K',
+  },
+  cols: () => 80,
+  rows: () => 24,
+  writeCentered: vi.fn((lines: string[], startRow: number) => {
+    for (let i = 0; i < lines.length; i++) {
+      process.stdout.write(`\x1b[${startRow + i};1H${lines[i]}`);
+    }
+  }),
 }));
 
 import {
@@ -55,9 +71,14 @@ describe('printUsageBanner', () => {
 describe('getSerpentArt', () => {
   it('returns ASCII serpent with version and tagline', () => {
     const art = getSerpentArt();
-    expect(art).toContain('~~~');
-    expect(art).toContain('QUETZ v0.1.0');
+    expect(art).toContain('≋');
+    expect(art).toContain('Q U E T Z');
     expect(art).toContain('Feathered Serpent Dev Loop');
+  });
+
+  it('returns multi-line art', () => {
+    const art = getSerpentArt();
+    expect(art.split('\n').length).toBeGreaterThan(5);
   });
 });
 
@@ -65,8 +86,8 @@ describe('printSerpentStatic', () => {
   it('writes serpent art to stdout', () => {
     printSerpentStatic();
     const out = getOutput();
-    expect(out).toContain('~~~');
-    expect(out).toContain('QUETZ v0.1.0');
+    expect(out).toContain('≋');
+    expect(out).toContain('Feathered Serpent Dev Loop');
   });
 });
 
@@ -74,28 +95,26 @@ describe('printSerpentAnimated', () => {
   it('prints static art when animate is false', async () => {
     await printSerpentAnimated(false);
     const out = getOutput();
-    expect(out).toContain('QUETZ v0.1.0');
     expect(out).toContain('Feathered Serpent Dev Loop');
-    // Should NOT contain ANSI cursor-up sequences (no animation)
+    // No cursor-up animation sequences expected
     expect(out).not.toContain('\x1b[7A');
   });
 
   it('prints animated frames when animate is true', async () => {
-    // Use fake timers to avoid waiting ~1s
     vi.useFakeTimers();
     const promise = printSerpentAnimated(true);
-    // Advance through all animation frames
-    for (let i = 0; i < 15; i++) {
+    // Advance through all animation frames (14 frames × 60ms + 800ms pause)
+    for (let i = 0; i < 20; i++) {
       await vi.advanceTimersByTimeAsync(100);
     }
     await promise;
     vi.useRealTimers();
 
     const out = getOutput();
-    // Should contain ANSI cursor-up escape for frame overwriting
-    expect(out).toContain('\x1b[7A');
+    // Animation uses ANSI.move() sequences for absolute positioning
+    expect(out).toContain('\x1b[');
     // Final frame should show the full art
-    expect(out).toContain('QUETZ v0.1.0');
+    expect(out).toContain('Feathered Serpent Dev Loop');
   });
 });
 

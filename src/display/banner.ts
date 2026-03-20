@@ -1,17 +1,27 @@
 // ASCII art, startup animation, usage banner (spec 4.3, 6.2)
 
-import { brand, dim } from './terminal.js';
+import { brand, dim, chrome } from './terminal.js';
+import { ANSI, cols, rows, writeCentered } from './tui.js';
 
-// ── ASCII serpent art (spec 6.2) ────────────────────────────────────────────
+// ── Full-screen serpent art (spec 6.2) ───────────────────────────────────────
 
 const SERPENT_ART = [
-  '        ___            ',
-  '    ~~~/ o \\~~~>       ',
-  '   ~~~|  =  |~~>  QUETZ v0.1.0',
-  '   ~~~\\___/~~~>   The Feathered Serpent Dev Loop',
-  '       ||||           ',
-  '      ~~||~~          ',
-  '        ~~            ',
+  '                                                              ',
+  '  ≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋         ',
+  '≋≋≋                                                ≋≋≋        ',
+  '≋     ╔══════════════════════════════════════╗      ≋         ',
+  '≋     ║  ◉◉                            ◉◉   ║      ≋≋≋≋≋≋≋> ',
+  '≋≋≋≋≋≋╣                                     ╠≋≋≋≋≋≋≋≋≋≋≋≋≋> ',
+  '≋     ║    Q U E T Z     v 0 . 1 . 0        ║      ≋≋≋≋≋≋≋> ',
+  '≋     ║                                     ║      ≋         ',
+  '≋     ║    The Feathered Serpent Dev Loop   ║      ≋         ',
+  '≋≋≋   ╚══════════════════════════════════════╝    ≋≋≋        ',
+  '  ≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋≋         ',
+  '                        ║   ║                                 ',
+  '                   ≋≋≋≋≋║   ║≋≋≋≋≋                           ',
+  '                        ║   ║                                 ',
+  '                   ≋≋≋≋≋╩═══╩≋≋≋≋≋                           ',
+  '                                                              ',
 ];
 
 // ── Usage banner (spec 4.3) ─────────────────────────────────────────────────
@@ -47,9 +57,9 @@ export function printSerpentStatic(): void {
 }
 
 /**
- * Animate the serpent flying in from the left over ~1 second.
- * Each frame shifts the art rightward from offscreen.
- * Respects animations flag — if false, prints static art.
+ * Animate the serpent on startup.
+ * In TUI mode (alt screen active): centers the art on screen, slides in from left.
+ * In plain mode: prints static art to stdout.
  */
 export async function printSerpentAnimated(animate: boolean = true): Promise<void> {
   if (!animate) {
@@ -57,23 +67,28 @@ export async function printSerpentAnimated(animate: boolean = true): Promise<voi
     return;
   }
 
-  const maxWidth = Math.max(...SERPENT_ART.map(l => l.length));
-  const totalFrames = 12;
-  const frameDuration = 80; // ~960ms total
+  const artWidth = Math.max(...SERPENT_ART.map(l => l.length));
+  const artHeight = SERPENT_ART.length;
+  const totalFrames = 14;
+  const frameDuration = 60; // ~840ms total
+
+  // Vertical centering
+  const termRows = rows();
+  const termCols = cols();
+  const startRow = Math.max(1, Math.floor((termRows - artHeight) / 2));
+  const centerPad = Math.max(0, Math.floor((termCols - artWidth) / 2));
 
   for (let frame = 0; frame <= totalFrames; frame++) {
-    // Calculate offset: start fully offscreen left, end at position 0
-    const offset = Math.round((1 - frame / totalFrames) * maxWidth);
+    const slideOffset = Math.round((1 - frame / totalFrames) * artWidth);
 
-    // Move cursor up to overwrite previous frame (except first frame)
-    if (frame > 0) {
-      process.stdout.write(`\x1b[${SERPENT_ART.length}A`);
-    }
-
-    for (const line of SERPENT_ART) {
-      // Shift line: trim from left by offset amount, pad with spaces
-      const visible = offset >= line.length ? '' : line.slice(offset);
-      process.stdout.write(brand(visible) + '\x1b[K\n');
+    for (let i = 0; i < artHeight; i++) {
+      const line = SERPENT_ART[i];
+      const visible = slideOffset >= line.length ? '' : line.slice(slideOffset);
+      const pad = ' '.repeat(Math.max(0, centerPad - slideOffset));
+      process.stdout.write(
+        ANSI.move(startRow + i, 1) + ANSI.clearEol +
+        pad + brand(visible)
+      );
     }
 
     if (frame < totalFrames) {
@@ -81,7 +96,11 @@ export async function printSerpentAnimated(animate: boolean = true): Promise<voi
     }
   }
 
-  process.stdout.write('\n');
+  // Tagline below the art
+  const tagRow = startRow + artHeight + 1;
+  writeCentered([dim('press any key or wait…')], tagRow);
+
+  await sleep(800);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -111,4 +130,23 @@ export function printHelp(): void {
     '  quetz help, -h, --help   Show all commands with descriptions.\n' +
     '  quetz --version, -v      Show quetz version.\n'
   );
+}
+
+// ── Box helpers (re-exported for convenience) ────────────────────────────────
+
+export function printSectionBox(title: string, lines: string[]): void {
+  const w = cols();
+  const inner = w - 4;
+  const titleLine = ' ' + title + ' ';
+  const titlePad = Math.max(0, inner - titleLine.length - 1);
+  process.stdout.write(
+    '\n' +
+    chrome('  ╭─' + titleLine + '─'.repeat(titlePad) + '─╮') + '\n'
+  );
+  for (const line of lines) {
+    const raw = line.replace(/\x1b\[[0-9;]*m/g, '');
+    const pad = Math.max(0, inner - raw.length - 1);
+    process.stdout.write(chrome('  │') + ' ' + line + ' '.repeat(pad) + chrome(' │') + '\n');
+  }
+  process.stdout.write(chrome('  ╰' + '─'.repeat(inner + 2) + '╯') + '\n\n');
 }

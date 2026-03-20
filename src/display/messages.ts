@@ -1,47 +1,110 @@
-// All user-facing strings, fun status messages (spec 6.3)
+// All user-facing strings, phase panels, celebration screens (spec 6.3)
 
-import { brand, issueId, success, error, waiting, dim, separator } from './terminal.js';
+import { brand, issueId, success, error, waiting, dim } from './terminal.js';
+import * as tui from './tui.js';
 
-// ── Issue pickup (spec 6.3) ─────────────────────────────────────────────────
+// ── Issue pickup ─────────────────────────────────────────────────────────────
 
 export function printPickup(id: string, title: string, priority: number, issueType: string): void {
+  if (tui.isActive()) {
+    // In TUI mode: clear content area and show panel, then scroll down for agent output
+    tui.clearContentArea();
+    tui.writePanel([
+      brand('Summoning agent'),
+      '',
+      `  Issue  ${issueId(id)}`,
+      `  Title  ${title}`,
+      `  Type   ${dim(`P${priority} ${issueType}`)}`,
+      '',
+      waiting('  Spawning Claude Code agent…'),
+    ], tui.HEADER_ROWS + 2);
+    return;
+  }
+
   process.stdout.write(
     `\n${brand('🐉 Picking up')} ${issueId(id)}: "${title}" ${dim(`[P${priority} ${issueType}]`)}\n` +
-    `   ${separator('──── Summoning agent ────')}\n\n`
+    `   ${dim('──── Summoning agent ────')}\n\n`
   );
 }
 
-// ── Agent complete (spec 6.3) ───────────────────────────────────────────────
+// ── Transition to agent output ────────────────────────────────────────────────
+
+export function printAgentStarting(): void {
+  if (tui.isActive()) {
+    // Clear panel, set scroll region so agent output fills content area
+    tui.clearContentArea();
+    tui.setupScrollRegion();
+    // Brief separator before agent output flows in
+    process.stdout.write(dim('  ─── agent output below ───') + '\n\n');
+    return;
+  }
+  process.stdout.write(dim('\n  Starting agent…\n'));
+}
+
+// ── Agent complete ────────────────────────────────────────────────────────────
 
 export function printAgentComplete(): void {
+  if (tui.isActive()) {
+    // Reset scroll region so we can write full-screen panels again
+    process.stdout.write(tui.ANSI.resetScroll);
+    return;
+  }
   process.stdout.write(
-    `\n   ${separator('──── Agent session complete ────')}\n` +
-    `${waiting('🔍 Searching for PR...')}\n`
+    `\n   ${dim('──── Agent session complete ────')}\n` +
+    `${waiting('🔍 Searching for PR…')}\n`
   );
 }
 
-// ── PR found ────────────────────────────────────────────────────────────────
+// ── PR found ─────────────────────────────────────────────────────────────────
 
 export function printPRFound(prNumber: number, prTitle: string, prUrl: string): void {
+  if (tui.isActive()) {
+    tui.clearContentArea();
+    tui.writePanel([
+      success(`✓  PR #${prNumber} detected`),
+      '',
+      `  ${prTitle}`,
+      `  ${dim(prUrl)}`,
+      '',
+      waiting('  Watching for merge…'),
+    ], tui.HEADER_ROWS + 2);
+    return;
+  }
   process.stdout.write(
     `${success(`✓  Found PR #${prNumber}`)}: "${prTitle}"\n` +
     `   ${dim(prUrl)}\n` +
-    `   ${waiting('Watching for merge...')}\n`
+    `   ${waiting('Watching for merge…')}\n`
   );
 }
 
-// ── Merge success (spec 6.3) ────────────────────────────────────────────────
+// ── Merge celebration (spec 6.3) ──────────────────────────────────────────────
 
 export function printMerged(prNumber: number, id: string, remaining: number): void {
+  if (tui.isActive()) {
+    tui.clearContentArea();
+    const remainingStr = remaining === 0
+      ? success('All issues resolved!')
+      : dim(`${remaining} issue${remaining === 1 ? '' : 's'} remaining`);
+    tui.writePanel([
+      '',
+      success(`  ✓  PR #${prNumber} MERGED`),
+      '',
+      `  ${brand(`The serpent devours ${id}.`)}`,
+      '',
+      `  ${remainingStr}`,
+      '',
+    ], tui.HEADER_ROWS + 2);
+    return;
+  }
   process.stdout.write(
     `\n${success(`✅ PR #${prNumber} merged!`)} ${brand(`The serpent devours ${id}.`)}\n` +
-    `   ${separator('─'.repeat(40))}\n` +
+    `   ${dim('─'.repeat(40))}\n` +
     `   Issues remaining: ${remaining}\n` +
-    `   ${separator('─'.repeat(40))}\n\n`
+    `   ${dim('─'.repeat(40))}\n\n`
   );
 }
 
-// ── Victory screen (spec 6.3) ───────────────────────────────────────────────
+// ── Victory screen (spec 6.3) ─────────────────────────────────────────────────
 
 export interface VictoryStats {
   issuesCompleted: number;
@@ -50,6 +113,23 @@ export interface VictoryStats {
 }
 
 export function printVictory(stats: VictoryStats): void {
+  if (tui.isActive()) {
+    tui.clearContentArea();
+    tui.writePanel([
+      '',
+      success('  ✓  QUETZ VICTORY'),
+      '',
+      `  Issues completed   ${brand(String(stats.issuesCompleted))}`,
+      `  PRs merged         ${brand(String(stats.prsMerged))}`,
+      `  Total time         ${dim(stats.totalTime)}`,
+      '',
+      `  ${dim('The serpent rests. 🐉')}`,
+      '',
+      `  ${dim('All issues resolved.')}`,
+      '',
+    ], tui.HEADER_ROWS + 2);
+    return;
+  }
   process.stdout.write(
     `\n${success('✓ All issues resolved. The serpent rests.')}\n` +
     `${brand('~~~ QUETZ VICTORY ~~~')}\n\n` +
@@ -67,43 +147,43 @@ export function printVictory(stats: VictoryStats): void {
   );
 }
 
-// ── Failure messages (spec 6.3) ──────────────────────────────────────────────
+// ── Failure messages (spec 6.3) ───────────────────────────────────────────────
 
 export function printFailure(
   reason: 'ci_failed' | 'timeout' | 'no_pr' | 'closed',
   opts: { prNumber?: number; prUrl?: string; issueIdStr?: string; details?: string; timeoutMinutes?: number }
 ): void {
+  const lines: string[] = [];
+
   switch (reason) {
     case 'ci_failed':
-      process.stdout.write(
-        `\n${error(`💥 CI failed on PR #${opts.prNumber}`)}\n` +
-        (opts.details ? `   ${dim(opts.details)}\n` : '') +
-        `   ${dim('→')} ${dim(opts.prUrl ?? '')}\n` +
-        `\n   ${error('The serpent retreats.')} Fix the issue and run quetz again.\n\n`
-      );
+      lines.push(error(`  💥  CI failed on PR #${opts.prNumber}`));
+      if (opts.details) lines.push(`  ${dim(opts.details)}`);
+      if (opts.prUrl) lines.push(`  ${dim(opts.prUrl)}`);
       break;
-
     case 'timeout':
-      process.stdout.write(
-        `\n${error(`⏰ Merge timeout (${opts.timeoutMinutes}m) exceeded for PR #${opts.prNumber}`)}\n` +
-        `   ${dim('→')} ${dim(opts.prUrl ?? '')}\n` +
-        `\n   ${error('The serpent retreats.')} Check the PR and run quetz again.\n\n`
-      );
+      lines.push(error(`  ⏰  Merge timeout (${opts.timeoutMinutes}m) exceeded`));
+      lines.push(`  PR #${opts.prNumber}`);
+      if (opts.prUrl) lines.push(`  ${dim(opts.prUrl)}`);
       break;
-
     case 'no_pr':
-      process.stdout.write(
-        `\n${error(`🔍 No PR found referencing ${opts.issueIdStr}`)}\n` +
-        `\n   ${error('The serpent retreats.')} Check that the agent created a PR and run quetz again.\n\n`
-      );
+      lines.push(error(`  🔍  No PR found referencing ${opts.issueIdStr}`));
       break;
-
     case 'closed':
-      process.stdout.write(
-        `\n${error(`❌ PR #${opts.prNumber} was closed without merging`)}\n` +
-        `   ${dim('→')} ${dim(opts.prUrl ?? '')}\n` +
-        `\n   ${error('The serpent retreats.')} Fix the issue and run quetz again.\n\n`
-      );
+      lines.push(error(`  ❌  PR #${opts.prNumber} closed without merging`));
+      if (opts.prUrl) lines.push(`  ${dim(opts.prUrl)}`);
       break;
   }
+  lines.push('');
+  lines.push(`  ${error('The serpent retreats.')} Fix the issue and run quetz again.`);
+
+  if (tui.isActive()) {
+    tui.clearContentArea();
+    tui.writePanel(['', ...lines, ''], tui.HEADER_ROWS + 2);
+    return;
+  }
+
+  process.stdout.write('\n');
+  for (const line of lines) process.stdout.write(line.replace(/^ {2}/, '') + '\n');
+  process.stdout.write('\n');
 }

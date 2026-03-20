@@ -9,6 +9,16 @@ vi.mock('../display/terminal.js', () => ({
   error: (t: string) => t,
   dim: (t: string) => t,
   separator: (t: string) => t,
+  chrome: (t: string) => t,
+}));
+
+// Mock tui so isActive() returns false — tests use plain-text fallback paths
+vi.mock('../display/tui.js', () => ({
+  isActive: () => false,
+  clearContentArea: vi.fn(),
+  writePanel: vi.fn(),
+  ANSI: { resetScroll: '' },
+  HEADER_ROWS: 3,
 }));
 
 import { printPickup, printAgentComplete, printPRFound, printMerged, printVictory, printFailure } from '../display/messages.js';
@@ -109,7 +119,7 @@ describe('printFailure', () => {
   it('displays closed without merge message', () => {
     printFailure('closed', { prNumber: 42, prUrl: 'https://gh/pr/42' });
     const out = getOutput();
-    expect(out).toContain('PR #42 was closed without merging');
+    expect(out).toContain('PR #42 closed without merging');
     expect(out).toContain('serpent retreats');
   });
 });

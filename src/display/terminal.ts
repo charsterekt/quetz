@@ -23,6 +23,7 @@ export const waiting   = c(chalk.yellow);          // In progress / polling
 export const error     = c(chalk.red.bold);        // Errors / failures
 export const dim       = c(chalk.gray);            // Timestamps, metadata
 export const separator = c(chalk.magenta);         // Agent separator lines
+export const chrome    = c(chalk.dim);             // Box borders / UI chrome
 
 // ── Terminal width ──────────────────────────────────────────────────────────
 
