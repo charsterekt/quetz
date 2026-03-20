@@ -85,23 +85,48 @@ Quetz verifies all three are installed and authenticated during `quetz init`.
 
 ## Installation
 
-Install Quetz as a local npm dependency (recommended) or globally:
+### Local (Recommended)
+Install Quetz as a local npm dependency in your project:
 
 ```bash
-# Local (recommended — one per project)
 npm install quetz
-
-# Global
-npm install -g quetz
-```
-
-Then run setup:
-
-```bash
+npm run build  # (if you modified source)
 npx quetz init
 ```
 
-This generates `.quetzrc.yml`, runs preflight checks, and optionally scaffolds a GitHub Actions automerge workflow.
+After installation, use with `npx quetz <command>` or add to your `package.json` scripts:
+
+```json
+{
+  "scripts": {
+    "quetz": "quetz",
+    "quetz:run": "quetz run",
+    "quetz:status": "quetz status"
+  }
+}
+```
+
+Then use: `npm run quetz:run`
+
+### Global
+For system-wide access:
+
+```bash
+npm install -g quetz
+quetz init
+```
+
+Then use `quetz <command>` anywhere. To uninstall: `npm uninstall -g quetz`
+
+### Setup
+
+Both methods require first-time setup:
+
+```bash
+quetz init  # or `npx quetz init` if installed locally
+```
+
+This generates `.quetzrc.yml` in your project root, runs preflight checks (claude, gh, bd), and optionally scaffolds a GitHub Actions automerge workflow.
 
 ---
 
@@ -182,13 +207,36 @@ quetz init              First-time setup. Generates .quetzrc.yml, runs preflight
 quetz run               Start the dev loop. Runs until all issues are resolved
                         or a failure occurs.
 
-quetz run --dry         Preview without executing. Lists issues in order, prints
-                        the first agent prompt, then exits cleanly.
+quetz validate          Validate .quetzrc.yml without running the loop. Useful for
+                        testing config before a full run.
 
-quetz status            Show current loop state: issues remaining, what is in
-                        progress, and the last completed issue.
+quetz config show       Display the parsed configuration. Shows how quetz interprets
+                        your .quetzrc.yml (includes defaults).
 
-quetz help              Show all commands with descriptions.
+quetz status            Show current loop state: issues remaining, in progress,
+                        and completed count.
+
+quetz help, -h, --help  Show all commands with descriptions.
+
+quetz --version, -v     Show installed quetz version.
+```
+
+### Flags for `quetz run`
+
+```bash
+quetz run --dry               Preview mode: list issues, print first prompt, exit
+                              without spawning agent.
+
+quetz run --model <model>     Override agent model (haiku or sonnet).
+                              Default: sonnet. Example: quetz run --model haiku
+
+quetz run --timeout <minutes> Override agent timeout in minutes.
+                              Default: 30. Example: quetz run --timeout 60
+
+quetz run --verbose           Enable debug logging (currently parses flag; debug
+                              output implementation in progress).
+
+quetz run --no-animate        Disable terminal animations (serpent, spinner).
 ```
 
 ### Dry Run
@@ -272,7 +320,8 @@ github:
 # Agent settings
 agent:
   timeout: 30                          # minutes — kill agent if it runs longer
-  prompt: |                            # override default prompt template
+  model: "sonnet"                      # claude model: sonnet or haiku (default: sonnet)
+  prompt: |                            # override default prompt template (optional)
     {{bdPrime}}
     ...custom prompt...
 
@@ -301,6 +350,9 @@ github:
 
 agent:
   timeout: 30
+  model: "sonnet"                # Use sonnet for all issues (default)
+  # prompt: |                    # Optional: override default prompt
+  #   Custom prompt here...
 
 poll:
   interval: 30
@@ -310,6 +362,14 @@ poll:
 display:
   animations: true
   colors: true
+```
+
+**To override at runtime:**
+
+```bash
+quetz run --model haiku            # Use haiku instead of sonnet for this run
+quetz run --timeout 60             # Give agents 60 minutes instead of 30
+quetz run --model haiku --timeout 60 --dry  # Combine flags
 ```
 
 ### GitHub Actions for Auto-Merge
