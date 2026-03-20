@@ -124,24 +124,51 @@ export function printCommitVerified(id: string, commitHash?: string): void {
   );
 }
 
+// ── Amend iteration complete ──────────────────────────────────────────────────
+
+export function printAmendComplete(id: string, issueNumber: number): void {
+  if (tui.isActive()) {
+    tui.clearContentArea();
+    tui.writePanel([
+      '',
+      success(`  ✓  Amend ${issueNumber} complete`),
+      '',
+      `  ${brand(`The serpent folds ${id} into the commit.`)}`,
+      '',
+    ], tui.HEADER_ROWS + 2);
+    return;
+  }
+  process.stdout.write(
+    `\n${success(`✓ Amend ${issueNumber} complete`)} ${brand(`The serpent folds ${id} into the commit.`)}\n\n`
+  );
+}
+
 // ── Victory screen (spec 6.3) ─────────────────────────────────────────────────
 
 export interface VictoryStats {
   issuesCompleted: number;
   totalTime: string;
   prsMerged: number;
-  mode?: 'pr' | 'local-commits';
+  mode?: 'pr' | 'local-commits' | 'amend';
   commitsLanded?: number;
+  commitHash?: string;
+  commitMsg?: string;
 }
 
 export function printVictory(stats: VictoryStats): void {
   const isLocalCommits = stats.mode === 'local-commits';
-  const statLabel = isLocalCommits ? 'Commits landed' : 'PRs merged    ';
-  const statValue = isLocalCommits ? String(stats.commitsLanded ?? stats.issuesCompleted) : String(stats.prsMerged);
+  const isAmend = stats.mode === 'amend';
+  const statLabel = isAmend ? 'Commit ready  ' : (isLocalCommits ? 'Commits landed' : 'PRs merged    ');
+  const statValue = isAmend
+    ? (stats.commitHash ? stats.commitHash.slice(0, 7) : '1')
+    : (isLocalCommits ? String(stats.commitsLanded ?? stats.issuesCompleted) : String(stats.prsMerged));
+
+  const amendReadyLine = isAmend
+    ? `  ${success('1 commit ready to push.')} ${dim(stats.commitHash ? stats.commitHash.slice(0, 7) : '')}${stats.commitMsg ? ' ' + dim(stats.commitMsg) : ''}`
+    : '';
 
   if (tui.isActive()) {
-    tui.clearContentArea();
-    tui.writePanel([
+    const panels: string[] = [
       '',
       success('  ✓  QUETZ VICTORY'),
       '',
@@ -152,8 +179,11 @@ export function printVictory(stats: VictoryStats): void {
       `  ${dim('The serpent rests. 🐉')}`,
       '',
       `  ${dim('All issues resolved.')}`,
-      '',
-    ], tui.HEADER_ROWS + 2);
+    ];
+    if (isAmend && amendReadyLine) panels.push('', amendReadyLine);
+    panels.push('');
+    tui.clearContentArea();
+    tui.writePanel(panels, tui.HEADER_ROWS + 2);
     return;
   }
   process.stdout.write(
@@ -169,7 +199,8 @@ export function printVictory(stats: VictoryStats): void {
     `   ${brand('║')}                                      ${brand('║')}\n` +
     `   ${brand('║')}    ${dim('The serpent rests. 🐉')}              ${brand('║')}\n` +
     `   ${brand('║')}                                      ${brand('║')}\n` +
-    `   ${brand('╚══════════════════════════════════════╝')}\n\n`
+    `   ${brand('╚══════════════════════════════════════╝')}\n\n` +
+    (isAmend ? `${success('All issues complete. 1 commit ready to push.')}\n${dim(stats.commitHash ?? '')} ${dim(stats.commitMsg ?? '')}\n\n` : '')
   );
 }
 
