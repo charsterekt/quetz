@@ -1,4 +1,3 @@
-import chalk from 'chalk';
 import { loadConfig } from './config.js';
 import { getReadyIssues, getIssueDetails, getPrimeContext } from './beads.js';
 import { checkoutDefault, pullDefault } from './git.js';
@@ -6,6 +5,16 @@ import { assemblePrompt } from './prompt.js';
 import { spawnAgent } from './agent.js';
 import { createOctokit, findPR, pollForMerge } from './github.js';
 import { setVerbose, log } from './verbose.js';
+import {
+  printPickup,
+  printAgentComplete,
+  printPRFound,
+  printMerged,
+  printFailure,
+  printVictory,
+  type VictoryStats,
+} from './display/messages.js';
+import { brand, success, waiting, error, dim } from './display/terminal.js';
 import { execSync } from 'child_process';
 
 // ── Status command ──────────────────────────────────────────────────────────
@@ -23,18 +32,18 @@ function getStatusDisplay(
   config: any
 ): string {
   const nextLabel = nextIssue
-    ? chalk.cyan(`${nextIssue.id} "${nextIssue.title}" [P${nextIssue.priority}]`)
-    : chalk.gray('none');
+    ? `${brand(nextIssue.id)} "${nextIssue.title}" ${dim(`[P${nextIssue.priority}]`)}`
+    : dim('none');
 
   return (
-    chalk.bold('Quetz Status\n') +
+    brand('Quetz Status') + '\n' +
     '════════════\n' +
-    new Date().toLocaleTimeString() + '\n\n' +
+    dim(new Date().toLocaleTimeString()) + '\n\n' +
     (total > 0
-      ? `Issues: ${chalk.green(String(ready))} ready / ${chalk.yellow(String(inProgress))} in progress / ${chalk.gray(String(completed))} completed / ${chalk.dim(String(total))} total\n`
-      : `Issues: ${chalk.green(String(ready))} ready\n`) +
+      ? `Issues: ${success(String(ready))} ready / ${waiting(String(inProgress))} in progress / ${dim(String(completed))} completed / ${dim(String(total))} total\n`
+      : `Issues: ${success(String(ready))} ready\n`) +
     `Next:   ${nextLabel}\n` +
-    `Config: ${config.github.owner}/${config.github.repo} (${config.github.defaultBranch})\n`
+    `Config: ${dim(`${config.github.owner}/${config.github.repo} (${config.github.defaultBranch})`)}\n`
   );
 }
 
@@ -42,7 +51,7 @@ export async function showStatus(watch: boolean = false): Promise<void> {
   const config = loadConfig();
 
   if (watch) {
-    process.stdout.write(chalk.bold('\nQuetz Status (--watch mode)\n'));
+    process.stdout.write(brand('\nQuetz Status (--watch mode)\n'));
     process.stdout.write('Press Ctrl+C to exit\n\n');
 
     while (true) {
@@ -51,7 +60,7 @@ export async function showStatus(watch: boolean = false): Promise<void> {
       try {
         readyIssues = getReadyIssues();
       } catch {
-        process.stderr.write(chalk.red('Failed to query bd ready.\n'));
+        process.stderr.write(error('Failed to query bd ready.\n'));
         process.exit(1);
       }
 
@@ -84,7 +93,7 @@ export async function showStatus(watch: boolean = false): Promise<void> {
     try {
       readyIssues = getReadyIssues();
     } catch {
-      process.stderr.write(chalk.red('Failed to query bd ready.\n'));
+      process.stderr.write(error('Failed to query bd ready.\n'));
       process.exit(1);
     }
 
@@ -129,21 +138,22 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
     try {
       issues = getReadyIssues();
     } catch (err) {
-      process.stderr.write(chalk.red(`\nbd ready failed: ${(err as Error).message}\n`));
+      process.stderr.write(error(`bd ready failed: ${(err as Error).message}\n`));
       process.exit(1);
     }
 
     if (issues.length === 0) {
-      process.stdout.write(chalk.yellow('\nNo ready issues found. The serpent sleeps.\n'));
+      process.stdout.write(waiting('\nNo ready issues found. The serpent sleeps.\n'));
       process.exit(0);
     }
 
-    process.stdout.write(chalk.bold('\nIssue Queue (priority order):\n'));
+    process.stdout.write(brand('\nIssue Queue (priority order):\n'));
     process.stdout.write('─'.repeat(50) + '\n');
     for (const [i, issue] of issues.entries()) {
       process.stdout.write(
-        chalk.cyan(`${i + 1}. ${issue.id}`) +
-        ` [P${issue.priority}] [${issue.issue_type}] ${issue.title}\n`
+        `${i + 1}. ` +
+        brand(issue.id) +
+        ` ${dim(`[P${issue.priority}] [${issue.issue_type}]`)} ${issue.title}\n`
       );
     }
     process.stdout.write('─'.repeat(50) + '\n\n');
@@ -158,11 +168,11 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
     const bdPrime = getPrimeContext();
     const prompt = assemblePrompt(issueDetails, bdPrime, config);
 
-    process.stdout.write(chalk.bold('Prompt for first issue:\n'));
+    process.stdout.write(brand('Prompt for first issue:\n'));
     process.stdout.write('─'.repeat(50) + '\n');
     process.stdout.write(prompt + '\n');
     process.stdout.write('─'.repeat(50) + '\n');
-    process.stdout.write(chalk.bold('\n--- Dry run complete (no agent spawned) ---\n'));
+    process.stdout.write(brand('\n--- Dry run complete (no agent spawned) ---\n'));
     process.exit(0);
   }
 
@@ -178,37 +188,42 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
     try {
       issues = getReadyIssues();
     } catch (err) {
-      process.stderr.write(chalk.red(`\nbd ready failed: ${(err as Error).message}\n`));
+      process.stderr.write(error(`\nbd ready failed: ${(err as Error).message}\n`));
       process.exit(1);
     }
 
     if (issues.length === 0) {
       if (iteration === 1) {
-        process.stdout.write(chalk.yellow('\nNo ready issues found. The serpent sleeps.\n'));
+        process.stdout.write(waiting('\nNo ready issues found. The serpent sleeps.\n'));
       } else {
-        process.stdout.write(
-          chalk.green('\n✓ All issues resolved. The serpent rests.\n') +
-          chalk.bold('   ~~~ QUETZ VICTORY ~~~\n\n')
-        );
+        const stats: VictoryStats = {
+          issuesCompleted: 0,
+          totalTime: '0m',
+          prsMerged: 0,
+        };
+        printVictory(stats);
       }
       process.exit(0);
     }
 
     const issue = issues[0];
 
-    process.stdout.write(
-      chalk.bold(`\n[${iteration}] Issue: `) +
-      chalk.cyan(`${issue.id} — "${issue.title}"`) +
-      chalk.gray(` [P${issue.priority}]\n`)
-    );
+    process.stdout.write(`\n[${iteration}] ` + dim('Issue: '));
+    let issueDetailsForPickup = issue;
+    try {
+      issueDetailsForPickup = getIssueDetails(issue.id);
+    } catch {
+      // fall back to ready data
+    }
+    printPickup(issue.id, issue.title, issue.priority, issue.issue_type);
 
     // 2. Git reset to default branch
-    process.stdout.write(chalk.gray(`  git checkout ${config.github.defaultBranch} && git pull...\n`));
+    process.stdout.write(dim(`  git checkout ${config.github.defaultBranch} && git pull...\n`));
     try {
       checkoutDefault(config.github.defaultBranch, projectRoot);
       pullDefault(config.github.defaultBranch, projectRoot);
     } catch (err) {
-      process.stderr.write(chalk.red(`\nGit error: ${(err as Error).message}\n`));
+      process.stderr.write(error(`\nGit error: ${(err as Error).message}\n`));
       process.exit(1);
     }
 
@@ -223,7 +238,7 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
     const prompt = assemblePrompt(issueDetails, bdPrime, config);
 
     // 4. Spawn agent
-    process.stdout.write(chalk.gray('\n  Spawning agent...\n'));
+    process.stdout.write(dim('\n  Spawning agent...\n'));
     const spawnTime = new Date();
     const agentTimeout = opts.timeout ?? config.agent.timeout;
     const agentModel = opts.model ?? config.agent.model ?? 'sonnet';
@@ -232,18 +247,20 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
     log('AGENT', `Working directory: ${projectRoot}`);
     log('AGENT', `Prompt length: ${prompt.length} characters`);
     const exitCode = await spawnAgent(prompt, projectRoot, agentTimeout, agentModel).catch(err => {
-      process.stderr.write(chalk.red(`\nAgent error: ${(err as Error).message}\n`));
+      process.stderr.write(error(`\nAgent error: ${(err as Error).message}\n`));
       process.exit(1);
     });
 
     if (exitCode !== 0) {
       process.stdout.write(
-        chalk.yellow(`\n  Agent exited with code ${exitCode}. Attempting PR detection...\n`)
+        waiting(`\n  Agent exited with code ${exitCode}. Attempting PR detection...\n`)
       );
     }
 
+    printAgentComplete();
+
     // 5. Detect PR
-    process.stdout.write(chalk.gray('  Looking for PR...\n'));
+    process.stdout.write(dim('  Looking for PR...\n'));
     log('GITHUB', `Searching for PR referencing ${issue.id}`);
     log('GITHUB', `Will check PRs created after ${spawnTime.toISOString()}`);
     log('GITHUB', `Detection timeout: ${config.poll.prDetectionTimeout}s`);
@@ -258,18 +275,15 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
     if (!pr) {
       log('GITHUB', `PR detection timed out after ${config.poll.prDetectionTimeout}s`);
-      process.stderr.write(
-        chalk.red(`\nNo PR found referencing ${issue.id} within ${config.poll.prDetectionTimeout}s of agent exit.\n`)
-      );
+      printFailure('no_pr', { issueIdStr: issue.id });
       process.exit(1);
     }
     log('GITHUB', `Found PR #${pr.number}: "${pr.title}"`);
 
-    process.stdout.write(chalk.green(`  Found PR #${pr.number}: ${pr.title}\n`));
-    process.stdout.write(chalk.gray(`  ${pr.html_url}\n`));
+    printPRFound(pr.number, pr.title, pr.html_url);
 
     // 6. Poll for merge
-    process.stdout.write(chalk.gray('  Polling for merge...\n'));
+    process.stdout.write(dim('  Polling for merge...\n'));
     log('GITHUB', `Polling PR #${pr.number} for merge (interval: ${config.poll.interval}s, timeout: ${config.poll.mergeTimeout}m)`);
     const result = await pollForMerge(
       octokit,
@@ -278,7 +292,7 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
       pr.number,
       config,
       (elapsed) => {
-        process.stdout.write(chalk.gray(`  Waiting... ${elapsed}\r`));
+        process.stdout.write(dim(`  Waiting... ${elapsed}\r`));
         log('GITHUB', `Still waiting... PR #${pr.number} not yet merged (${elapsed} elapsed)`);
       }
     );
@@ -286,27 +300,30 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
     switch (result.status) {
       case 'merged':
         log('GITHUB', `PR #${pr.number} merged successfully`);
-        process.stdout.write(chalk.green(`\n  Merged! ${result.pr.html_url}\n`));
+        // Print merged message (remaining count will be shown on next iteration)
+        printMerged(pr.number, issue.id, 0);
         break;
 
       case 'closed':
-        process.stderr.write(
-          chalk.red(`\nPR #${pr.number} was closed without merging.\n  ${pr.html_url}\n`)
-        );
+        printFailure('closed', { prNumber: pr.number, prUrl: pr.html_url });
         process.exit(1);
         break;
 
       case 'ci_failed':
-        process.stderr.write(
-          chalk.red(`\nCI failed on PR #${pr.number}.\n  ${result.details ?? ''}\n  ${pr.html_url}\n`)
-        );
+        printFailure('ci_failed', {
+          prNumber: pr.number,
+          prUrl: result.pr.html_url,
+          details: result.details,
+        });
         process.exit(1);
         break;
 
       case 'timeout':
-        process.stderr.write(
-          chalk.red(`\nMerge timeout (${config.poll.mergeTimeout}m) exceeded for PR #${pr.number}.\n  ${pr.html_url}\n`)
-        );
+        printFailure('timeout', {
+          prNumber: pr.number,
+          prUrl: pr.html_url,
+          timeoutMinutes: config.poll.mergeTimeout,
+        });
         process.exit(1);
         break;
     }

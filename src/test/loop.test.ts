@@ -174,7 +174,7 @@ describe('runLoop dry-run', () => {
   it('exits 1 if bd ready fails in dry-run', async () => {
     mockGetReadyIssues.mockImplementation(() => { throw new Error('bd not found'); });
     await expect(runLoop({ dry: true })).rejects.toThrow('process.exit(1)');
-    const errOutput = stderrSpy.mock.calls.map((c: Parameters<typeof process.stdout.write>) => String(c[0])).join('');
+    const errOutput = stderrSpy.mock.calls.map((c: Parameters<typeof process.stderr.write>) => String(c[0])).join('');
     expect(errOutput).toContain('bd ready failed');
   });
 });
@@ -224,8 +224,8 @@ describe('runLoop normal', () => {
     mockPullDefault.mockImplementation(() => { throw new Error('merge conflict'); });
 
     await expect(runLoop({ dry: false })).rejects.toThrow('process.exit(1)');
-    const errOutput = stderrSpy.mock.calls.map((c: Parameters<typeof process.stdout.write>) => String(c[0])).join('');
-    expect(errOutput).toContain('Git error');
+    const errOutput = stderrSpy.mock.calls.map((c: Parameters<typeof process.stderr.write>) => String(c[0])).join('');
+    expect(errOutput).toContain('merge conflict');
   });
 
   it('exits 1 if no PR found after agent exit', async () => {
@@ -235,8 +235,8 @@ describe('runLoop normal', () => {
     mockFindPR.mockResolvedValue(null);
 
     await expect(runLoop({ dry: false })).rejects.toThrow('process.exit(1)');
-    const errOutput = stderrSpy.mock.calls.map((c: Parameters<typeof process.stdout.write>) => String(c[0])).join('');
-    expect(errOutput).toContain('No PR found');
+    const output = stdoutSpy.mock.calls.map((c: Parameters<typeof process.stdout.write>) => String(c[0])).join('');
+    expect(output).toContain('No PR found');
   });
 
   it('exits 1 on ci_failed merge result', async () => {
@@ -247,8 +247,8 @@ describe('runLoop normal', () => {
     mockPollForMerge.mockResolvedValue({ status: 'ci_failed', details: 'tests failed', pr: { html_url: 'https://gh/pr/42' } } as never);
 
     await expect(runLoop({ dry: false })).rejects.toThrow('process.exit(1)');
-    const errOutput = stderrSpy.mock.calls.map((c: Parameters<typeof process.stdout.write>) => String(c[0])).join('');
-    expect(errOutput).toContain('CI failed');
+    const output = stdoutSpy.mock.calls.map((c: Parameters<typeof process.stdout.write>) => String(c[0])).join('');
+    expect(output).toContain('CI failed');
   });
 
   it('exits 1 on closed merge result', async () => {
@@ -259,8 +259,8 @@ describe('runLoop normal', () => {
     mockPollForMerge.mockResolvedValue({ status: 'closed', pr: { html_url: 'https://gh/pr/42' } } as never);
 
     await expect(runLoop({ dry: false })).rejects.toThrow('process.exit(1)');
-    const errOutput = stderrSpy.mock.calls.map((c: Parameters<typeof process.stdout.write>) => String(c[0])).join('');
-    expect(errOutput).toContain('closed without merging');
+    const output = stdoutSpy.mock.calls.map((c: Parameters<typeof process.stdout.write>) => String(c[0])).join('');
+    expect(output).toContain('closed without merging');
   });
 
   it('exits 1 on timeout merge result', async () => {
@@ -271,8 +271,8 @@ describe('runLoop normal', () => {
     mockPollForMerge.mockResolvedValue({ status: 'timeout', pr: { html_url: 'https://gh/pr/42' } } as never);
 
     await expect(runLoop({ dry: false })).rejects.toThrow('process.exit(1)');
-    const errOutput = stderrSpy.mock.calls.map((c: Parameters<typeof process.stdout.write>) => String(c[0])).join('');
-    expect(errOutput).toContain('timeout');
+    const output = stdoutSpy.mock.calls.map((c: Parameters<typeof process.stdout.write>) => String(c[0])).join('');
+    expect(output).toContain('timeout');
   });
 
   it('continues loop after successful merge', async () => {
