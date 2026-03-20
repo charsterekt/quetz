@@ -1,6 +1,7 @@
 import { Octokit } from '@octokit/rest';
 import { execSync } from 'child_process';
 import type { QuetzConfig } from './config.js';
+import { log } from './verbose.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -86,12 +87,23 @@ async function queryForPR(
     per_page: 10,
   });
 
+  log('DETECTION', `Found ${data.length} recent open PRs`);
+
   for (const pr of data) {
     const createdAfterSpawn = new Date(pr.created_at) >= spawnTime;
-    const referencesIssue =
-      pr.title.includes(issueId) ||
-      (pr.body ?? '').includes(issueId) ||
-      pr.head.ref.includes(issueId);
+    const titleMatch = pr.title.includes(issueId);
+    const bodyMatch = (pr.body ?? '').includes(issueId);
+    const branchMatch = pr.head.ref.includes(issueId);
+    const referencesIssue = titleMatch || bodyMatch || branchMatch;
+
+    if (createdAfterSpawn) {
+      log('DETECTION', `  PR #${pr.number} created after spawn: "${pr.title}" (branch: ${pr.head.ref})`);
+      if (!referencesIssue) {
+        log('DETECTION', `    → No match for ${issueId} in title/body/branch`);
+      } else {
+        log('DETECTION', `    → Matches! (title: ${titleMatch}, body: ${bodyMatch}, branch: ${branchMatch})`);
+      }
+    }
 
     if (createdAfterSpawn && referencesIssue) {
       return {
@@ -107,6 +119,7 @@ async function queryForPR(
     }
   }
 
+  log('DETECTION', `No matching PR found for ${issueId}`);
   return null;
 }
 

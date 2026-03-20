@@ -106,7 +106,8 @@ export function printHelp(): void {
     '  quetz validate       Validate .quetzrc.yml without running the loop.\n\n' +
     '  quetz config show    Display parsed configuration from .quetzrc.yml.\n\n' +
     '  quetz status         Show current loop state: issues remaining, what\'s in\n' +
-    '                       progress, last completed issue.\n\n' +
+    '                       progress, completed.\n' +
+    '  quetz status --watch Real-time monitoring (5s refresh). Press Ctrl+C to exit.\n\n' +
     '  quetz help, -h, --help   Show all commands with descriptions.\n' +
     '  quetz --version, -v      Show quetz version.\n'
   );

@@ -84,8 +84,9 @@ async function main(): Promise<void> {
       break;
     }
     case 'status': {
+      const watch = args.includes('--watch') || args.includes('-w');
       const { showStatus } = await import('./loop.js');
-      await showStatus();
+      await showStatus(watch);
       break;
     }
     default: {

@@ -5,58 +5,123 @@ import { checkoutDefault, pullDefault } from './git.js';
 import { assemblePrompt } from './prompt.js';
 import { spawnAgent } from './agent.js';
 import { createOctokit, findPR, pollForMerge } from './github.js';
+import { setVerbose, log } from './verbose.js';
 import { execSync } from 'child_process';
 
 // ── Status command ──────────────────────────────────────────────────────────
 
-export async function showStatus(): Promise<void> {
-  const config = loadConfig();
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
-  // Get ready (unblocked) issues
-  let readyIssues: { id: string; title: string; priority: number }[] = [];
-  try {
-    readyIssues = getReadyIssues();
-  } catch {
-    process.stderr.write(chalk.red('Failed to query bd ready.\n'));
-    process.exit(1);
-  }
-
-  // Get all issues via bd list
-  let allIssues: { status: string }[] = [];
-  try {
-    const raw = execSync('bd list --json', { encoding: 'utf-8' });
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) allIssues = parsed as { status: string }[];
-  } catch {
-    // bd list may not exist; fall back gracefully
-  }
-
-  const total = allIssues.length;
-  const inProgress = allIssues.filter(i => i.status === 'in_progress').length;
-  const completed = allIssues.filter(i => i.status === 'closed' || i.status === 'done').length;
-  const ready = readyIssues.length;
-
-  const nextIssue = readyIssues[0];
+function getStatusDisplay(
+  ready: number,
+  inProgress: number,
+  completed: number,
+  total: number,
+  nextIssue: { id: string; title: string; priority: number } | undefined,
+  config: any
+): string {
   const nextLabel = nextIssue
     ? chalk.cyan(`${nextIssue.id} "${nextIssue.title}" [P${nextIssue.priority}]`)
     : chalk.gray('none');
 
-  process.stdout.write(
+  return (
     chalk.bold('Quetz Status\n') +
-    '════════════\n\n' +
+    '════════════\n' +
+    new Date().toLocaleTimeString() + '\n\n' +
     (total > 0
-      ? `Issues: ${chalk.green(String(ready))} ready / ${chalk.yellow(String(inProgress))} in progress / ${chalk.gray(String(completed))} completed\n`
+      ? `Issues: ${chalk.green(String(ready))} ready / ${chalk.yellow(String(inProgress))} in progress / ${chalk.gray(String(completed))} completed / ${chalk.dim(String(total))} total\n`
       : `Issues: ${chalk.green(String(ready))} ready\n`) +
     `Next:   ${nextLabel}\n` +
     `Config: ${config.github.owner}/${config.github.repo} (${config.github.defaultBranch})\n`
   );
 }
 
+export async function showStatus(watch: boolean = false): Promise<void> {
+  const config = loadConfig();
+
+  if (watch) {
+    process.stdout.write(chalk.bold('\nQuetz Status (--watch mode)\n'));
+    process.stdout.write('Press Ctrl+C to exit\n\n');
+
+    while (true) {
+      // Get ready (unblocked) issues
+      let readyIssues: { id: string; title: string; priority: number }[] = [];
+      try {
+        readyIssues = getReadyIssues();
+      } catch {
+        process.stderr.write(chalk.red('Failed to query bd ready.\n'));
+        process.exit(1);
+      }
+
+      // Get all issues via bd list
+      let allIssues: { status: string }[] = [];
+      try {
+        const raw = execSync('bd list --json', { encoding: 'utf-8' });
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) allIssues = parsed as { status: string }[];
+      } catch {
+        // bd list may not exist; fall back gracefully
+      }
+
+      const total = allIssues.length;
+      const inProgress = allIssues.filter(i => i.status === 'in_progress').length;
+      const completed = allIssues.filter(i => i.status === 'closed' || i.status === 'done').length;
+      const ready = readyIssues.length;
+      const nextIssue = readyIssues[0];
+
+      // Clear screen and display
+      process.stdout.write('\x1b[2J\x1b[0f');
+      process.stdout.write(getStatusDisplay(ready, inProgress, completed, total, nextIssue, config));
+
+      // Wait 5 seconds before refreshing
+      await sleep(5000);
+    }
+  } else {
+    // One-shot status display
+    let readyIssues: { id: string; title: string; priority: number }[] = [];
+    try {
+      readyIssues = getReadyIssues();
+    } catch {
+      process.stderr.write(chalk.red('Failed to query bd ready.\n'));
+      process.exit(1);
+    }
+
+    // Get all issues via bd list
+    let allIssues: { status: string }[] = [];
+    try {
+      const raw = execSync('bd list --json', { encoding: 'utf-8' });
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) allIssues = parsed as { status: string }[];
+    } catch {
+      // bd list may not exist; fall back gracefully
+    }
+
+    const total = allIssues.length;
+    const inProgress = allIssues.filter(i => i.status === 'in_progress').length;
+    const completed = allIssues.filter(i => i.status === 'closed' || i.status === 'done').length;
+    const ready = readyIssues.length;
+    const nextIssue = readyIssues[0];
+
+    process.stdout.write('\n' + getStatusDisplay(ready, inProgress, completed, total, nextIssue, config));
+  }
+}
+
 // ── Run loop ────────────────────────────────────────────────────────────────
 
 export async function runLoop(opts: { dry: boolean; model?: string; timeout?: number; verbose?: boolean }): Promise<void> {
+  // Set verbose mode early so all modules can log
+  if (opts.verbose) {
+    setVerbose(true);
+    log('QUETZ', 'Verbose mode enabled');
+  }
+
   const projectRoot = process.cwd();
   const config = loadConfig(projectRoot);
+  if (opts.verbose) {
+    log('CONFIG', `Loaded: ${config.github.owner}/${config.github.repo} (${config.github.defaultBranch})`);
+  }
 
   // ── Dry-run: print issue list + first prompt, then exit ─────────────────
   if (opts.dry) {
@@ -162,6 +227,10 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
     const spawnTime = new Date();
     const agentTimeout = opts.timeout ?? config.agent.timeout;
     const agentModel = opts.model ?? config.agent.model ?? 'sonnet';
+    log('AGENT', `Spawning: claude -p <prompt> --model ${agentModel} --dangerously-skip-permissions`);
+    log('AGENT', `Timeout: ${agentTimeout} minutes`);
+    log('AGENT', `Working directory: ${projectRoot}`);
+    log('AGENT', `Prompt length: ${prompt.length} characters`);
     const exitCode = await spawnAgent(prompt, projectRoot, agentTimeout, agentModel).catch(err => {
       process.stderr.write(chalk.red(`\nAgent error: ${(err as Error).message}\n`));
       process.exit(1);
@@ -175,6 +244,9 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
     // 5. Detect PR
     process.stdout.write(chalk.gray('  Looking for PR...\n'));
+    log('GITHUB', `Searching for PR referencing ${issue.id}`);
+    log('GITHUB', `Will check PRs created after ${spawnTime.toISOString()}`);
+    log('GITHUB', `Detection timeout: ${config.poll.prDetectionTimeout}s`);
     const pr = await findPR(
       octokit,
       config.github.owner,
@@ -185,28 +257,35 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
     );
 
     if (!pr) {
+      log('GITHUB', `PR detection timed out after ${config.poll.prDetectionTimeout}s`);
       process.stderr.write(
         chalk.red(`\nNo PR found referencing ${issue.id} within ${config.poll.prDetectionTimeout}s of agent exit.\n`)
       );
       process.exit(1);
     }
+    log('GITHUB', `Found PR #${pr.number}: "${pr.title}"`);
 
     process.stdout.write(chalk.green(`  Found PR #${pr.number}: ${pr.title}\n`));
     process.stdout.write(chalk.gray(`  ${pr.html_url}\n`));
 
     // 6. Poll for merge
     process.stdout.write(chalk.gray('  Polling for merge...\n'));
+    log('GITHUB', `Polling PR #${pr.number} for merge (interval: ${config.poll.interval}s, timeout: ${config.poll.mergeTimeout}m)`);
     const result = await pollForMerge(
       octokit,
       config.github.owner,
       config.github.repo,
       pr.number,
       config,
-      (elapsed) => process.stdout.write(chalk.gray(`  Waiting... ${elapsed}\r`))
+      (elapsed) => {
+        process.stdout.write(chalk.gray(`  Waiting... ${elapsed}\r`));
+        log('GITHUB', `Still waiting... PR #${pr.number} not yet merged (${elapsed} elapsed)`);
+      }
     );
 
     switch (result.status) {
       case 'merged':
+        log('GITHUB', `PR #${pr.number} merged successfully`);
         process.stdout.write(chalk.green(`\n  Merged! ${result.pr.html_url}\n`));
         break;
 
