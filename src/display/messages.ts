@@ -104,15 +104,41 @@ export function printMerged(prNumber: number, id: string, remaining: number): vo
   );
 }
 
+// ── Commit verified (local-commits mode) ─────────────────────────────────────
+
+export function printCommitVerified(id: string, commitHash?: string): void {
+  const hashStr = commitHash ? ` ${dim(commitHash.slice(0, 7))}` : '';
+  if (tui.isActive()) {
+    tui.clearContentArea();
+    tui.writePanel([
+      '',
+      success(`  ✓  Commit landed${hashStr}`),
+      '',
+      `  ${brand(`The serpent devours ${id}.`)}`,
+      '',
+    ], tui.HEADER_ROWS + 2);
+    return;
+  }
+  process.stdout.write(
+    `\n${success(`✓ Commit landed${hashStr}`)} ${brand(`The serpent devours ${id}.`)}\n\n`
+  );
+}
+
 // ── Victory screen (spec 6.3) ─────────────────────────────────────────────────
 
 export interface VictoryStats {
   issuesCompleted: number;
   totalTime: string;
   prsMerged: number;
+  mode?: 'pr' | 'local-commits';
+  commitsLanded?: number;
 }
 
 export function printVictory(stats: VictoryStats): void {
+  const isLocalCommits = stats.mode === 'local-commits';
+  const statLabel = isLocalCommits ? 'Commits landed' : 'PRs merged    ';
+  const statValue = isLocalCommits ? String(stats.commitsLanded ?? stats.issuesCompleted) : String(stats.prsMerged);
+
   if (tui.isActive()) {
     tui.clearContentArea();
     tui.writePanel([
@@ -120,7 +146,7 @@ export function printVictory(stats: VictoryStats): void {
       success('  ✓  QUETZ VICTORY'),
       '',
       `  Issues completed   ${brand(String(stats.issuesCompleted))}`,
-      `  PRs merged         ${brand(String(stats.prsMerged))}`,
+      `  ${statLabel}   ${brand(statValue)}`,
       `  Total time         ${dim(stats.totalTime)}`,
       '',
       `  ${dim('The serpent rests. 🐉')}`,
@@ -139,7 +165,7 @@ export function printVictory(stats: VictoryStats): void {
     `   ${brand('║')}                                      ${brand('║')}\n` +
     `   ${brand('║')}    Issues: ${String(stats.issuesCompleted).padEnd(26)} ${brand('║')}\n` +
     `   ${brand('║')}    Time: ${stats.totalTime.padEnd(29)} ${brand('║')}\n` +
-    `   ${brand('║')}    PRs merged: ${String(stats.prsMerged).padEnd(21)} ${brand('║')}\n` +
+    `   ${brand('║')}    ${statLabel}: ${statValue.padEnd(21)} ${brand('║')}\n` +
     `   ${brand('║')}                                      ${brand('║')}\n` +
     `   ${brand('║')}    ${dim('The serpent rests. 🐉')}              ${brand('║')}\n` +
     `   ${brand('║')}                                      ${brand('║')}\n` +

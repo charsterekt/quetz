@@ -27,16 +27,22 @@ Your task:
 4. Implement the solution.
 5. Run tests. Fix any failures.
 6. Commit with a conventional commit message referencing the issue, e.g.: feat: add auth middleware ({{issue.id}})
+{{#if localCommits}}
+7. Stage and commit your work: git add -A && git commit -m 'type: description ({{issue.id}})'
+8. Close the issue: bd close {{issue.id}} --reason 'Completed — local commit'
+Do NOT push. Do NOT open a PR.
+{{else}}
 7. Push your branch to origin.
 8. Open a pull request with the "{{automergeLabel}}" label.
 9. Close the issue: bd close {{issue.id}} --reason "Completed — PR raised"
-
+{{/if}}
 Do not ask for confirmation. Complete all steps autonomously.`;
 
 export function assemblePrompt(
   issue: BeadsIssue,
   bdPrime: string,
-  config: QuetzConfig
+  config: QuetzConfig,
+  localCommits: boolean = false
 ): string {
   const templateSource = config.agent.prompt ?? DEFAULT_TEMPLATE;
   const template = Handlebars.compile(templateSource, { noEscape: true });
@@ -56,5 +62,6 @@ export function assemblePrompt(
       dependencies: dependenciesText,
     },
     automergeLabel: config.github.automergeLabel,
+    localCommits,
   });
 }

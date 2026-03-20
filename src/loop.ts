@@ -1,6 +1,6 @@
 import { loadConfig } from './config.js';
 import { getReadyIssues, getIssueDetails, getPrimeContext } from './beads.js';
-import { checkoutDefault, pullDefault } from './git.js';
+import { checkoutDefault, pullDefault, countNewCommits } from './git.js';
 import { assemblePrompt } from './prompt.js';
 import { spawnAgent } from './agent.js';
 import { createOctokit, findPR, pollForMerge } from './github.js';
@@ -11,6 +11,7 @@ import {
   printAgentComplete,
   printPRFound,
   printMerged,
+  printCommitVerified,
   printFailure,
   printVictory,
   type VictoryStats,
@@ -23,7 +24,7 @@ import { execSync } from 'child_process';
 // ── Elapsed timer ────────────────────────────────────────────────────────────
 
 function startElapsedTimer(
-  phase: 'agent' | 'polling',
+  phase: 'agent' | 'polling' | 'commit',
   issueIdStr: string,
   iteration: number,
   total: number,
@@ -149,7 +150,7 @@ export async function showStatus(watch: boolean = false): Promise<void> {
 
 // ── Run loop ─────────────────────────────────────────────────────────────────
 
-export async function runLoop(opts: { dry: boolean; model?: string; timeout?: number; verbose?: boolean }): Promise<void> {
+export async function runLoop(opts: { dry: boolean; model?: string; timeout?: number; verbose?: boolean; localCommits?: boolean }): Promise<void> {
   if (opts.verbose) {
     setVerbose(true);
     log('QUETZ', 'Verbose mode enabled');
@@ -195,7 +196,7 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
       // fall back to ready data
     }
     const bdPrime = getPrimeContext();
-    const prompt = assemblePrompt(issueDetails, bdPrime, config);
+    const prompt = assemblePrompt(issueDetails, bdPrime, config, opts.localCommits ?? false);
 
     process.stdout.write(brand('Prompt for first issue:\n'));
     process.stdout.write('─'.repeat(50) + '\n');
@@ -206,11 +207,13 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
   }
 
   // ── Normal run loop ───────────────────────────────────────────────────────
-  const octokit = createOctokit();
+  const localCommits = opts.localCommits ?? false;
+  const octokit = localCommits ? null : createOctokit();
   let iteration = 0;
   const loopStart = Date.now();
   let totalIssuesCompleted = 0;
   let totalPrsMerged = 0;
+  let totalCommitsLanded = 0;
 
   while (true) {
     iteration++;
@@ -232,6 +235,8 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
           issuesCompleted: totalIssuesCompleted,
           totalTime: formatElapsed(Date.now() - loopStart),
           prsMerged: totalPrsMerged,
+          mode: localCommits ? 'local-commits' : 'pr',
+          commitsLanded: totalCommitsLanded,
         };
         if (tui.isActive()) {
           tui.writeHeader({
@@ -297,7 +302,7 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
     // 5. Assemble prompt
     const bdPrime = getPrimeContext();
-    const prompt = assemblePrompt(issueDetails, bdPrime, config);
+    const prompt = assemblePrompt(issueDetails, bdPrime, config, localCommits);
 
     // 6. Spawn agent — set up TUI for streaming output
     printAgentStarting();
@@ -321,120 +326,155 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
     if (exitCode !== 0) {
       if (!tui.isActive()) {
-        process.stdout.write(waiting(`\n  Agent exited with code ${exitCode}. Attempting PR detection…\n`));
+        const hint = localCommits ? 'Checking for local commit…' : 'Attempting PR detection…';
+        process.stdout.write(waiting(`\n  Agent exited with code ${exitCode}. ${hint}\n`));
       }
     }
 
     printAgentComplete();
 
-    // Update header to polling phase
     const agentElapsed = formatElapsed(Date.now() - agentStart);
-    if (tui.isActive()) {
-      tui.writeHeader({
-        issueIdStr: issue.id,
-        issueTitle: issueDetails.title ?? issue.title,
-        iteration,
-        total: issueTotal,
-        elapsed: agentElapsed,
-        phase: 'polling',
-      });
-      tui.writeFooter({
-        issueIdStr: issue.id,
-        phase: 'polling',
-        elapsed: agentElapsed,
-      });
-    }
 
-    // 7. Detect PR
-    log('GITHUB', `Searching for PR referencing ${issue.id}`);
-    const spawnTime = new Date(agentStart);
-    const pr = await findPR(
-      octokit,
-      config.github.owner,
-      config.github.repo,
-      issue.id,
-      spawnTime,
-      config.poll.prDetectionTimeout
-    );
-
-    if (!pr) {
-      log('GITHUB', `PR detection timed out after ${config.poll.prDetectionTimeout}s`);
-      printFailure('no_pr', { issueIdStr: issue.id });
-      process.exit(1);
-    }
-    log('GITHUB', `Found PR #${pr.number}: "${pr.title}"`);
-
-    printPRFound(pr.number, pr.title, pr.html_url);
-
-    // 8. Poll for merge — update footer with PR number
-    log('GITHUB', `Polling PR #${pr.number} for merge`);
-    const pollTimer = startElapsedTimer('polling', issue.id, iteration, issueTotal, pr.number);
-
-    const result = await pollForMerge(
-      octokit,
-      config.github.owner,
-      config.github.repo,
-      pr.number,
-      config,
-      (elapsed) => {
-        if (!tui.isActive()) {
-          process.stdout.write(dim(`  Waiting… ${elapsed}\r`));
-        }
-        log('GITHUB', `Still waiting… PR #${pr.number} not yet merged (${elapsed} elapsed)`);
+    if (localCommits) {
+      // ── Local-commits path: verify a commit landed, then continue ──────────
+      if (tui.isActive()) {
+        tui.writeHeader({
+          issueIdStr: issue.id,
+          issueTitle: issueDetails.title ?? issue.title,
+          iteration,
+          total: issueTotal,
+          elapsed: agentElapsed,
+          phase: 'commit',
+        });
+        tui.writeFooter({
+          issueIdStr: issue.id,
+          phase: 'commit',
+          elapsed: agentElapsed,
+        });
       }
-    );
 
-    pollTimer.stop();
+      const newCommits = countNewCommits(config.github.defaultBranch, projectRoot);
+      log('GIT', `New commits since ${config.github.defaultBranch}: ${newCommits}`);
 
-    switch (result.status) {
-      case 'merged': {
-        log('GITHUB', `PR #${pr.number} merged successfully`);
-        totalIssuesCompleted++;
-        totalPrsMerged++;
-        const remaining = issues.length - 1;
-        if (tui.isActive()) {
-          tui.writeHeader({
-            issueIdStr: issue.id,
-            issueTitle: issueDetails.title ?? issue.title,
-            iteration,
-            total: issueTotal,
-            elapsed: formatElapsed(Date.now() - agentStart),
-            phase: 'celebration',
-          });
-          tui.writeFooter({
-            issueIdStr: issue.id,
-            phase: 'celebration',
-            elapsed: formatElapsed(Date.now() - agentStart),
+      if (newCommits === 0) {
+        process.stdout.write(waiting(`\n  Warning: no new commit found for ${issue.id}. Continuing to next issue.\n`));
+      } else {
+        printCommitVerified(issue.id);
+        totalCommitsLanded++;
+      }
+
+      totalIssuesCompleted++;
+      await sleep(1000);
+
+    } else {
+      // ── PR path: detect PR and poll for merge ──────────────────────────────
+      if (tui.isActive()) {
+        tui.writeHeader({
+          issueIdStr: issue.id,
+          issueTitle: issueDetails.title ?? issue.title,
+          iteration,
+          total: issueTotal,
+          elapsed: agentElapsed,
+          phase: 'polling',
+        });
+        tui.writeFooter({
+          issueIdStr: issue.id,
+          phase: 'polling',
+          elapsed: agentElapsed,
+        });
+      }
+
+      // 7. Detect PR
+      log('GITHUB', `Searching for PR referencing ${issue.id}`);
+      const spawnTime = new Date(agentStart);
+      const pr = await findPR(
+        octokit!,
+        config.github.owner,
+        config.github.repo,
+        issue.id,
+        spawnTime,
+        config.poll.prDetectionTimeout
+      );
+
+      if (!pr) {
+        log('GITHUB', `PR detection timed out after ${config.poll.prDetectionTimeout}s`);
+        printFailure('no_pr', { issueIdStr: issue.id });
+        process.exit(1);
+      }
+      log('GITHUB', `Found PR #${pr.number}: "${pr.title}"`);
+
+      printPRFound(pr.number, pr.title, pr.html_url);
+
+      // 8. Poll for merge — update footer with PR number
+      log('GITHUB', `Polling PR #${pr.number} for merge`);
+      const pollTimer = startElapsedTimer('polling', issue.id, iteration, issueTotal, pr.number);
+
+      const result = await pollForMerge(
+        octokit!,
+        config.github.owner,
+        config.github.repo,
+        pr.number,
+        config,
+        (elapsed) => {
+          if (!tui.isActive()) {
+            process.stdout.write(dim(`  Waiting… ${elapsed}\r`));
+          }
+          log('GITHUB', `Still waiting… PR #${pr.number} not yet merged (${elapsed} elapsed)`);
+        }
+      );
+
+      pollTimer.stop();
+
+      switch (result.status) {
+        case 'merged': {
+          log('GITHUB', `PR #${pr.number} merged successfully`);
+          totalIssuesCompleted++;
+          totalPrsMerged++;
+          const remaining = issues.length - 1;
+          if (tui.isActive()) {
+            tui.writeHeader({
+              issueIdStr: issue.id,
+              issueTitle: issueDetails.title ?? issue.title,
+              iteration,
+              total: issueTotal,
+              elapsed: formatElapsed(Date.now() - agentStart),
+              phase: 'celebration',
+            });
+            tui.writeFooter({
+              issueIdStr: issue.id,
+              phase: 'celebration',
+              elapsed: formatElapsed(Date.now() - agentStart),
+              prNumber: pr.number,
+            });
+          }
+          printMerged(pr.number, issue.id, remaining);
+          await sleep(2000); // Brief celebration pause before next issue
+          break;
+        }
+
+        case 'closed':
+          printFailure('closed', { prNumber: pr.number, prUrl: pr.html_url });
+          process.exit(1);
+          break;
+
+        case 'ci_failed':
+          printFailure('ci_failed', {
             prNumber: pr.number,
+            prUrl: result.pr.html_url,
+            details: result.details,
           });
-        }
-        printMerged(pr.number, issue.id, remaining);
-        await sleep(2000); // Brief celebration pause before next issue
-        break;
+          process.exit(1);
+          break;
+
+        case 'timeout':
+          printFailure('timeout', {
+            prNumber: pr.number,
+            prUrl: pr.html_url,
+            timeoutMinutes: config.poll.mergeTimeout,
+          });
+          process.exit(1);
+          break;
       }
-
-      case 'closed':
-        printFailure('closed', { prNumber: pr.number, prUrl: pr.html_url });
-        process.exit(1);
-        break;
-
-      case 'ci_failed':
-        printFailure('ci_failed', {
-          prNumber: pr.number,
-          prUrl: result.pr.html_url,
-          details: result.details,
-        });
-        process.exit(1);
-        break;
-
-      case 'timeout':
-        printFailure('timeout', {
-          prNumber: pr.number,
-          prUrl: pr.html_url,
-          timeoutMinutes: config.poll.mergeTimeout,
-        });
-        process.exit(1);
-        break;
     }
 
     // Loop back to step 1
