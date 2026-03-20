@@ -96,10 +96,16 @@ export function printHelp(): void {
     '                       checks, optionally scaffolds GitHub Actions.\n\n' +
     '  quetz run            Start the dev loop. Runs until all issues are resolved\n' +
     '                       or a failure occurs.\n\n' +
-    '  quetz run --dry      Show what would happen: lists issues in order, prints\n' +
-    '                       the prompt for the first one, exits without spawning.\n\n' +
+    'Flags for "quetz run":\n' +
+    '  --dry                Show what would happen: lists issues, prints first prompt,\n' +
+    '                       exits without spawning.\n' +
+    '  --model <model>      Override agent model (haiku, sonnet). Default: sonnet.\n' +
+    '  --timeout <minutes>  Override agent timeout in minutes. Default: 30.\n' +
+    '  --verbose            Enable debug logging.\n' +
+    '  --no-animate         Disable terminal animations.\n\n' +
     '  quetz status         Show current loop state: issues remaining, what\'s in\n' +
     '                       progress, last completed issue.\n\n' +
-    '  quetz help           Show all commands with descriptions.\n'
+    '  quetz help, -h, --help   Show all commands with descriptions.\n' +
+    '  quetz --version, -v      Show quetz version.\n'
   );
 }
