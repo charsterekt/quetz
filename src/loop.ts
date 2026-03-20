@@ -162,7 +162,7 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
     const spawnTime = new Date();
     const agentTimeout = opts.timeout ?? config.agent.timeout;
     const agentModel = opts.model ?? config.agent.model ?? 'sonnet';
-    const exitCode = await spawnAgent(prompt, projectRoot, agentTimeout, agentModel).catch(err => {
+    const exitCode = await spawnAgent(prompt, projectRoot, agentTimeout, agentModel, opts.verbose).catch(err => {
       process.stderr.write(chalk.red(`\nAgent error: ${(err as Error).message}\n`));
       process.exit(1);
     });

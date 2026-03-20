@@ -30,7 +30,7 @@ function makeProc(exitCode: number | null, delayMs = 10) {
 describe('spawnAgent', () => {
   it('resolves with exit code 0 on success', async () => {
     mockSpawn.mockReturnValue(makeProc(0));
-    const code = await spawnAgent('do stuff', '/tmp', 30);
+    const code = await spawnAgent('do stuff', '/tmp', 30, 'sonnet', false);
     expect(code).toBe(0);
     expect(mockSpawn).toHaveBeenCalledWith(
       'claude',
@@ -41,12 +41,12 @@ describe('spawnAgent', () => {
 
   it('resolves with exit code 1 when process exits non-zero', async () => {
     mockSpawn.mockReturnValue(makeProc(1));
-    expect(await spawnAgent('do stuff', '/tmp', 30)).toBe(1);
+    expect(await spawnAgent('do stuff', '/tmp', 30, 'sonnet', false)).toBe(1);
   });
 
   it('resolves with 1 when exit code is null', async () => {
     mockSpawn.mockReturnValue(makeProc(null));
-    expect(await spawnAgent('do stuff', '/tmp', 30)).toBe(1);
+    expect(await spawnAgent('do stuff', '/tmp', 30, 'sonnet', false)).toBe(1);
   });
 
   it('rejects on spawn error', async () => {
@@ -54,6 +54,6 @@ describe('spawnAgent', () => {
     proc.kill = vi.fn();
     setTimeout(() => proc.emit('error', new Error('ENOENT')), 10);
     mockSpawn.mockReturnValue(proc as never);
-    await expect(spawnAgent('do stuff', '/tmp', 30)).rejects.toThrow('ENOENT');
+    await expect(spawnAgent('do stuff', '/tmp', 30, 'sonnet', false)).rejects.toThrow('ENOENT');
   });
 });
