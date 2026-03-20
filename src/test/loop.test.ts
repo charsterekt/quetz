@@ -12,6 +12,7 @@ vi.mock('../beads.js', () => ({
 vi.mock('../git.js', () => ({
   checkoutDefault: vi.fn(),
   pullDefault: vi.fn(),
+  countNewCommits: vi.fn(),
 }));
 vi.mock('../prompt.js', () => ({
   assemblePrompt: vi.fn(),
@@ -45,7 +46,7 @@ vi.mock('../display/status.js', () => ({
 
 import { loadConfig } from '../config.js';
 import { getReadyIssues, getIssueDetails, getPrimeContext } from '../beads.js';
-import { checkoutDefault, pullDefault } from '../git.js';
+import { checkoutDefault, pullDefault, countNewCommits } from '../git.js';
 import { assemblePrompt } from '../prompt.js';
 import { spawnAgent } from '../agent.js';
 import { createOctokit, findPR, pollForMerge } from '../github.js';
@@ -57,6 +58,7 @@ const mockGetIssueDetails = vi.mocked(getIssueDetails);
 const mockGetPrimeContext = vi.mocked(getPrimeContext);
 const mockCheckoutDefault = vi.mocked(checkoutDefault);
 const mockPullDefault = vi.mocked(pullDefault);
+const mockCountNewCommits = vi.mocked(countNewCommits);
 const mockAssemblePrompt = vi.mocked(assemblePrompt);
 const mockSpawnAgent = vi.mocked(spawnAgent);
 const mockCreateOctokit = vi.mocked(createOctokit);
@@ -93,6 +95,7 @@ beforeEach(() => {
   mockCreateOctokit.mockReturnValue({} as never);
   mockCheckoutDefault.mockReturnValue(undefined as never);
   mockPullDefault.mockReturnValue(undefined as never);
+  mockCountNewCommits.mockReturnValue(1);
   exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => { throw new Error(`process.exit(${code})`); });
   stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
   stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
@@ -162,7 +165,8 @@ describe('runLoop dry-run', () => {
     expect(mockAssemblePrompt).toHaveBeenCalledWith(
       expect.objectContaining({ description: 'detailed' }),
       expect.any(String),
-      baseConfig
+      baseConfig,
+      false
     );
     const output = stdoutSpy.mock.calls.map((c: Parameters<typeof process.stdout.write>) => String(c[0])).join('');
     expect(output).toContain('assembled prompt');
@@ -172,7 +176,7 @@ describe('runLoop dry-run', () => {
     mockGetReadyIssues.mockReturnValue([baseIssue]);
     mockGetIssueDetails.mockImplementation(() => { throw new Error('bd show failed'); });
     await expect(runLoop({ dry: true })).rejects.toThrow('process.exit(0)');
-    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, expect.any(String), baseConfig);
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, expect.any(String), baseConfig, false);
   });
 
   it('does not spawn agent, touch git, or call github in dry-run', async () => {
@@ -216,7 +220,7 @@ describe('runLoop normal', () => {
 
     await expect(runLoop({ dry: false })).rejects.toThrow('process.exit(0)');
     expect(mockGetIssueDetails).toHaveBeenCalledWith('quetz-abc');
-    expect(mockAssemblePrompt).toHaveBeenCalledWith(detailedIssue, '', baseConfig);
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(detailedIssue, '', baseConfig, false);
   });
 
   it('falls back to ready data if getIssueDetails throws', async () => {
@@ -229,7 +233,7 @@ describe('runLoop normal', () => {
     mockPollForMerge.mockResolvedValue({ status: 'merged', pr: { html_url: 'https://gh/pr/42' } } as never);
 
     await expect(runLoop({ dry: false })).rejects.toThrow('process.exit(0)');
-    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig);
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, false);
   });
 
   it('exits 1 if git pull fails', async () => {
@@ -315,5 +319,68 @@ describe('runLoop normal', () => {
     expect(mockFindPR).toHaveBeenCalled();
     const output = stdoutSpy.mock.calls.map((c: Parameters<typeof process.stdout.write>) => String(c[0])).join('');
     expect(output).toContain('Agent exited with code 1');
+  });
+});
+
+// ── runLoop (local-commits) ──────────────────────────────────────────────────
+
+describe('runLoop local-commits', () => {
+  it('does not call findPR or pollForMerge when localCommits=true', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockCountNewCommits.mockReturnValue(1);
+
+    await expect(runLoop({ dry: false, localCommits: true })).rejects.toThrow('process.exit(0)');
+    expect(mockFindPR).not.toHaveBeenCalled();
+    expect(mockPollForMerge).not.toHaveBeenCalled();
+  });
+
+  it('does not call createOctokit when localCommits=true', async () => {
+    mockGetReadyIssues.mockReturnValue([]);
+    await expect(runLoop({ dry: false, localCommits: true })).rejects.toThrow('process.exit(0)');
+    expect(mockCreateOctokit).not.toHaveBeenCalled();
+  });
+
+  it('passes localCommits=true to assemblePrompt', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockCountNewCommits.mockReturnValue(1);
+
+    await expect(runLoop({ dry: false, localCommits: true })).rejects.toThrow('process.exit(0)');
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, true);
+  });
+
+  it('continues loop when agent commits (countNewCommits > 0)', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockCountNewCommits.mockReturnValue(2);
+
+    await expect(runLoop({ dry: false, localCommits: true })).rejects.toThrow('process.exit(0)');
+    expect(mockGetReadyIssues).toHaveBeenCalledTimes(2);
+    const output = stdoutSpy.mock.calls.map((c: Parameters<typeof process.stdout.write>) => String(c[0])).join('');
+    expect(output).toContain('QUETZ VICTORY');
+  });
+
+  it('warns but continues when no new commit found (countNewCommits = 0)', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockCountNewCommits.mockReturnValue(0);
+
+    await expect(runLoop({ dry: false, localCommits: true })).rejects.toThrow('process.exit(0)');
+    const output = stdoutSpy.mock.calls.map((c: Parameters<typeof process.stdout.write>) => String(c[0])).join('');
+    expect(output).toContain('Warning: no new commit found');
+    expect(output).toContain('QUETZ VICTORY');
   });
 });

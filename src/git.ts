@@ -42,6 +42,17 @@ export function getDefaultBranch(cwd: string = process.cwd()): string {
   }
 }
 
+/** Count commits on HEAD that are not on defaultBranch (i.e. new commits since checkout). */
+export function countNewCommits(defaultBranch: string, cwd: string = process.cwd()): number {
+  try {
+    const out = exec(`git rev-list --count ${defaultBranch}..HEAD`, cwd);
+    const n = parseInt(out, 10);
+    return isNaN(n) ? 0 : n;
+  } catch {
+    return 0;
+  }
+}
+
 /** Parse "owner" and "repo" from a GitHub remote URL (HTTPS or SSH). */
 export function parseOwnerRepo(remoteUrl: string): { owner: string; repo: string } {
   // HTTPS: https://github.com/owner/repo.git

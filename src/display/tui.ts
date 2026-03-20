@@ -87,7 +87,7 @@ export function clearContentArea(): void {
 
 // ── Phase types ──────────────────────────────────────────────────────────────
 
-export type Phase = 'startup' | 'agent' | 'polling' | 'celebration' | 'victory';
+export type Phase = 'startup' | 'agent' | 'polling' | 'commit' | 'celebration' | 'victory';
 
 export interface HeaderData {
   issueIdStr: string;
@@ -111,6 +111,7 @@ function phaseBadge(phase: Phase): string {
   switch (phase) {
     case 'agent':       return waiting(' ◈ AGENT ');
     case 'polling':     return brand(' ◈ POLLING ');
+    case 'commit':      return success(' ◈ COMMIT ');
     case 'celebration': return success(' ✓ MERGED ');
     case 'victory':     return success(' ✓ DONE ');
     default:            return dim(' ◦ START ');

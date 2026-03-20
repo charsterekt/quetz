@@ -67,4 +67,25 @@ describe('assemblePrompt', () => {
     const prompt = assemblePrompt(baseIssue, '', config);
     expect(prompt).toBe('Custom: quetz-abc');
   });
+
+  it('includes push/PR steps when localCommits=false (default)', () => {
+    const prompt = assemblePrompt(baseIssue, '', baseConfig, false);
+    expect(prompt).toContain('Push your branch to origin');
+    expect(prompt).toContain('Open a pull request');
+    expect(prompt).not.toContain('Do NOT push');
+  });
+
+  it('includes commit steps and omits push/PR steps when localCommits=true', () => {
+    const prompt = assemblePrompt(baseIssue, '', baseConfig, true);
+    expect(prompt).toContain('Stage and commit your work');
+    expect(prompt).toContain('Do NOT push');
+    expect(prompt).not.toContain('Push your branch to origin');
+    expect(prompt).not.toContain('Open a pull request');
+  });
+
+  it('includes issue id in local commit close command when localCommits=true', () => {
+    const prompt = assemblePrompt(baseIssue, '', baseConfig, true);
+    expect(prompt).toContain('bd close quetz-abc');
+    expect(prompt).toContain('local commit');
+  });
 });

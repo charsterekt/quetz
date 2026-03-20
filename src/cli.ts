@@ -57,6 +57,7 @@ async function main(): Promise<void> {
       const dry = args.includes('--dry');
       const noAnimate = args.includes('--no-animate');
       const verbose = args.includes('--verbose');
+      const localCommits = args.includes('--local-commits');
 
       // Parse --model flag
       let model: string | undefined;
@@ -83,7 +84,7 @@ async function main(): Promise<void> {
       await printSerpentAnimated(!noAnimate && process.stdout.isTTY && !dry);
 
       const { runLoop } = await import('./loop.js');
-      await runLoop({ dry, model, timeout, verbose });
+      await runLoop({ dry, model, timeout, verbose, localCommits });
       break;
     }
     case 'status': {

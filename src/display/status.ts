@@ -7,7 +7,7 @@ export interface StatusState {
   iteration: number;
   total: number;
   issueIdStr: string;
-  phase: 'agent' | 'polling';
+  phase: 'agent' | 'polling' | 'commit';
   elapsed: string;
   prNumber?: number;
 }
