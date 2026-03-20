@@ -30,6 +30,29 @@ async function main(): Promise<void> {
       await runInit();
       break;
     }
+    case 'validate': {
+      const { validateConfig } = await import('./config.js');
+      try {
+        validateConfig();
+        process.stdout.write('✓ Config is valid\n');
+        process.exit(EXIT_SUCCESS);
+      } catch (err) {
+        const e = err as { message?: string };
+        process.stderr.write(`✗ Config error: ${e.message ?? String(err)}\n`);
+        process.exit(EXIT_CONFIG_ERROR);
+      }
+    }
+    case 'config': {
+      const subcommand = args[1];
+      if (subcommand === 'show') {
+        const { showConfig } = await import('./config.js');
+        showConfig();
+        process.exit(EXIT_SUCCESS);
+      } else {
+        process.stderr.write('Unknown subcommand. Try: quetz config show\n');
+        process.exit(EXIT_FAILURE);
+      }
+    }
     case 'run': {
       const dry = args.includes('--dry');
       const noAnimate = args.includes('--no-animate');

@@ -168,3 +168,22 @@ export function writeConfig(config: QuetzConfig, projectRoot: string = process.c
   const content = stringifyYaml(config, { lineWidth: 0 });
   fs.writeFileSync(configPath, content, 'utf-8');
 }
+
+/**
+ * Validate config without returning; throws on error.
+ * Used by `quetz validate` command.
+ */
+export function validateConfig(projectRoot: string = process.cwd()): void {
+  loadConfig(projectRoot);
+}
+
+/**
+ * Display the parsed config to stdout (for debugging).
+ * Used by `quetz config show` command.
+ */
+export function showConfig(projectRoot: string = process.cwd()): void {
+  const config = loadConfig(projectRoot);
+  const yaml = stringifyYaml(config, { lineWidth: 0 });
+  process.stdout.write('Current .quetzrc.yml:\n\n');
+  process.stdout.write(yaml);
+}

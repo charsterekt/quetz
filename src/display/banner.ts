@@ -103,6 +103,8 @@ export function printHelp(): void {
     '  --timeout <minutes>  Override agent timeout in minutes. Default: 30.\n' +
     '  --verbose            Enable debug logging.\n' +
     '  --no-animate         Disable terminal animations.\n\n' +
+    '  quetz validate       Validate .quetzrc.yml without running the loop.\n\n' +
+    '  quetz config show    Display parsed configuration from .quetzrc.yml.\n\n' +
     '  quetz status         Show current loop state: issues remaining, what\'s in\n' +
     '                       progress, last completed issue.\n\n' +
     '  quetz help, -h, --help   Show all commands with descriptions.\n' +
