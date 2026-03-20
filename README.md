@@ -1,303 +1,230 @@
 # Quetz — The Feathered Serpent Dev Loop
 
-**Quetz** is a local npm package that wraps the Claude Code CLI into a self-feeding development loop. It reads prioritized issues from a Beads issue graph, spawns a fully autonomous Claude Code agent for each one, monitors the resulting GitHub PR through to merge, and repeats until done. This is very much a tool for a one-dev workflow. Auto-merging PRs per Beads issues allows for isolation of changes and rollbacks, but does not wait for or consider approvals.
+**Quetz** is a local npm package that wraps the Claude Code CLI into a self-feeding development loop. It reads prioritized issues from a Beads issue graph, spawns a fully autonomous Claude Code agent for each one, monitors the resulting GitHub PR through to merge, and repeats until done.
 
 > *Quetzalcoatl, the feathered serpent — a winged reptile that bridges earth and sky.*
 
+**Quetz is a wrapper.** It does not claim issues, run tests, commit code, or push branches. The spawned agent does all of that. Quetz manages lifecycle only: what issue to work on next, when to start, when to stop.
+
+---
+
 ## Table of Contents
 
-- [Quetz — The Feathered Serpent Dev Loop](#quetz--the-feathered-serpent-dev-loop)
-  - [Table of Contents](#table-of-contents)
-  - [What Quetz Does](#what-quetz-does)
-  - [Prerequisites](#prerequisites)
-    - [Claude Code CLI](#claude-code-cli)
-    - [GitHub CLI (`gh`)](#github-cli-gh)
-    - [Beads CLI (`bd`)](#beads-cli-bd)
-  - [Installation](#installation)
-  - [Quick Start](#quick-start)
-    - [Setup](#setup)
-    - [Run](#run)
-  - [Usage](#usage)
-    - [Commands](#commands)
-    - [Dry Run](#dry-run)
-  - [How the Loop Works](#how-the-loop-works)
-    - [Issue Selection](#issue-selection)
-    - [Agent Spawning](#agent-spawning)
-    - [PR Detection](#pr-detection)
-    - [Merge Polling](#merge-polling)
-  - [Configuration](#configuration)
-    - [Config Schema](#config-schema)
-    - [Example Config](#example-config)
-    - [GitHub Actions for Auto-Merge](#github-actions-for-auto-merge)
-  - [Exit Codes](#exit-codes)
-  - [Architecture](#architecture)
-    - [Project Structure](#project-structure)
-    - [Dependencies](#dependencies)
-    - [Key Design Constraints](#key-design-constraints)
-  - [License](#license)
+- [What Quetz Does](#what-quetz-does)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [The TUI](#the-tui)
+- [Commands](#commands)
+- [How the Loop Works](#how-the-loop-works)
+- [Configuration](#configuration)
+- [Exit Codes](#exit-codes)
+- [Architecture](#architecture)
 
 ---
 
 ## What Quetz Does
 
-Quetz is **a wrapper.** It manages the lifecycle of autonomous agent sessions:
-
 1. **Picks an issue** from your Beads issue graph (in priority order)
-2. **Spawns a Claude Code agent** with full context
-3. **Watches the agent work** in real time (you see everything it does)
-4. **Detects the PR** it creates on GitHub
-5. **Waits for merge**, then repeats
+2. **Spawns a Claude Code agent** with a context-rich prompt
+3. **Watches the agent work** inside a full-screen TUI
+4. **Detects the PR** the agent creates on GitHub
+5. **Waits for merge**, then loops back to step 1
 
-The agent does all the real work: implementing features, running tests, committing code, pushing branches, and opening PRs. Quetz orchestrates the flow and handles the handoff between sessions.
+The agent does all the real work: implementing features, running tests, committing code, pushing branches, and opening PRs.
 
-**Key principle:** If something goes wrong, Quetz notifies you and exits cleanly. No retries, no auto-fixes. You review, fix, and run again.
+**Key principle:** If something goes wrong, Quetz notifies you and exits cleanly. No retries. You review, fix, and rerun.
 
 ---
 
 ## Prerequisites
 
-Quetz requires three CLI tools to be installed and authenticated:
+Quetz requires three CLI tools installed and authenticated:
 
-### Claude Code CLI
-The agent itself. Install from https://docs.claude.com
+| Tool | Purpose | Check |
+|---|---|---|
+| **Claude Code** (`claude`) | The agent that does the work | `claude --version` |
+| **GitHub CLI** (`gh`) | PR detection, GitHub API | `gh auth status` |
+| **Beads CLI** (`bd`) | Issue tracking | `bd --version` |
 
-```bash
-claude --version
-```
-
-### GitHub CLI (`gh`)
-For PR detection and GitHub API access. Install from https://cli.github.com
-
-```bash
-gh auth status
-```
-
-### Beads CLI (`bd`)
-For issue tracking and workflow primitives. Install from https://github.com/steveyegge/beads
-
-```bash
-bd --version
-```
-
-Quetz verifies all three are installed and authenticated during `quetz init`.
+`quetz init` verifies all three before generating config.
 
 ---
 
 ## Installation
 
-### Local (Recommended)
-Install Quetz as a local npm dependency in your project:
+Quetz is currently a **local development tool** — not yet published to npm. Install it into a project via `npm link` or reference it directly:
 
 ```bash
-npm install quetz
-npm run build  # (if you modified source)
-npx quetz init
-```
+# Clone and link globally
+git clone <this-repo>
+cd quetz
+npm install
+npm run build
+npm link
 
-After installation, use with `npx quetz <command>` or add to your `package.json` scripts:
-
-```json
-{
-  "scripts": {
-    "quetz": "quetz",
-    "quetz:run": "quetz run",
-    "quetz:status": "quetz status"
-  }
-}
-```
-
-Then use: `npm run quetz:run`
-
-### Global
-For system-wide access:
-
-```bash
-npm install -g quetz
+# Then in your target project:
 quetz init
 ```
 
-Then use `quetz <command>` anywhere. To uninstall: `npm uninstall -g quetz`
-
-### Setup
-
-Both methods require first-time setup:
+Or invoke directly without linking:
 
 ```bash
-quetz init  # or `npx quetz init` if installed locally
+node /path/to/quetz/dist/cli.js init
 ```
 
-This generates `.quetzrc.yml` in your project root, runs preflight checks (claude, gh, bd), and optionally scaffolds a GitHub Actions automerge workflow.
+Once linked, use `quetz <command>` in any project directory.
 
 ---
 
 ## Quick Start
 
-### Setup
-
 ```bash
-# First time only
-npx quetz init
+# 1. First-time setup (run once per project)
+quetz init
+
+# 2. Start the loop
+quetz run
+
+# 3. Preview without executing
+quetz run --dry
 ```
 
-You'll be prompted to:
-- Confirm GitHub owner/repo (inferred from `git remote`)
-- Confirm default branch (inferred from GitHub)
-- Set automerge label (defaults to `"automerge"`)
-- Optionally scaffold GitHub Actions for auto-merge
+`quetz init` generates `.quetzrc.yml`, runs preflight checks, and optionally scaffolds a GitHub Actions automerge workflow.
 
-**After setup:**
+**After init:**
 - Review `.quetzrc.yml` in your project root
-- Create the `automerge` label on your GitHub repo: https://github.com/{owner}/{repo}/labels
-- If you didn't scaffold Actions, add `.github/workflows/quetz-automerge.yml` manually (see [Configuration](#configuration))
-
-### Run
-
-```bash
-# Start the loop
-npx quetz run
-
-# Preview without executing (dry run)
-npx quetz run --dry
-
-# Check loop status
-npx quetz status
-```
-
-Watch the agents work. Quetz prints colorful status messages between agent sessions. When all issues are resolved, you'll see a victory screen.
-
-**Example output:**
-
-```
- ╔══════════════════════════════════════════╗
- ║   QUETZ — The Feathered Serpent Loop     ║
- ║                                          ║
- ║   init     Setup config & checks         ║
- ║   run      Start the dev loop            ║
- ║   run --dry  Preview without executing   ║
- ║   status   Show loop progress            ║
- ║   help     Show all commands             ║
- ╚══════════════════════════════════════════╝
-
-🐉 Picking up quetz-ko5: "Add clear README.md for npm publishing" [P1 feature]
-   ──── Summoning agent ────
-
-[Agent output — you see everything the agent does]
-
-   ──── Agent session complete ────
-🔍 Searching for PR...
-✓  Found PR #42: "feat: add README (quetz-ko5)"
-   Watching for merge...
-
-✅ PR #42 merged! The serpent devours quetz-ko5.
-   ─────────────────────────────────────────
-   Issues remaining: 6
-   ─────────────────────────────────────────
-```
+- Create the `automerge` label on your GitHub repo
+- Ensure your GitHub Actions workflow is in place (see [Automerge](#github-actions-for-automerge))
 
 ---
 
-## Usage
+## The TUI
 
-### Commands
+When `stdout` is a TTY and you're not in `--dry` mode, `quetz run` automatically activates a **full-screen terminal UI** using an alternate screen buffer. Your existing terminal content is preserved and restored on exit.
 
-```bash
-quetz init              First-time setup. Generates .quetzrc.yml, runs preflight
-                        checks, and optionally scaffolds GitHub Actions.
+### Layout
 
-quetz run               Start the dev loop. Runs until all issues are resolved
-                        or a failure occurs.
+```
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ ▐ QUETZ ▌  quetz-abc  · "Fix the thing"          ◈ AGENT   Issue 3/12  ⏱ 2m │
+╰──────────────────────────────────────────────────────────────────────────────╯
 
-quetz validate          Validate .quetzrc.yml without running the loop. Useful for
-                        testing config before a full run.
+  [scrollable agent output fills this region]
 
-quetz config show       Display the parsed configuration. Shows how quetz interprets
-                        your .quetzrc.yml (includes defaults).
-
-quetz status            Show current loop state: issues remaining, in progress,
-                        and completed count.
-
-quetz help, -h, --help  Show all commands with descriptions.
-
-quetz --version, -v     Show installed quetz version.
+──────────────────────────────────────────────────────────────────────────────
+ [quetz]  quetz-abc  │  Agent running…                                    2m14s
 ```
 
-### Flags for `quetz run`
+- **Header** (3 lines): issue ID, title, phase badge, iteration counter, elapsed time
+- **Content region**: scrollable area where agent output streams in real time
+- **Footer** (2 lines): separator + sticky status line with phase and elapsed
+
+### Phases
+
+| Phase badge | Meaning |
+|---|---|
+| `◦ START` | Startup / between issues |
+| `◈ AGENT` | Agent is running |
+| `◈ POLLING` | Searching for PR or waiting for merge |
+| `◈ COMMIT` | Verifying commits |
+| `✓ MERGED` | PR merged, celebration |
+| `✓ DONE` | All issues resolved |
+
+### Disabling the TUI
 
 ```bash
-quetz run --dry               Preview mode: list issues, print first prompt, exit
-                              without spawning agent.
-
-quetz run --model <model>     Override agent model (haiku or sonnet).
-                              Default: sonnet. Example: quetz run --model haiku
-
-quetz run --timeout <minutes> Override agent timeout in minutes.
-                              Default: 30. Example: quetz run --timeout 60
-
-quetz run --verbose           Enable debug logging (currently parses flag; debug
-                              output implementation in progress).
-
-quetz run --no-animate        Disable terminal animations (serpent, spinner).
+quetz run --no-animate    # Plain scrolling output, no alternate screen
 ```
 
-### Dry Run
+The TUI also disables itself automatically when stdout is not a TTY (e.g. in CI or when piped).
 
-Use `quetz run --dry` to preview what Quetz will do without executing anything:
+---
+
+## Commands
+
+### `quetz init`
+
+First-time setup. Runs preflight checks, generates `.quetzrc.yml` from your `git remote`, and optionally scaffolds `.github/workflows/quetz-automerge.yml`.
+
+### `quetz run`
+
+Start the dev loop. Runs until all issues are resolved or a failure occurs.
+
+| Flag | Default | Description |
+|---|---|---|
+| `--dry` | — | Preview mode: list issues, print first prompt, exit without spawning |
+| `--model <model>` | `sonnet` | Override agent model (e.g. `haiku`, `sonnet`, `opus`) |
+| `--timeout <minutes>` | `30` | Kill agent if it runs longer than this |
+| `--verbose` | — | Enable debug logging to stderr (`[category] message` format) |
+| `--no-animate` | — | Disable TUI and animations; plain scrolling output |
+| `--local-commits` | — | Skip PR detection/merge polling; verify local commits only |
+
+### `quetz validate`
+
+Validate `.quetzrc.yml` without running the loop. Exits 0 on success, 2 on config error.
+
+### `quetz config show`
+
+Display the parsed configuration, including applied defaults.
+
+### `quetz status`
+
+Show current loop state: issues ready, in progress, and completed.
 
 ```bash
-npx quetz run --dry
+quetz status           # Snapshot
+quetz status --watch   # Refresh every 5 seconds
+quetz status -w        # Same
 ```
 
-This prints:
-1. Number of ready issues
-2. The order Quetz will process them (by priority)
-3. The full prompt for the first issue
-4. Then exits
+### `quetz help`
 
-Useful for testing your configuration and prompts before committing a full run.
+```bash
+quetz help
+quetz --help
+quetz -h
+```
+
+### `quetz --version`
+
+```bash
+quetz --version
+quetz -v
+```
 
 ---
 
 ## How the Loop Works
 
-Quetz's core loop orchestrates agent sessions, GitHub PR detection, and merge polling:
-
 ```
-┌─────────────────────────────────────────┐
-│       QUETZ RUN LOOP                    │
-│                                         │
-│  1. bd ready --json                     │  Get next issue (if none → DONE)
-│  2. git checkout <default-branch>       │  Reset to clean state
-│     git pull origin <default-branch>    │
-│  3. Assemble prompt (issue + context)   │
-│  4. Spawn: claude -p <prompt> ...       │  Agent runs in real time
-│  5. Detect PR on GitHub                 │  Search recent PRs for issue ID
-│  6. Poll for merge                      │  Check PR status every 30s
-│     └─ if merged → go to step 1         │
-│     └─ if failed → NOTIFY + EXIT        │
-│     └─ if timeout → NOTIFY + EXIT       │
-│                                         │
-└─────────────────────────────────────────┘
+bd ready → git checkout+pull → assemble prompt → spawn claude
+       → detect PR → poll for merge → repeat
 ```
 
-### Issue Selection
+### Issue selection
 
-Quetz calls `bd ready --json` to get the next unblocked, highest-priority issue. It takes the **first** issue without filtering or re-sorting. Beads owns the priority graph; Quetz trusts it.
+Quetz calls `bd ready --json` and takes the first unblocked, highest-priority issue. Beads owns the priority graph; Quetz trusts it.
 
-### Agent Spawning
+### Agent spawning
 
-The agent runs with `stdio: 'inherit'`, meaning you see every keystroke, every file edit, every test output. Quetz gets out of the way and lets the agent work.
+The agent runs with `stdio: 'inherit'` — you see everything it does, streamed into the TUI's content region. Quetz never parses agent output. It spawns, waits for exit, then looks for the PR.
 
-**Timeout:** Default 30 minutes. If the agent hangs, Quetz kills it, prints a timeout message, and exits.
+If the agent runs past `agent.timeout` minutes, Quetz kills it and exits with code 1.
 
-### PR Detection
+### PR detection
 
-After the agent exits, Quetz searches for a newly created PR that references the issue ID. It looks at the PR title, body, and branch name. This is intentionally loose — Quetz doesn't dictate branch naming.
+After the agent exits, Quetz searches recent GitHub PRs for one that references the issue ID (in title, body, or branch name). This is **intentionally loose** — Quetz doesn't dictate branch naming conventions. The agent opens whatever PR it wants; Quetz finds it.
 
-### Merge Polling
+If no PR is found within `poll.prDetectionTimeout` seconds, Quetz exits with code 1.
 
-Quetz polls the PR every 30 seconds (configurable). When it merges, Quetz confirms and loops back to issue selection.
+### Merge polling
 
-**Merge timeout:** Default 15 minutes from agent exit. If the PR doesn't merge within this window, Quetz exits with an error.
+Quetz polls the PR state every `poll.interval` seconds. When it merges, Quetz celebrates and loops back to issue selection. If the PR doesn't merge within `poll.mergeTimeout` minutes, Quetz exits with code 1.
+
+### `--local-commits` mode
+
+Skips PR detection and merge polling entirely. Quetz verifies that the agent pushed commits to the remote, then moves on. Useful for workflows where PRs are not required.
 
 ---
 
@@ -305,78 +232,47 @@ Quetz polls the PR every 30 seconds (configurable). When it merges, Quetz confir
 
 All configuration lives in `.quetzrc.yml` at your project root. Generated by `quetz init`.
 
-### Config Schema
+### Schema
 
 ```yaml
 # .quetzrc.yml
 
-# GitHub settings
 github:
-  owner: "dk"                          # repo owner / org
-  repo: "aegis"                        # repo name
-  defaultBranch: "main"                # branch to pull between iterations
-  automergeLabel: "automerge"          # label that triggers auto-merge action
+  owner: "my-org"           # GitHub owner or org (required)
+  repo: "my-project"        # Repository name (required)
+  defaultBranch: "main"     # Branch to checkout between iterations (default: main)
+  automergeLabel: "automerge"  # PR label that triggers auto-merge (default: automerge)
 
-# Agent settings
 agent:
-  timeout: 30                          # minutes — kill agent if it runs longer
-  model: "sonnet"                      # claude model: sonnet or haiku (default: sonnet)
-  prompt: |                            # override default prompt template (optional)
+  timeout: 30               # Minutes before killing the agent (default: 30)
+  model: "sonnet"           # Claude model to use (default: sonnet)
+  prompt: |                 # Optional: override the default prompt template
     {{bdPrime}}
-    ...custom prompt...
-
-# Polling settings
-poll:
-  interval: 30                         # seconds between merge status checks
-  mergeTimeout: 15                     # minutes — give up waiting for merge
-  prDetectionTimeout: 60               # seconds — give up finding the PR
-
-# Display settings (optional)
-display:
-  animations: true                     # enable/disable terminal animations
-  colors: true                         # enable/disable colors (auto-detected)
-```
-
-### Example Config
-
-A typical `.quetzrc.yml`:
-
-```yaml
-github:
-  owner: "my-org"
-  repo: "my-project"
-  defaultBranch: "main"
-  automergeLabel: "automerge"
-
-agent:
-  timeout: 30
-  model: "sonnet"                # Use sonnet for all issues (default)
-  # prompt: |                    # Optional: override default prompt
-  #   Custom prompt here...
+    ... custom instructions ...
 
 poll:
-  interval: 30
-  mergeTimeout: 15
-  prDetectionTimeout: 60
+  interval: 30              # Seconds between merge-status checks (default: 30)
+  mergeTimeout: 15          # Minutes to wait for PR to merge (default: 15)
+  prDetectionTimeout: 60    # Seconds to find the PR after agent exits (default: 60)
 
 display:
-  animations: true
-  colors: true
+  animations: true          # Enable TUI and animations (default: true)
+  colors: true              # Enable colors (default: auto-detected from TTY)
 ```
 
-**To override at runtime:**
+### Runtime overrides
+
+Command-line flags override config values for a single run:
 
 ```bash
-quetz run --model haiku            # Use haiku instead of sonnet for this run
-quetz run --timeout 60             # Give agents 60 minutes instead of 30
-quetz run --model haiku --timeout 60 --dry  # Combine flags
+quetz run --model haiku --timeout 60 --no-animate
 ```
 
-### GitHub Actions for Auto-Merge
+### GitHub Actions for automerge
 
-Quetz agents open PRs with the `automerge` label. You need a GitHub Action to merge them when CI passes.
+Quetz agents open PRs with the `automerge` label. A GitHub Action merges them once CI passes.
 
-Use the template Quetz provides (`quetz init` scaffolds this), or add it manually:
+`quetz init` can scaffold this file, or add it manually:
 
 **.github/workflows/quetz-automerge.yml:**
 
@@ -403,19 +299,17 @@ jobs:
       github.event.state != null
     steps:
       - uses: actions/checkout@v4
-
       - name: Auto-merge labelled PRs
         uses: pascalgn/automerge-action@v0.16.4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MERGE_LABELS: "automerge"     # matches github.automergeLabel
+          MERGE_LABELS: "automerge"
           MERGE_METHOD: "squash"
           MERGE_DELETE_BRANCH: "true"
           UPDATE_METHOD: "rebase"
 ```
 
-**Important:** Don't forget to create the `automerge` label on your GitHub repo:
-https://github.com/{owner}/{repo}/labels
+Create the `automerge` label on your GitHub repo before running the loop.
 
 ---
 
@@ -423,71 +317,59 @@ https://github.com/{owner}/{repo}/labels
 
 | Code | Meaning |
 |---|---|
-| **0** | All issues resolved (victory) or clean exit (no issues found) |
-| **1** | Runtime failure — CI failed, timeout, missing PR, git error, network error |
-| **2** | Config error — missing or invalid `.quetzrc.yml` |
-| **3** | Preflight failure — missing CLI tool (`claude`, `gh`, `bd`) or auth not configured |
-
-Check the error message in your terminal for details on what went wrong.
+| `0` | All issues resolved, or clean exit (no issues ready) |
+| `1` | Runtime failure — CI failed, timeout, missing PR, git error |
+| `2` | Config error — missing or invalid `.quetzrc.yml` |
+| `3` | Preflight failure — missing tool (`claude`, `gh`, `bd`) or auth not configured |
 
 ---
 
 ## Architecture
 
-### Project Structure
-
-Quetz is a thin orchestration layer. All work happens in spawned agents; Quetz just manages the flow.
+### Project structure
 
 ```
 src/
 ├── cli.ts              Entry point, command router, exit codes
-├── config.ts           .quetzrc.yml loader/validator
-├── init.ts             quetz init — preflight, config generation, Actions
-├── loop.ts             Main run loop — orchestrates everything
-├── agent.ts            Claude Code process spawning + lifecycle
-├── beads.ts            bd CLI wrapper (ready, show, prime)
-├── github.ts           GitHub API — PR detection, merge polling
-├── prompt.ts           Prompt template assembly
-├── git.ts              git operations (checkout, pull)
-├── preflight.ts        CLI availability checks
+├── config.ts           .quetzrc.yml loader/validator/defaults
+├── init.ts             quetz init — preflight, config gen, Actions scaffold
+├── loop.ts             Main run loop orchestration
+├── agent.ts            child_process.spawn('claude', ...) with stdio: 'inherit'
+├── beads.ts            Typed wrappers around bd ready/show/prime
+├── github.ts           Octokit-based PR detection and merge polling
+├── prompt.ts           Handlebars template assembly
+├── git.ts              git checkout and git pull only
+├── preflight.ts        CLI availability and auth checks
+├── verbose.ts          Global verbose flag, log() helper (stderr output)
 ├── display/
-│   ├── banner.ts       ASCII art, startup animation
-│   ├── spinner.ts      Animated spinner for polling
-│   ├── messages.ts     User-facing strings
-│   ├── status.ts       Persistent status line
-│   └── terminal.ts     ANSI color helpers
+│   ├── tui.ts          Full-screen TUI — alternate buffer, scroll regions, layout
+│   ├── terminal.ts     ANSI color helpers wrapping chalk
+│   ├── banner.ts       ASCII art, startup animation, help text
+│   ├── spinner.ts      ora-based spinner for polling states
+│   ├── messages.ts     User-facing status messages
+│   └── status.ts       Persistent status line, elapsed timer
 └── templates/
-    └── quetz-automerge.yml   GitHub Actions template
+    └── quetz-automerge.yml   GitHub Actions template (copied by quetz init)
 ```
 
 ### Dependencies
 
-Kept minimal for fast installs and reliability:
+| Package | Used for |
+|---|---|
+| `@octokit/rest` | GitHub API — PR detection, merge polling |
+| `chalk` | Terminal colors (via `display/terminal.ts` named helpers) |
+| `ora` | Spinner animations (`display/spinner.ts`) |
+| `yaml` | Parse and write `.quetzrc.yml` |
+| `handlebars` | Prompt template rendering |
 
-- **@octokit/rest** — GitHub API (PR detection, merge polling)
-- **chalk** — Terminal colors
-- **ora** — Spinner animations
-- **yaml** — Parse/write `.quetzrc.yml`
-- **handlebars** — Prompt template rendering
+### Key design constraints
 
-No heavy frameworks. Just Node.js, process spawning, and API polling.
-
-### Key Design Constraints
-
-- **No retries.** Every failure mode: notify and exit.
-- **Agent is a black box.** Quetz never parses agent output.
-- **Sequential only.** One loop, one agent at a time.
-- **Minimal dependencies.** Fast installs, rare breakage.
+- **No retries.** Every failure mode: notify and exit. The user fixes and reruns.
+- **Agent is a black box.** Quetz never parses agent output or sends signals.
+- **Sequential only.** One loop, one agent at a time. No parallelism in v0.1.
 - **PR detection is loose.** Discover what the agent did; don't dictate branch names.
+- **Under 2000 lines of TypeScript** total for v0.1.0.
 
 ---
 
-## License
-
-MIT — See LICENSE file for details.
-
----
-
-**Questions?** Check the [Quetz specification](SPEC.md) for deeper details on design decisions and edge cases.
-
-Happy automating! 🐉
+See [spec.md](spec.md) for full design rationale and edge case decisions.
