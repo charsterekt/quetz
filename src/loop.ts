@@ -54,7 +54,7 @@ export async function showStatus(): Promise<void> {
 
 // ── Run loop ────────────────────────────────────────────────────────────────
 
-export async function runLoop(opts: { dry: boolean }): Promise<void> {
+export async function runLoop(opts: { dry: boolean; model?: string; timeout?: number; verbose?: boolean }): Promise<void> {
   const projectRoot = process.cwd();
   const config = loadConfig(projectRoot);
 
@@ -160,7 +160,9 @@ export async function runLoop(opts: { dry: boolean }): Promise<void> {
     // 4. Spawn agent
     process.stdout.write(chalk.gray('\n  Spawning agent...\n'));
     const spawnTime = new Date();
-    const exitCode = await spawnAgent(prompt, projectRoot, config.agent.timeout).catch(err => {
+    const agentTimeout = opts.timeout ?? config.agent.timeout;
+    const agentModel = opts.model ?? config.agent.model ?? 'sonnet';
+    const exitCode = await spawnAgent(prompt, projectRoot, agentTimeout, agentModel).catch(err => {
       process.stderr.write(chalk.red(`\nAgent error: ${(err as Error).message}\n`));
       process.exit(1);
     });

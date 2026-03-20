@@ -7,18 +7,21 @@ import { spawn } from 'child_process';
  * @param prompt         The prompt string passed via -p
  * @param cwd            Working directory for the agent
  * @param timeoutMinutes Kill the agent after this many minutes (default 30)
+ * @param model          Claude model to use (default: sonnet)
  * @returns              Resolved exit code (0 = success)
  */
 export function spawnAgent(
   prompt: string,
   cwd: string,
-  timeoutMinutes: number = 30
+  timeoutMinutes: number = 30,
+  model: string = 'sonnet'
 ): Promise<number> {
   return new Promise((resolve, reject) => {
     let proc: ReturnType<typeof spawn>;
 
     try {
-      proc = spawn('claude', ['-p', prompt, '--dangerously-skip-permissions'], {
+      const args = ['-p', prompt, '--model', model, '--dangerously-skip-permissions'];
+      proc = spawn('claude', args, {
         stdio: 'inherit',
         cwd,
       });

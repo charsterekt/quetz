@@ -11,6 +11,7 @@ export interface QuetzConfig {
   };
   agent: {
     timeout: number;
+    model?: string;
     prompt?: string;
   };
   poll: {
@@ -35,6 +36,7 @@ export const DEFAULTS: QuetzConfig = {
   },
   agent: {
     timeout: 30,
+    model: 'sonnet',
   },
   poll: {
     interval: 30,
@@ -127,6 +129,10 @@ function validateAndMerge(raw: unknown): QuetzConfig {
         typeof agent['timeout'] === 'number'
           ? agent['timeout']
           : DEFAULTS.agent.timeout,
+      model:
+        typeof agent['model'] === 'string'
+          ? agent['model']
+          : DEFAULTS.agent.model,
       prompt:
         typeof agent['prompt'] === 'string' ? agent['prompt'] : undefined,
     },

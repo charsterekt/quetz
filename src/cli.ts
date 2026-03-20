@@ -10,6 +10,14 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const command = args[0];
 
+  // Handle global flags
+  if (command === '--version' || command === '-v') {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pkg = require('../package.json');
+    process.stdout.write(`quetz v${pkg.version}\n`);
+    process.exit(EXIT_SUCCESS);
+  }
+
   if (!command || command === 'help' || command === '--help' || command === '-h') {
     const { printHelp } = await import('./display/banner.js');
     printHelp();
@@ -25,13 +33,31 @@ async function main(): Promise<void> {
     case 'run': {
       const dry = args.includes('--dry');
       const noAnimate = args.includes('--no-animate');
+      const verbose = args.includes('--verbose');
+
+      // Parse --model flag
+      let model: string | undefined;
+      const modelIdx = args.indexOf('--model');
+      if (modelIdx !== -1 && modelIdx + 1 < args.length) {
+        model = args[modelIdx + 1];
+      }
+
+      // Parse --timeout flag
+      let timeout: number | undefined;
+      const timeoutIdx = args.indexOf('--timeout');
+      if (timeoutIdx !== -1 && timeoutIdx + 1 < args.length) {
+        const val = parseInt(args[timeoutIdx + 1], 10);
+        if (!isNaN(val) && val > 0) {
+          timeout = val;
+        }
+      }
 
       // Show startup serpent animation on `quetz run` (spec 6.2)
       const { printSerpentAnimated } = await import('./display/banner.js');
       await printSerpentAnimated(!noAnimate);
 
       const { runLoop } = await import('./loop.js');
-      await runLoop({ dry });
+      await runLoop({ dry, model, timeout, verbose });
       break;
     }
     case 'status': {

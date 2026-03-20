@@ -34,7 +34,7 @@ describe('spawnAgent', () => {
     expect(code).toBe(0);
     expect(mockSpawn).toHaveBeenCalledWith(
       'claude',
-      ['-p', 'do stuff', '--dangerously-skip-permissions'],
+      ['-p', 'do stuff', '--model', 'sonnet', '--dangerously-skip-permissions'],
       expect.objectContaining({ stdio: 'inherit', cwd: '/tmp' })
     );
   });
