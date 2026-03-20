@@ -75,9 +75,12 @@ async function main(): Promise<void> {
         }
       }
 
-      // Show startup serpent animation on `quetz run` (spec 6.2)
+      // Enter TUI (alternate screen buffer) and show startup serpent
+      const tuiModule = await import('./display/tui.js');
+      if (process.stdout.isTTY && !dry) tuiModule.enter();
+
       const { printSerpentAnimated } = await import('./display/banner.js');
-      await printSerpentAnimated(!noAnimate);
+      await printSerpentAnimated(!noAnimate && process.stdout.isTTY && !dry);
 
       const { runLoop } = await import('./loop.js');
       await runLoop({ dry, model, timeout, verbose });
