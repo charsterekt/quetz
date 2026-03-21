@@ -67,7 +67,7 @@ export function getCurrentBranch(cwd: string = process.cwd()): string {
   }
 }
 
-/** Delete a local branch (non-force). Returns true if deleted. */
+/** Delete a local branch (force). Returns true if deleted. */
 export function deleteBranch(branch: string, cwd: string = process.cwd()): boolean {
   try {
     exec(`git branch -D ${branch}`, cwd);

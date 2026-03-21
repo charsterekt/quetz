@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { EventEmitter, Writable } from 'stream';
+import { EventEmitter, Writable, PassThrough } from 'stream';
 
 vi.mock('child_process', () => ({
   spawn: vi.fn(),
@@ -29,6 +29,8 @@ function makeProc(exitCode: number | null, delayMs = 10) {
   const proc = new EventEmitter() as EventEmitter & {
     kill: ReturnType<typeof vi.fn>;
     stdin: Writable & { written: string };
+    stdout: PassThrough;
+    stderr: PassThrough;
   };
   proc.kill = vi.fn((signal: string) => {
     if (signal === 'SIGTERM') {
@@ -36,6 +38,8 @@ function makeProc(exitCode: number | null, delayMs = 10) {
     }
   });
   proc.stdin = makeFakeStdin();
+  proc.stdout = new PassThrough();
+  proc.stderr = new PassThrough();
   setTimeout(() => proc.emit('exit', exitCode), delayMs);
   return proc as never;
 }
@@ -62,12 +66,26 @@ describe('spawnAgent', () => {
     expect((proc as any).stdin.written).toBe(longPrompt);
   });
 
-  it('inherits stdout/stderr so agent output streams to the terminal', async () => {
+  it('pipes all stdio and forwards stdout/stderr to parent process', async () => {
+    const proc = makeProc(0, 50);
+    mockSpawn.mockReturnValue(proc);
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const promise = spawnAgent('do stuff', '/tmp', 30);
+    // Simulate agent producing output
+    (proc as any).stdout.push(Buffer.from('hello from agent'));
+    (proc as any).stdout.push(null);
+    await promise;
+    expect(stdoutSpy).toHaveBeenCalledWith(expect.any(Buffer));
+    stdoutSpy.mockRestore();
+    const spawnOpts = mockSpawn.mock.calls[0][2] as { stdio: string[] };
+    expect(spawnOpts.stdio).toEqual(['pipe', 'pipe', 'pipe']);
+  });
+
+  it('sets FORCE_COLOR=1 so child process preserves colors in piped mode', async () => {
     mockSpawn.mockReturnValue(makeProc(0));
     await spawnAgent('do stuff', '/tmp', 30);
-    const spawnOpts = mockSpawn.mock.calls[0][2] as { stdio: string[] };
-    // stdin is piped, stdout and stderr are inherited
-    expect(spawnOpts.stdio).toEqual(['pipe', 'inherit', 'inherit']);
+    const spawnOpts = mockSpawn.mock.calls[0][2] as { env: Record<string, string> };
+    expect(spawnOpts.env.FORCE_COLOR).toBe('1');
   });
 
   it('sets shell: true on Windows so claude.cmd is resolved via cmd.exe', async () => {
@@ -102,9 +120,13 @@ describe('spawnAgent', () => {
     const proc = new EventEmitter() as EventEmitter & {
       kill: ReturnType<typeof vi.fn>;
       stdin: Writable & { written: string };
+      stdout: PassThrough;
+      stderr: PassThrough;
     };
     proc.kill = vi.fn();
     proc.stdin = makeFakeStdin();
+    proc.stdout = new PassThrough();
+    proc.stderr = new PassThrough();
     setTimeout(() => proc.emit('error', new Error('ENOENT')), 10);
     mockSpawn.mockReturnValue(proc as never);
     await expect(spawnAgent('do stuff', '/tmp', 30)).rejects.toThrow('ENOENT');
