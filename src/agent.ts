@@ -3,7 +3,9 @@ import { spawn } from 'child_process';
 /**
  * Spawn a Claude Code agent process and wait for it to exit.
  * The prompt is piped via stdin (avoids OS arg-length limits).
- * stdout/stderr are inherited so the user sees agent output in real time.
+ * stdout/stderr are piped and forwarded manually so output streams
+ * reliably across all terminal emulators (cmd.exe, Git Bash/mintty,
+ * PowerShell, macOS Terminal, etc.).
  *
  * @param prompt         The prompt string piped to stdin
  * @param cwd            Working directory for the agent
@@ -23,14 +25,19 @@ export function spawnAgent(
     try {
       const args = ['--model', model, '--dangerously-skip-permissions', '-p'];
       proc = spawn('claude', args, {
-        stdio: ['pipe', 'inherit', 'inherit'],
+        stdio: ['pipe', 'pipe', 'pipe'],
         cwd,
         shell: process.platform === 'win32',
+        env: { ...process.env, FORCE_COLOR: '1' },
       });
     } catch (err) {
       reject(new Error(`Failed to spawn claude: ${(err as Error).message}`));
       return;
     }
+
+    // Forward child stdout/stderr to parent — works regardless of PTY/shell
+    proc.stdout!.on('data', (chunk: Buffer) => process.stdout.write(chunk));
+    proc.stderr!.on('data', (chunk: Buffer) => process.stderr.write(chunk));
 
     // Feed the prompt via stdin then close — avoids Windows 8k arg limit
     proc.stdin!.write(prompt);
