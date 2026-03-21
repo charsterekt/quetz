@@ -119,8 +119,13 @@ export async function runLoop(
   opts: { dry: boolean; model?: string; timeout?: number; localCommits?: boolean; amend?: boolean; mock?: boolean; simulate?: boolean },
   bus?: QuetzBus
 ): Promise<LoopResult> {
-  setVerbose(true);
-  log('QUETZ', 'Verbose mode enabled');
+  // Only enable verbose in non-TUI mode. In TUI mode (bus present), stderr
+  // writes from log() corrupt Ink's cursor-position tracking, causing the
+  // previous render frame to remain visible as a ghost header.
+  if (!bus) {
+    setVerbose(true);
+    log('QUETZ', 'Verbose mode enabled');
+  }
   const simulate = opts.simulate ?? false;
   if (opts.mock || simulate) enableMockMode();
 

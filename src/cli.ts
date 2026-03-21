@@ -116,8 +116,28 @@ async function main(): Promise<void> {
         const inkModule = await initInk();
         const { App } = await import('./ui/App.js');
 
-        // Render Ink first so it sets up stdin raw mode before any escape codes are written
+        // MINGW64 / Git Bash: stdin.isTTY may be false even when the terminal is
+        // interactive. Ink skips setRawMode when isTTY is falsy, so useInput never
+        // fires. Override isTTY and set raw mode manually before render() so Ink
+        // treats stdin as a TTY and enables keypress handling.
+        if (typeof (process.stdin as any).setRawMode === 'function') {
+          if (!process.stdin.isTTY) {
+            Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+          }
+          try {
+            (process.stdin as any).setRawMode(true);
+            process.stdin.resume();
+          } catch { /* keyboard shortcuts unavailable on this terminal */ }
+        }
+
         const app = inkModule.render(React.createElement(App, { bus }));
+
+        // Yield one event-loop tick so React useEffect hooks can register bus
+        // listeners before runLoop starts emitting loop:start / loop:issue_pickup.
+        // Without this pause those early events are fired into the void and the
+        // UI shows blank/0/0 until the second issue begins.
+        await new Promise<void>(resolve => setImmediate(resolve));
+
         const result = await runLoop({ dry, model, timeout, localCommits, amend, mock, simulate }, bus);
 
         app.unmount();
