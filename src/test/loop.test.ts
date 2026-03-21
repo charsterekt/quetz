@@ -33,13 +33,6 @@ vi.mock('../github.js', () => ({
 vi.mock('child_process', () => ({
   execSync: vi.fn(),
 }));
-vi.mock('../display/tui.js', () => ({
-  isActive: () => false,
-  writeHeader: vi.fn(),
-  writeFooter: vi.fn(),
-  consumeResize: () => false,
-  ANSI: { resetScroll: '' },
-}));
 vi.mock('../display/status.js', () => ({
   formatElapsed: (ms: number) => {
     const s = Math.floor(ms / 1000);
