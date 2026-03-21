@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { EventEmitter, Writable } from 'stream';
+import { EventEmitter, Writable, PassThrough } from 'stream';
 
 vi.mock('child_process', () => ({
   spawn: vi.fn(),
@@ -29,6 +29,8 @@ function makeProc(exitCode: number | null, delayMs = 10) {
   const proc = new EventEmitter() as EventEmitter & {
     kill: ReturnType<typeof vi.fn>;
     stdin: Writable & { written: string };
+    stdout: PassThrough;
+    stderr: PassThrough;
   };
   proc.kill = vi.fn((signal: string) => {
     if (signal === 'SIGTERM') {
@@ -36,6 +38,8 @@ function makeProc(exitCode: number | null, delayMs = 10) {
     }
   });
   proc.stdin = makeFakeStdin();
+  proc.stdout = new PassThrough();
+  proc.stderr = new PassThrough();
   setTimeout(() => proc.emit('exit', exitCode), delayMs);
   return proc as never;
 }
@@ -48,7 +52,7 @@ describe('spawnAgent', () => {
     expect(code).toBe(0);
     expect(mockSpawn).toHaveBeenCalledWith(
       'claude',
-      ['--model', 'sonnet', '--dangerously-skip-permissions', '-p'],
+      ['--model', 'sonnet', '--dangerously-skip-permissions', '--output-format', 'stream-json', '-p'],
       expect.objectContaining({ cwd: '/tmp' })
     );
   });
@@ -58,19 +62,48 @@ describe('spawnAgent', () => {
     mockSpawn.mockReturnValue(proc);
     const longPrompt = 'x'.repeat(50_000);
     await spawnAgent(longPrompt, '/tmp', 30);
-    // stdin should contain the full prompt
     expect((proc as any).stdin.written).toBe(longPrompt);
   });
 
-  it('inherits stdout/stderr so agent output streams to the terminal', async () => {
+  it('uses stream-json output format and pipes all stdio', async () => {
     mockSpawn.mockReturnValue(makeProc(0));
     await spawnAgent('do stuff', '/tmp', 30);
+    const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
+    expect(spawnArgs).toContain('--output-format');
+    expect(spawnArgs).toContain('stream-json');
     const spawnOpts = mockSpawn.mock.calls[0][2] as { stdio: string[] };
-    // stdin is piped, stdout and stderr are inherited
-    expect(spawnOpts.stdio).toEqual(['pipe', 'inherit', 'inherit']);
+    expect(spawnOpts.stdio).toEqual(['pipe', 'pipe', 'pipe']);
   });
 
-  it('sets shell: true on Windows so claude.cmd is resolved via cmd.exe', async () => {
+  it('renders stream-json tool events to stdout', async () => {
+    const proc = makeProc(0, 50);
+    mockSpawn.mockReturnValue(proc);
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const promise = spawnAgent('do stuff', '/tmp', 30);
+
+    const toolStart = JSON.stringify({
+      type: 'stream_event',
+      event: { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', name: 'Read', input: {} } },
+    });
+    const toolInput = JSON.stringify({
+      type: 'stream_event',
+      event: { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"file_path":"src/config.ts"}' } },
+    });
+    const toolStop = JSON.stringify({
+      type: 'stream_event',
+      event: { type: 'content_block_stop', index: 0 },
+    });
+    (proc as any).stdout.push(Buffer.from(toolStart + '\n' + toolInput + '\n' + toolStop + '\n'));
+    (proc as any).stdout.push(null);
+    await promise;
+
+    const output = stdoutSpy.mock.calls.map(c => String(c[0])).join('');
+    expect(output).toContain('Read');
+    expect(output).toContain('config.ts');
+    stdoutSpy.mockRestore();
+  });
+
+  it('sets shell: true on Windows so claude.cmd is resolved', async () => {
     mockSpawn.mockReturnValue(makeProc(0));
     await spawnAgent('do stuff', '/tmp', 30);
     const spawnOpts = mockSpawn.mock.calls[0][2] as { shell: boolean };
@@ -78,12 +111,12 @@ describe('spawnAgent', () => {
     expect(spawnOpts.shell).toBe(expectedShell);
   });
 
-  it('passes --model and --dangerously-skip-permissions with -p at end', async () => {
+  it('passes --model and --dangerously-skip-permissions', async () => {
     mockSpawn.mockReturnValue(makeProc(0));
     await spawnAgent('fix the bug', '/repo', 30, 'opus');
     expect(mockSpawn).toHaveBeenCalledWith(
       'claude',
-      ['--model', 'opus', '--dangerously-skip-permissions', '-p'],
+      ['--model', 'opus', '--dangerously-skip-permissions', '--output-format', 'stream-json', '-p'],
       expect.any(Object)
     );
   });
@@ -102,9 +135,13 @@ describe('spawnAgent', () => {
     const proc = new EventEmitter() as EventEmitter & {
       kill: ReturnType<typeof vi.fn>;
       stdin: Writable & { written: string };
+      stdout: PassThrough;
+      stderr: PassThrough;
     };
     proc.kill = vi.fn();
     proc.stdin = makeFakeStdin();
+    proc.stdout = new PassThrough();
+    proc.stderr = new PassThrough();
     setTimeout(() => proc.emit('error', new Error('ENOENT')), 10);
     mockSpawn.mockReturnValue(proc as never);
     await expect(spawnAgent('do stuff', '/tmp', 30)).rejects.toThrow('ENOENT');

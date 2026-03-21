@@ -1,9 +1,13 @@
 import { spawn } from 'child_process';
+import { AgentStreamRenderer } from './display/agent-stream.js';
 
 /**
  * Spawn a Claude Code agent process and wait for it to exit.
  * The prompt is piped via stdin (avoids OS arg-length limits).
- * stdout/stderr are inherited so the user sees agent output in real time.
+ * Uses --output-format stream-json to get structured JSONL events,
+ * which are parsed and rendered as a live activity log. This works
+ * reliably across all terminals (cmd.exe, Git Bash, PowerShell, etc.)
+ * because we control the rendering — no PTY/TTY detection needed.
  *
  * @param prompt         The prompt string piped to stdin
  * @param cwd            Working directory for the agent
@@ -21,9 +25,14 @@ export function spawnAgent(
     let proc: ReturnType<typeof spawn>;
 
     try {
-      const args = ['--model', model, '--dangerously-skip-permissions', '-p'];
+      const args = [
+        '--model', model,
+        '--dangerously-skip-permissions',
+        '--output-format', 'stream-json',
+        '-p',
+      ];
       proc = spawn('claude', args, {
-        stdio: ['pipe', 'inherit', 'inherit'],
+        stdio: ['pipe', 'pipe', 'pipe'],
         cwd,
         shell: process.platform === 'win32',
       });
@@ -31,6 +40,21 @@ export function spawnAgent(
       reject(new Error(`Failed to spawn claude: ${(err as Error).message}`));
       return;
     }
+
+    // Parse JSONL from stdout and render tool calls + text as a live log
+    const renderer = new AgentStreamRenderer();
+    let buffer = '';
+    proc.stdout!.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? ''; // keep incomplete last line
+      for (const line of lines) {
+        renderer.processLine(line);
+      }
+    });
+
+    // Forward stderr (warnings/errors from claude)
+    proc.stderr!.on('data', (chunk: Buffer) => process.stderr.write(chunk));
 
     // Feed the prompt via stdin then close — avoids Windows 8k arg limit
     proc.stdin!.write(prompt);
