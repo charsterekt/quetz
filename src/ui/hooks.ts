@@ -68,6 +68,7 @@ export interface PhaseState {
   phase: QuetzPhase;
   issueId: string;
   issueTitle: string;
+  agentModel: string;
   iteration: number;
   total: number;
   elapsed: string;
@@ -80,6 +81,7 @@ export function usePhase(bus: QuetzBus): PhaseState {
     phase: 'idle',
     issueId: '',
     issueTitle: '',
+    agentModel: '',
     iteration: 0,
     total: 0,
     elapsed: '0m 00s',
@@ -92,7 +94,11 @@ export function usePhase(bus: QuetzBus): PhaseState {
       setState(prev => ({ ...prev, issueId: p.id, issueTitle: p.title, iteration: p.iteration, total: p.total, prNumber: undefined, prUrl: undefined }));
     };
     const onPhase = (p: QuetzEvent['loop:phase']) => {
-      setState(prev => ({ ...prev, phase: p.phase }));
+      setState(prev => ({
+        ...prev,
+        phase: p.phase,
+        ...(p.phase === 'agent_running' && p.detail ? { agentModel: p.detail } : {}),
+      }));
     };
     const onPR = (p: QuetzEvent['loop:pr_found']) => {
       setState(prev => ({ ...prev, prNumber: p.number, prUrl: p.url }));

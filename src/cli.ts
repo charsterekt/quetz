@@ -144,10 +144,11 @@ async function main(): Promise<void> {
 
         // Enter alternate screen AFTER Ink has finished raw-mode setup.
         // Writing before render() would block Ink's stdin ownership (quetz-3g0).
-        process.stdout.write('\x1b[?1049h\x1b[2J\x1b[H');
+        // Set dark navy background (RGB 26,26,46) then clear to fill it.
+        process.stdout.write('\x1b[?1049h\x1b[48;2;26;26;46m\x1b[2J\x1b[H');
 
         // Restore terminal on Ctrl+C so the main screen comes back cleanly.
-        const onSigint = () => { process.stdout.write('\x1b[?1049l'); process.exit(0); };
+        const onSigint = () => { process.stdout.write('\x1b[0m\x1b[?1049l'); process.exit(0); };
         process.once('SIGINT', onSigint);
 
         const raceResult = await Promise.race([
@@ -157,7 +158,7 @@ async function main(): Promise<void> {
         ]);
 
         process.off('SIGINT', onSigint);
-        process.stdout.write('\x1b[?1049l');
+        process.stdout.write('\x1b[0m\x1b[?1049l');
         app.unmount();
         process.exit(raceResult.exitCode);
       } else {

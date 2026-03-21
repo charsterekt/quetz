@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ink } from './ink-imports.js';
 import { colors } from './theme.js';
-import type { QuetzBus } from '../events.js';
+import type { QuetzBus, QuetzEvent } from '../events.js';
 
 const MAX_LINES = 500;
 
@@ -11,13 +11,15 @@ interface AgentPanelProps {
 
 export const AgentPanel: React.FC<AgentPanelProps> = ({ bus }) => {
   const { Box, Text } = ink();
-  const [lines, setLines] = useState<Array<{ text: string; dim: boolean }>>([]);
+  const [lines, setLines] = useState<Array<{ text: string; isTool: boolean }>>([]);
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [issueId, setIssueId] = useState('');
+  const [agentModel, setAgentModel] = useState('');
   const autoScrollRef = useRef(true);
 
-  const addLine = useCallback((text: string, dim: boolean) => {
+  const addLine = useCallback((text: string, isTool: boolean) => {
     setLines(prev => {
-      const next = [...prev, { text, dim }];
+      const next = [...prev, { text, isTool }];
       return next.length > MAX_LINES ? next.slice(-MAX_LINES) : next;
     });
     if (autoScrollRef.current) setScrollOffset(0);
@@ -31,12 +33,22 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ bus }) => {
     const onTool = (p: { index: number; name: string; summary: string }) => {
       addLine(`[${p.name}] ${p.summary}`, true);
     };
+    const onPickup = (p: QuetzEvent['loop:issue_pickup']) => {
+      setIssueId(p.id);
+    };
+    const onPhase = (p: QuetzEvent['loop:phase']) => {
+      if (p.phase === 'agent_running' && p.detail) setAgentModel(p.detail);
+    };
 
     bus.on('agent:text', onText);
     bus.on('agent:tool_done', onTool);
+    bus.on('loop:issue_pickup', onPickup);
+    bus.on('loop:phase', onPhase);
     return () => {
       bus.off('agent:text', onText);
       bus.off('agent:tool_done', onTool);
+      bus.off('loop:issue_pickup', onPickup);
+      bus.off('loop:phase', onPhase);
     };
   }, [bus, addLine]);
 
@@ -62,13 +74,30 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ bus }) => {
     ? lines.slice(-(scrollOffset + 20), -scrollOffset)
     : lines.slice(-20);
 
+  const headerLabel = issueId
+    ? `Agent: ${issueId}${agentModel ? ' | ' + agentModel : ''}`
+    : 'Agent Output';
+
   return (
     <Box flexDirection="column" flexGrow={3} borderStyle="single" borderColor={colors.border} paddingX={1}>
-      <Text bold color={colors.brand}>Agent Output</Text>
+      <Text bold color={colors.agentHeader}>{headerLabel}</Text>
+      <Text color={colors.divider} wrap="truncate">{'─'.repeat(60)}</Text>
       <Box flexDirection="column" flexGrow={1}>
-        {visibleLines.map((line, i) => (
-          <Text key={i} dimColor={line.dim} wrap="truncate">{line.text}</Text>
-        ))}
+        {visibleLines.map((line, i) => {
+          if (line.isTool) {
+            // Style: [ToolName] in cyan, rest of line in default color
+            const match = line.text.match(/^(\[[^\]]+\])\s*(.*)/s);
+            if (match) {
+              return (
+                <Text key={i} wrap="truncate">
+                  <Text color={colors.toolName}>{match[1]}</Text>
+                  {match[2] ? ` ${match[2]}` : ''}
+                </Text>
+              );
+            }
+          }
+          return <Text key={i} color={colors.text} wrap="truncate">{line.text}</Text>;
+        })}
       </Box>
       {scrollOffset > 0 && (
         <Text dimColor>-- scrolled {scrollOffset} lines up --</Text>
