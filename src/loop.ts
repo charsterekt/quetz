@@ -194,6 +194,7 @@ export async function runLoop(
   // In simulate mode, track which mock issues have been "consumed" so the loop
   // advances through the list instead of re-fetching the same first issue.
   const simulateCompleted = new Set<string>();
+  let loopStartEmitted = false;
 
   while (true) {
     iteration++;
@@ -211,6 +212,12 @@ export async function runLoop(
     // In simulate mode, filter out already-completed issues
     if (simulate) {
       issues = issues.filter(i => !simulateCompleted.has(i.id));
+    }
+
+    // Emit loop:start on first successful fetch so UI can show total count
+    if (!loopStartEmitted && bus && issues.length > 0) {
+      bus.emit('loop:start', { total: issues.length });
+      loopStartEmitted = true;
     }
 
     if (issues.length === 0) {
@@ -358,9 +365,9 @@ export async function runLoop(
 
       // Simulate merge poll delay
       if (bus) bus.emit('loop:phase', { phase: 'pr_polling' });
-      const pollTimer = startElapsedTimer('polling', issue.id, iteration, issueTotal, fakePrNum);
+      const pollTimer = !bus ? startElapsedTimer('polling', issue.id, iteration, issueTotal, fakePrNum) : null;
       await sleep(3000);
-      pollTimer.stop();
+      pollTimer?.stop();
 
       // Celebrate
       totalIssuesCompleted++;
@@ -470,7 +477,7 @@ export async function runLoop(
       // 7. Poll for merge
       log('GITHUB', `Polling PR #${pr.number} for merge`);
       if (bus) bus.emit('loop:phase', { phase: 'pr_polling' });
-      const pollTimer = startElapsedTimer('polling', issue.id, iteration, issueTotal, pr.number);
+      const pollTimer = !bus ? startElapsedTimer('polling', issue.id, iteration, issueTotal, pr.number) : null;
 
       const result = await pollForMerge(
         octokit!,
@@ -485,7 +492,7 @@ export async function runLoop(
         }
       );
 
-      pollTimer.stop();
+      pollTimer?.stop();
 
       switch (result.status) {
         case 'merged': {

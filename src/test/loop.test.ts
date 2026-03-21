@@ -612,3 +612,98 @@ describe('runLoop amend', () => {
     expect(victoryHandler).toHaveBeenCalledWith(expect.objectContaining({ mode: 'amend' }));
   });
 });
+
+// ── quetz-qmq: loop:start emitted on first issue fetch ────────────────────────
+
+describe('runLoop loop:start event (quetz-qmq)', () => {
+  it('emits loop:start with total count before first issue_pickup', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockFindPR.mockResolvedValue({ number: 42, title: 'Fix', html_url: 'https://gh/pr/42' } as never);
+    mockPollForMerge.mockResolvedValue({ status: 'merged', pr: { html_url: 'https://gh/pr/42' } } as never);
+
+    const bus = createBus();
+    const startHandler = vi.fn();
+    const pickupHandler = vi.fn();
+    bus.on('loop:start', startHandler);
+    bus.on('loop:issue_pickup', pickupHandler);
+
+    await runLoop({ dry: false }, bus);
+
+    expect(startHandler).toHaveBeenCalledTimes(1);
+    expect(startHandler).toHaveBeenCalledWith({ total: 1 });
+    // loop:start fires before loop:issue_pickup
+    const startOrder = startHandler.mock.invocationCallOrder[0];
+    const pickupOrder = pickupHandler.mock.invocationCallOrder[0];
+    expect(startOrder).toBeLessThan(pickupOrder);
+  });
+
+  it('emits loop:start only once even across multiple iterations', async () => {
+    const issue2 = { ...baseIssue, id: 'quetz-xyz' };
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue, issue2])
+      .mockReturnValueOnce([issue2])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockFindPR.mockResolvedValue({ number: 42, title: 'Fix', html_url: 'https://gh/pr/42' } as never);
+    mockPollForMerge.mockResolvedValue({ status: 'merged', pr: { html_url: 'https://gh/pr/42' } } as never);
+
+    const bus = createBus();
+    const startHandler = vi.fn();
+    bus.on('loop:start', startHandler);
+
+    await runLoop({ dry: false }, bus);
+
+    expect(startHandler).toHaveBeenCalledTimes(1);
+    expect(startHandler).toHaveBeenCalledWith({ total: 2 });
+  });
+
+  it('does not emit loop:start when there are no issues', async () => {
+    mockGetReadyIssues.mockReturnValue([]);
+    const bus = createBus();
+    const startHandler = vi.fn();
+    bus.on('loop:start', startHandler);
+
+    await runLoop({ dry: false }, bus);
+
+    expect(startHandler).not.toHaveBeenCalled();
+  });
+});
+
+// ── quetz-3nd: no stdout writes during polling when bus is present ─────────────
+
+describe('runLoop no stdout corruption in TUI mode (quetz-3nd)', () => {
+  it('does not write to stdout during PR polling when bus is provided', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockFindPR.mockResolvedValue({ number: 42, title: 'Fix', html_url: 'https://gh/pr/42' } as never);
+    mockPollForMerge.mockResolvedValue({ status: 'merged', pr: { html_url: 'https://gh/pr/42' } } as never);
+
+    const bus = createBus();
+    await runLoop({ dry: false }, bus);
+
+    // stdout should not be written when bus is provided (Ink handles output)
+    expect(stdoutSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not write to stdout during local-commits path when bus is provided', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockCountNewCommits.mockReturnValue(1);
+
+    const bus = createBus();
+    await runLoop({ dry: false, localCommits: true }, bus);
+
+    expect(stdoutSpy).not.toHaveBeenCalled();
+  });
+});
