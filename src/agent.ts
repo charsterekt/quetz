@@ -28,8 +28,9 @@ export function spawnAgent(
       const args = [
         '--model', model,
         '--verbose',
-        '--dangerously-skip-permissions',
         '--output-format', 'stream-json',
+        '--include-partial-messages',
+        '--dangerously-skip-permissions',
         '-p',
       ];
       proc = spawn('claude', args, {

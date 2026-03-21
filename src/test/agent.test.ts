@@ -52,7 +52,7 @@ describe('spawnAgent', () => {
     expect(code).toBe(0);
     expect(mockSpawn).toHaveBeenCalledWith(
       'claude',
-      ['--model', 'sonnet', '--verbose', '--dangerously-skip-permissions', '--output-format', 'stream-json', '-p'],
+      ['--model', 'sonnet', '--verbose', '--output-format', 'stream-json', '--include-partial-messages', '--dangerously-skip-permissions', '-p'],
       expect.objectContaining({ cwd: '/tmp' })
     );
   });
@@ -72,6 +72,7 @@ describe('spawnAgent', () => {
     expect(spawnArgs).toContain('--verbose');
     expect(spawnArgs).toContain('--output-format');
     expect(spawnArgs).toContain('stream-json');
+    expect(spawnArgs).toContain('--include-partial-messages');
     const spawnOpts = mockSpawn.mock.calls[0][2] as { stdio: string[] };
     expect(spawnOpts.stdio).toEqual(['pipe', 'pipe', 'pipe']);
   });
@@ -117,7 +118,7 @@ describe('spawnAgent', () => {
     await spawnAgent('fix the bug', '/repo', 30, 'opus');
     expect(mockSpawn).toHaveBeenCalledWith(
       'claude',
-      ['--model', 'opus', '--verbose', '--dangerously-skip-permissions', '--output-format', 'stream-json', '-p'],
+      ['--model', 'opus', '--verbose', '--output-format', 'stream-json', '--include-partial-messages', '--dangerously-skip-permissions', '-p'],
       expect.any(Object)
     );
   });
