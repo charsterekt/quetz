@@ -120,7 +120,7 @@ export function printHelp(): void {
     '                       exits without spawning.\n' +
     '  --model <model>      Override agent model (haiku, sonnet). Default: sonnet.\n' +
     '  --timeout <minutes>  Override agent timeout in minutes. Default: 30.\n' +
-    '  --verbose            Enable debug logging.\n' +
+    '  --verbose            (deprecated — always on)\n' +
     '  --no-animate         Disable terminal animations.\n\n' +
     '  quetz validate       Validate .quetzrc.yml without running the loop.\n\n' +
     '  quetz config show    Display parsed configuration from .quetzrc.yml.\n\n' +
