@@ -5,21 +5,23 @@ import { assemblePrompt } from './prompt.js';
 import { spawnAgent } from './agent.js';
 import { createOctokit, findPR, pollForMerge } from './github.js';
 import { setVerbose, log } from './verbose.js';
-import {
-  printPickup,
-  printAgentStarting,
-  printAgentComplete,
-  printPRFound,
-  printMerged,
-  printCommitVerified,
-  printAmendComplete,
-  printFailure,
-  printVictory,
-  type VictoryStats,
-} from './display/messages.js';
 import { brand, success, waiting, error, dim } from './display/terminal.js';
-import { formatElapsed, updateStatusLine } from './display/status.js';
 import { execSync } from 'child_process';
+
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+}
+import type { QuetzBus } from './events.js';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export interface LoopResult {
+  exitCode: number;
+  reason: 'victory' | 'no_issues' | 'error' | 'dry_run';
+}
 
 // ── Elapsed timer ────────────────────────────────────────────────────────────
 
@@ -31,11 +33,17 @@ function startElapsedTimer(
   prNumber?: number
 ): { stop: () => void } {
   const startTime = Date.now();
+  let lastLen = 0;
   const interval = setInterval(() => {
     const elapsed = formatElapsed(Date.now() - startTime);
-    updateStatusLine({ iteration, total, issueIdStr, phase, elapsed, prNumber });
+    const prLabel = prNumber ? `PR #${prNumber} — ` : '';
+    const phaseText = phase === 'agent' ? 'Agent running...' : `${prLabel}waiting for merge`;
+    const line = `[quetz] Issue ${iteration}/${total} | ${issueIdStr} | ${phaseText} (${elapsed})`;
+    const clearLen = Math.max(lastLen, line.length);
+    process.stdout.write(`\r${' '.repeat(clearLen)}\r${line}`);
+    lastLen = line.length;
   }, 1000);
-  return { stop: () => clearInterval(interval) };
+  return { stop: () => { clearInterval(interval); if (lastLen > 0) process.stdout.write(`\r${' '.repeat(lastLen)}\r`); } };
 }
 
 // ── Status command ───────────────────────────────────────────────────────────
@@ -107,7 +115,10 @@ export async function showStatus(watch: boolean = false, mock: boolean = false):
 
 // ── Run loop ─────────────────────────────────────────────────────────────────
 
-export async function runLoop(opts: { dry: boolean; model?: string; timeout?: number; localCommits?: boolean; amend?: boolean; mock?: boolean; simulate?: boolean }): Promise<void> {
+export async function runLoop(
+  opts: { dry: boolean; model?: string; timeout?: number; localCommits?: boolean; amend?: boolean; mock?: boolean; simulate?: boolean },
+  bus?: QuetzBus
+): Promise<LoopResult> {
   setVerbose(true);
   log('QUETZ', 'Verbose mode enabled');
   const simulate = opts.simulate ?? false;
@@ -123,25 +134,16 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
     try {
       issues = getReadyIssues();
     } catch (err) {
-      process.stderr.write(error(`bd ready failed: ${(err as Error).message}\n`));
-      process.exit(1);
+      if (bus) bus.emit('loop:failure', { reason: `bd ready failed: ${(err as Error).message}` });
+      else process.stderr.write(error(`bd ready failed: ${(err as Error).message}\n`));
+      return { exitCode: 1, reason: 'error' };
     }
 
     if (issues.length === 0) {
-      process.stdout.write(waiting('\nNo ready issues found. The serpent sleeps.\n'));
-      process.exit(0);
+      if (bus) bus.emit('loop:warning', { message: 'No ready issues found. The serpent sleeps.' });
+      else process.stdout.write(waiting('\nNo ready issues found. The serpent sleeps.\n'));
+      return { exitCode: 0, reason: 'no_issues' };
     }
-
-    process.stdout.write(brand('\nIssue Queue (priority order):\n'));
-    process.stdout.write('─'.repeat(50) + '\n');
-    for (const [i, issue] of issues.entries()) {
-      process.stdout.write(
-        `${i + 1}. ` +
-        brand(issue.id) +
-        ` ${dim(`[P${issue.priority}] [${issue.issue_type}]`)} ${issue.title}\n`
-      );
-    }
-    process.stdout.write('─'.repeat(50) + '\n\n');
 
     const firstIssue = issues[0];
     let issueDetails = firstIssue;
@@ -153,12 +155,29 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
     const bdPrime = getPrimeContext();
     const prompt = assemblePrompt(issueDetails, bdPrime, config, opts.localCommits ?? false, opts.amend ?? false, true);
 
-    process.stdout.write(brand('Prompt for first issue:\n'));
-    process.stdout.write('─'.repeat(50) + '\n');
-    process.stdout.write(prompt + '\n');
-    process.stdout.write('─'.repeat(50) + '\n');
-    process.stdout.write(brand('\n--- Dry run complete (no agent spawned) ---\n'));
-    process.exit(0);
+    if (bus) {
+      bus.emit('loop:dry_issues', {
+        issues: issues.map(i => ({ id: i.id, title: i.title, priority: i.priority, type: i.issue_type })),
+        prompt,
+      });
+    } else {
+      process.stdout.write(brand('\nIssue Queue (priority order):\n'));
+      process.stdout.write('─'.repeat(50) + '\n');
+      for (const [i, issue] of issues.entries()) {
+        process.stdout.write(
+          `${i + 1}. ` +
+          brand(issue.id) +
+          ` ${dim(`[P${issue.priority}] [${issue.issue_type}]`)} ${issue.title}\n`
+        );
+      }
+      process.stdout.write('─'.repeat(50) + '\n\n');
+      process.stdout.write(brand('Prompt for first issue:\n'));
+      process.stdout.write('─'.repeat(50) + '\n');
+      process.stdout.write(prompt + '\n');
+      process.stdout.write('─'.repeat(50) + '\n');
+      process.stdout.write(brand('\n--- Dry run complete (no agent spawned) ---\n'));
+    }
+    return { exitCode: 0, reason: 'dry_run' };
   }
 
   // ── Normal run loop ───────────────────────────────────────────────────────
@@ -184,8 +203,9 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
     try {
       issues = getReadyIssues();
     } catch (err) {
-      process.stderr.write(error(`\nbd ready failed: ${(err as Error).message}\n`));
-      process.exit(1);
+      if (bus) bus.emit('loop:failure', { reason: `bd ready failed: ${(err as Error).message}` });
+      else process.stderr.write(error(`\nbd ready failed: ${(err as Error).message}\n`));
+      return { exitCode: 1, reason: 'error' };
     }
 
     // In simulate mode, filter out already-completed issues
@@ -195,7 +215,9 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
     if (issues.length === 0) {
       if (iteration === 1) {
-        process.stdout.write(waiting('\nNo ready issues found. The serpent sleeps.\n'));
+        if (bus) bus.emit('loop:warning', { message: 'No ready issues found. The serpent sleeps.' });
+        else process.stdout.write(waiting('\nNo ready issues found. The serpent sleeps.\n'));
+        return { exitCode: 0, reason: 'no_issues' };
       } else {
         let finalCommitHash: string | undefined;
         let finalCommitMsg: string | undefined;
@@ -209,7 +231,7 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
             // not critical
           }
         }
-        const stats: VictoryStats = {
+        const victoryPayload = {
           issuesCompleted: totalIssuesCompleted,
           totalTime: formatElapsed(Date.now() - loopStart),
           prsMerged: totalPrsMerged,
@@ -218,9 +240,37 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
           commitHash: finalCommitHash,
           commitMsg: finalCommitMsg,
         };
-        printVictory(stats);
+        if (bus) {
+          bus.emit('loop:victory', victoryPayload);
+        } else {
+          // Inline victory display for non-bus fallback
+          const stats = victoryPayload;
+          const isLocalCommitsMode = stats.mode === 'local-commits';
+          const isAmend = stats.mode === 'amend';
+          const statLabel = isAmend ? 'Commit ready  ' : (isLocalCommitsMode ? 'Commits landed' : 'PRs merged    ');
+          const statValue = isAmend
+            ? (stats.commitHash ? stats.commitHash.slice(0, 7) : '1')
+            : (isLocalCommitsMode ? String(stats.commitsLanded ?? stats.issuesCompleted) : String(stats.prsMerged));
+
+          process.stdout.write(
+            `\n${success('✓ All issues resolved. The serpent rests.')}\n` +
+            `${brand('~~~ QUETZ VICTORY ~~~')}\n\n` +
+            `   ${brand('╔══════════════════════════════════════╗')}\n` +
+            `   ${brand('║')}                                      ${brand('║')}\n` +
+            `   ${brand('║')}    ${success('COMPLETED')}                        ${brand('║')}\n` +
+            `   ${brand('║')}                                      ${brand('║')}\n` +
+            `   ${brand('║')}    Issues: ${String(stats.issuesCompleted).padEnd(26)} ${brand('║')}\n` +
+            `   ${brand('║')}    Time: ${stats.totalTime.padEnd(29)} ${brand('║')}\n` +
+            `   ${brand('║')}    ${statLabel}: ${statValue.padEnd(21)} ${brand('║')}\n` +
+            `   ${brand('║')}                                      ${brand('║')}\n` +
+            `   ${brand('║')}    ${dim('The serpent rests. 🐉')}              ${brand('║')}\n` +
+            `   ${brand('║')}                                      ${brand('║')}\n` +
+            `   ${brand('╚══════════════════════════════════════╝')}\n\n` +
+            (isAmend ? `${success('All issues complete. 1 commit ready to push.')}\n${dim(stats.commitHash ?? '')} ${dim(stats.commitMsg ?? '')}\n\n` : '')
+          );
+        }
+        return { exitCode: 0, reason: 'victory' };
       }
-      process.exit(0);
     }
 
     const issue = issues[0];
@@ -234,17 +284,26 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
       // fall back to ready data
     }
 
-    printPickup(issue.id, issue.title, issue.priority, issue.issue_type);
+    if (bus) {
+      bus.emit('loop:issue_pickup', { id: issue.id, title: issue.title, priority: issue.priority, type: issue.issue_type, iteration, total: issueTotal });
+    } else {
+      process.stdout.write(
+        `\n${brand('🐉 Picking up')} ${issue.id}: "${issue.title}" ${dim(`[P${issue.priority} ${issue.issue_type}]`)}\n` +
+        `   ${dim('──── Summoning agent ────')}\n\n`
+      );
+    }
 
     // 3. Git reset to default branch (skip in amend mode and simulate mode)
     if (!amend && !simulate) {
-      process.stdout.write(dim(`  git checkout ${config.github.defaultBranch} && git pull…\n`));
+      if (bus) bus.emit('loop:phase', { phase: 'git_reset', detail: `git checkout ${config.github.defaultBranch} && git pull` });
+      else process.stdout.write(dim(`  git checkout ${config.github.defaultBranch} && git pull…\n`));
       try {
         checkoutDefault(config.github.defaultBranch, projectRoot);
         pullDefault(config.github.defaultBranch, projectRoot);
       } catch (err) {
-        process.stderr.write(error(`\nGit error: ${(err as Error).message}\n`));
-        process.exit(1);
+        if (bus) bus.emit('loop:failure', { reason: `Git error: ${(err as Error).message}` });
+        else process.stderr.write(error(`\nGit error: ${(err as Error).message}\n`));
+        return { exitCode: 1, reason: 'error' };
       }
     }
 
@@ -253,24 +312,34 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
     const prompt = assemblePrompt(issueDetails, bdPrime, config, localCommits, amend, isFirstIssue);
 
     // 5. Spawn agent
-    printAgentStarting();
+    if (bus) bus.emit('loop:phase', { phase: 'agent_running' });
+    else process.stdout.write(dim('\n  Starting agent…\n'));
 
     const agentStart = Date.now();
     const agentTimeout = opts.timeout ?? config.agent.timeout;
     const agentModel = opts.model ?? config.agent.model ?? 'sonnet';
     log('AGENT', `model=${agentModel}, timeout=${agentTimeout}m`);
 
-    const exitCode = await spawnAgent(prompt, projectRoot, agentTimeout, agentModel).catch(err => {
-      process.stderr.write(error(`\nAgent error: ${(err as Error).message}\n`));
-      process.exit(1);
-    });
+    let exitCode: number;
+    try {
+      exitCode = await spawnAgent(prompt, projectRoot, agentTimeout, agentModel, bus);
+    } catch (err) {
+      if (bus) bus.emit('loop:failure', { reason: `Agent error: ${(err as Error).message}` });
+      else process.stderr.write(error(`\nAgent error: ${(err as Error).message}\n`));
+      return { exitCode: 1, reason: 'error' };
+    }
 
     if (exitCode !== 0) {
       const hint = localMode ? 'Checking for local commit…' : 'Attempting PR detection…';
-      process.stdout.write(waiting(`\n  Agent exited with code ${exitCode}. ${hint}\n`));
+      if (bus) bus.emit('loop:warning', { message: `Agent exited with code ${exitCode}. ${hint}` });
+      else process.stdout.write(waiting(`\n  Agent exited with code ${exitCode}. ${hint}\n`));
     }
 
-    printAgentComplete();
+    if (bus) bus.emit('loop:phase', { phase: 'pr_detecting' });
+    else process.stdout.write(
+      `\n   ${dim('──── Agent session complete ────')}\n` +
+      `${waiting('🔍 Searching for PR…')}\n`
+    );
 
     if (simulate) {
       // ── Simulate path: fake the post-agent lifecycle so you see every phase ─
@@ -280,9 +349,15 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
       // Simulate PR detection delay
       await sleep(1500);
-      printPRFound(fakePrNum, fakePrTitle, fakePrUrl);
+      if (bus) bus.emit('loop:pr_found', { number: fakePrNum, title: fakePrTitle, url: fakePrUrl });
+      else process.stdout.write(
+        `${success(`✓  Found PR #${fakePrNum}`)}: "${fakePrTitle}"\n` +
+        `   ${dim(fakePrUrl)}\n` +
+        `   ${waiting('Watching for merge…')}\n`
+      );
 
       // Simulate merge poll delay
+      if (bus) bus.emit('loop:phase', { phase: 'pr_polling' });
       const pollTimer = startElapsedTimer('polling', issue.id, iteration, issueTotal, fakePrNum);
       await sleep(3000);
       pollTimer.stop();
@@ -293,7 +368,13 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
       simulateCompleted.add(issue.id);
       const remaining = issues.length - 1;
 
-      printMerged(fakePrNum, issue.id, remaining);
+      if (bus) bus.emit('loop:merged', { prNumber: fakePrNum, issueId: issue.id, remaining });
+      else process.stdout.write(
+        `\n${success(`✅ PR #${fakePrNum} merged!`)} ${brand(`The serpent devours ${issue.id}.`)}\n` +
+        `   ${dim('─'.repeat(40))}\n` +
+        `   Issues remaining: ${remaining}\n` +
+        `   ${dim('─'.repeat(40))}\n\n`
+      );
       await sleep(2000);
 
       // Cleanup: return to default branch and delete agent's temp branch
@@ -314,14 +395,19 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
       log('GIT', `Commits ahead of ${config.github.defaultBranch}: ${commitCount}`);
 
       if (commitCount === 0) {
-        process.stdout.write(waiting(`\n  Warning: no commit found for ${issue.id}. Next issue will create a fresh commit.\n`));
+        if (bus) bus.emit('loop:warning', { message: `No commit found for ${issue.id}. Next issue will create a fresh commit.` });
+        else process.stdout.write(waiting(`\n  Warning: no commit found for ${issue.id}. Next issue will create a fresh commit.\n`));
         // isFirstIssue stays true so next iteration creates a new commit
       } else if (commitCount === 1) {
-        printAmendComplete(issue.id, totalIssuesCompleted + 1);
+        if (bus) bus.emit('loop:amend_complete', { issueId: issue.id, iteration: totalIssuesCompleted + 1 });
+        else process.stdout.write(
+          `\n${success(`✓ Amend ${totalIssuesCompleted + 1} complete`)} ${brand(`The serpent folds ${issue.id} into the commit.`)}\n\n`
+        );
         isFirstIssue = false;
       } else {
         // Agent created multiple commits — warn but proceed
-        process.stdout.write(waiting(`\n  Warning: ${commitCount} commits found for ${issue.id} (expected 1). Amend semantics may not have been followed.\n`));
+        if (bus) bus.emit('loop:warning', { message: `${commitCount} commits found for ${issue.id} (expected 1). Amend semantics may not have been followed.` });
+        else process.stdout.write(waiting(`\n  Warning: ${commitCount} commits found for ${issue.id} (expected 1). Amend semantics may not have been followed.\n`));
         isFirstIssue = false;
       }
 
@@ -334,9 +420,13 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
       log('GIT', `New commits since ${config.github.defaultBranch}: ${newCommits}`);
 
       if (newCommits === 0) {
-        process.stdout.write(waiting(`\n  Warning: no new commit found for ${issue.id}. Continuing to next issue.\n`));
+        if (bus) bus.emit('loop:warning', { message: `No new commit found for ${issue.id}. Continuing to next issue.` });
+        else process.stdout.write(waiting(`\n  Warning: no new commit found for ${issue.id}. Continuing to next issue.\n`));
       } else {
-        printCommitVerified(issue.id);
+        if (bus) bus.emit('loop:commit_landed', { issueId: issue.id });
+        else process.stdout.write(
+          `\n${success('✓ Commit landed')} ${brand(`The serpent devours ${issue.id}.`)}\n\n`
+        );
         totalCommitsLanded++;
       }
 
@@ -359,15 +449,27 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
       if (!pr) {
         log('GITHUB', `PR detection timed out after ${config.poll.prDetectionTimeout}s`);
-        printFailure('no_pr', { issueIdStr: issue.id });
-        process.exit(1);
+        if (bus) bus.emit('loop:failure', { reason: `No PR found referencing ${issue.id}` });
+        else {
+          process.stdout.write(
+            `\n${error(`🔍  No PR found referencing ${issue.id}`)}\n` +
+            `\n${error('The serpent retreats.')} Fix the issue and run quetz again.\n\n`
+          );
+        }
+        return { exitCode: 1, reason: 'error' };
       }
       log('GITHUB', `Found PR #${pr.number}: "${pr.title}"`);
 
-      printPRFound(pr.number, pr.title, pr.html_url);
+      if (bus) bus.emit('loop:pr_found', { number: pr.number, title: pr.title, url: pr.html_url });
+      else process.stdout.write(
+        `${success(`✓  Found PR #${pr.number}`)}: "${pr.title}"\n` +
+        `   ${dim(pr.html_url)}\n` +
+        `   ${waiting('Watching for merge…')}\n`
+      );
 
       // 7. Poll for merge
       log('GITHUB', `Polling PR #${pr.number} for merge`);
+      if (bus) bus.emit('loop:phase', { phase: 'pr_polling' });
       const pollTimer = startElapsedTimer('polling', issue.id, iteration, issueTotal, pr.number);
 
       const result = await pollForMerge(
@@ -377,7 +479,8 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
         pr.number,
         config,
         (elapsed) => {
-          process.stdout.write(dim(`  Waiting… ${elapsed}\r`));
+          if (bus) bus.emit('loop:phase', { phase: 'pr_polling', detail: `Waiting… ${elapsed}` });
+          else process.stdout.write(dim(`  Waiting… ${elapsed}\r`));
           log('GITHUB', `Still waiting… PR #${pr.number} not yet merged (${elapsed} elapsed)`);
         }
       );
@@ -390,33 +493,45 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
           totalIssuesCompleted++;
           totalPrsMerged++;
           const remaining = issues.length - 1;
-          printMerged(pr.number, issue.id, remaining);
+          if (bus) bus.emit('loop:merged', { prNumber: pr.number, issueId: issue.id, remaining });
+          else process.stdout.write(
+            `\n${success(`✅ PR #${pr.number} merged!`)} ${brand(`The serpent devours ${issue.id}.`)}\n` +
+            `   ${dim('─'.repeat(40))}\n` +
+            `   Issues remaining: ${remaining}\n` +
+            `   ${dim('─'.repeat(40))}\n\n`
+          );
           await sleep(2000); // Brief celebration pause before next issue
           break;
         }
 
         case 'closed':
-          printFailure('closed', { prNumber: pr.number, prUrl: pr.html_url });
-          process.exit(1);
-          break;
+          if (bus) bus.emit('loop:failure', { reason: 'PR closed without merging', prNumber: pr.number, prUrl: pr.html_url });
+          else process.stdout.write(
+            `\n${error(`❌  PR #${pr.number} closed without merging`)}\n` +
+            `${dim(pr.html_url)}\n` +
+            `\n${error('The serpent retreats.')} Fix the issue and run quetz again.\n\n`
+          );
+          return { exitCode: 1, reason: 'error' };
 
         case 'ci_failed':
-          printFailure('ci_failed', {
-            prNumber: pr.number,
-            prUrl: result.pr.html_url,
-            details: result.details,
-          });
-          process.exit(1);
-          break;
+          if (bus) bus.emit('loop:failure', { reason: 'CI failed', detail: result.details, prNumber: pr.number, prUrl: result.pr.html_url });
+          else process.stdout.write(
+            `\n${error(`💥  CI failed on PR #${pr.number}`)}\n` +
+            (result.details ? `${dim(result.details)}\n` : '') +
+            `${dim(result.pr.html_url)}\n` +
+            `\n${error('The serpent retreats.')} Fix the issue and run quetz again.\n\n`
+          );
+          return { exitCode: 1, reason: 'error' };
 
         case 'timeout':
-          printFailure('timeout', {
-            prNumber: pr.number,
-            prUrl: pr.html_url,
-            timeoutMinutes: config.poll.mergeTimeout,
-          });
-          process.exit(1);
-          break;
+          if (bus) bus.emit('loop:failure', { reason: `Merge timeout (${config.poll.mergeTimeout}m) exceeded`, prNumber: pr.number, prUrl: pr.html_url });
+          else process.stdout.write(
+            `\n${error(`⏰  Merge timeout (${config.poll.mergeTimeout}m) exceeded`)}\n` +
+            `PR #${pr.number}\n` +
+            `${dim(pr.html_url)}\n` +
+            `\n${error('The serpent retreats.')} Fix the issue and run quetz again.\n\n`
+          );
+          return { exitCode: 1, reason: 'error' };
       }
     }
 
