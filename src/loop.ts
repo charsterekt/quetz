@@ -125,19 +125,15 @@ export async function showStatus(watch: boolean = false, mock: boolean = false):
 
 // ── Run loop ─────────────────────────────────────────────────────────────────
 
-export async function runLoop(opts: { dry: boolean; model?: string; timeout?: number; verbose?: boolean; localCommits?: boolean; amend?: boolean; mock?: boolean; simulate?: boolean }): Promise<void> {
-  if (opts.verbose) {
-    setVerbose(true);
-    log('QUETZ', 'Verbose mode enabled');
-  }
+export async function runLoop(opts: { dry: boolean; model?: string; timeout?: number; localCommits?: boolean; amend?: boolean; mock?: boolean; simulate?: boolean }): Promise<void> {
+  setVerbose(true);
+  log('QUETZ', 'Verbose mode enabled');
   const simulate = opts.simulate ?? false;
   if (opts.mock || simulate) enableMockMode();
 
   const projectRoot = process.cwd();
   const config = loadConfig(projectRoot);
-  if (opts.verbose) {
-    log('CONFIG', `Loaded: ${config.github.owner}/${config.github.repo} (${config.github.defaultBranch})`);
-  }
+  log('CONFIG', `Loaded: ${config.github.owner}/${config.github.repo} (${config.github.defaultBranch})`);
 
   // ── Dry-run ──────────────────────────────────────────────────────────────
   if (opts.dry) {

@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import { AgentStreamRenderer } from './display/agent-stream.js';
 
 /**
  * Spawn a Claude Code agent process and wait for it to exit.
@@ -23,20 +24,35 @@ export function spawnAgent(
     let proc: ReturnType<typeof spawn>;
 
     try {
-      const args = ['--model', model, '--dangerously-skip-permissions', '-p'];
+      const args = [
+        '--model', model,
+        '--verbose',
+        '--output-format', 'stream-json',
+        '--dangerously-skip-permissions',
+        '-p',
+      ];
       proc = spawn('claude', args, {
         stdio: ['pipe', 'pipe', 'pipe'],
         cwd,
         shell: process.platform === 'win32',
-        env: { ...process.env, FORCE_COLOR: '1' },
       });
     } catch (err) {
       reject(new Error(`Failed to spawn claude: ${(err as Error).message}`));
       return;
     }
 
-    // Forward child stdout/stderr to parent — works regardless of PTY/shell
-    proc.stdout!.on('data', (chunk: Buffer) => process.stdout.write(chunk));
+    // Parse stream-json JSONL and render tool calls + text to stdout
+    const renderer = new AgentStreamRenderer();
+    let buffer = '';
+    proc.stdout!.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        renderer.processLine(line);
+      }
+    });
+
     proc.stderr!.on('data', (chunk: Buffer) => process.stderr.write(chunk));
 
     // Feed the prompt via stdin then close — avoids Windows 8k arg limit

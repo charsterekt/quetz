@@ -52,7 +52,7 @@ describe('spawnAgent', () => {
     expect(code).toBe(0);
     expect(mockSpawn).toHaveBeenCalledWith(
       'claude',
-      ['--model', 'sonnet', '--dangerously-skip-permissions', '-p'],
+      ['--model', 'sonnet', '--verbose', '--output-format', 'stream-json', '--dangerously-skip-permissions', '-p'],
       expect.objectContaining({ cwd: '/tmp' })
     );
   });
@@ -66,26 +66,24 @@ describe('spawnAgent', () => {
     expect((proc as any).stdin.written).toBe(longPrompt);
   });
 
-  it('pipes all stdio and forwards stdout/stderr to parent process', async () => {
+  it('parses stream-json JSONL and renders text deltas to stdout', async () => {
     const proc = makeProc(0, 50);
     mockSpawn.mockReturnValue(proc);
     const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
     const promise = spawnAgent('do stuff', '/tmp', 30);
-    // Simulate agent producing output
-    (proc as any).stdout.push(Buffer.from('hello from agent'));
+    // Simulate stream-json text delta
+    const jsonl = JSON.stringify({
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'text_delta', text: 'hello' },
+    });
+    (proc as any).stdout.push(Buffer.from(jsonl + '\n'));
     (proc as any).stdout.push(null);
     await promise;
-    expect(stdoutSpy).toHaveBeenCalledWith(expect.any(Buffer));
+    expect(stdoutSpy).toHaveBeenCalledWith('hello');
     stdoutSpy.mockRestore();
     const spawnOpts = mockSpawn.mock.calls[0][2] as { stdio: string[] };
     expect(spawnOpts.stdio).toEqual(['pipe', 'pipe', 'pipe']);
-  });
-
-  it('sets FORCE_COLOR=1 so child process preserves colors in piped mode', async () => {
-    mockSpawn.mockReturnValue(makeProc(0));
-    await spawnAgent('do stuff', '/tmp', 30);
-    const spawnOpts = mockSpawn.mock.calls[0][2] as { env: Record<string, string> };
-    expect(spawnOpts.env.FORCE_COLOR).toBe('1');
   });
 
   it('sets shell: true on Windows so claude.cmd is resolved via cmd.exe', async () => {
@@ -101,7 +99,7 @@ describe('spawnAgent', () => {
     await spawnAgent('fix the bug', '/repo', 30, 'opus');
     expect(mockSpawn).toHaveBeenCalledWith(
       'claude',
-      ['--model', 'opus', '--dangerously-skip-permissions', '-p'],
+      ['--model', 'opus', '--verbose', '--output-format', 'stream-json', '--dangerously-skip-permissions', '-p'],
       expect.any(Object)
     );
   });
