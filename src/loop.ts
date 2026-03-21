@@ -6,8 +6,14 @@ import { spawnAgent } from './agent.js';
 import { createOctokit, findPR, pollForMerge } from './github.js';
 import { setVerbose, log } from './verbose.js';
 import { brand, success, waiting, error, dim } from './display/terminal.js';
-import { formatElapsed, updateStatusLine } from './display/status.js';
 import { execSync } from 'child_process';
+
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+}
 import type { QuetzBus } from './events.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -27,11 +33,17 @@ function startElapsedTimer(
   prNumber?: number
 ): { stop: () => void } {
   const startTime = Date.now();
+  let lastLen = 0;
   const interval = setInterval(() => {
     const elapsed = formatElapsed(Date.now() - startTime);
-    updateStatusLine({ iteration, total, issueIdStr, phase, elapsed, prNumber });
+    const prLabel = prNumber ? `PR #${prNumber} — ` : '';
+    const phaseText = phase === 'agent' ? 'Agent running...' : `${prLabel}waiting for merge`;
+    const line = `[quetz] Issue ${iteration}/${total} | ${issueIdStr} | ${phaseText} (${elapsed})`;
+    const clearLen = Math.max(lastLen, line.length);
+    process.stdout.write(`\r${' '.repeat(clearLen)}\r${line}`);
+    lastLen = line.length;
   }, 1000);
-  return { stop: () => clearInterval(interval) };
+  return { stop: () => { clearInterval(interval); if (lastLen > 0) process.stdout.write(`\r${' '.repeat(lastLen)}\r`); } };
 }
 
 // ── Status command ───────────────────────────────────────────────────────────

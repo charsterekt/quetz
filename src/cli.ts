@@ -30,7 +30,6 @@ async function main(): Promise<void> {
     process.stdout.write('  run --model <m>   Override agent model\n');
     process.stdout.write('  run --timeout <m> Override agent timeout (minutes)\n');
     process.stdout.write('  status            Show loop progress\n');
-    process.stdout.write('  watch             Watch loop progress (live)\n');
     process.stdout.write('  validate          Validate .quetzrc.yml\n');
     process.stdout.write('  config show       Show resolved config\n');
     process.stdout.write('\n');
@@ -96,14 +95,45 @@ async function main(): Promise<void> {
         }
       }
 
+      const { createBus } = await import('./events.js');
       const { runLoop } = await import('./loop.js');
-      const result = await runLoop({ dry, model, timeout, localCommits, amend, mock, simulate });
-      process.exit(result.exitCode);
+      const bus = createBus();
+
+      // TUI mode: render Ink dashboard if TTY and not dry-run
+      if (process.stdout.isTTY && !dry) {
+        const cols = process.stdout.columns ?? 80;
+        const rows = process.stdout.rows ?? 24;
+        if (cols < 100 || rows < 30) {
+          process.stderr.write(`Terminal too small (${cols}x${rows}). Minimum: 100x30.\n`);
+          process.exit(EXIT_FAILURE);
+        }
+        if (cols < 120 || rows < 40) {
+          process.stderr.write(`Warning: terminal ${cols}x${rows} is below recommended 120x40.\n`);
+        }
+
+        const React = require('react');
+        const { initInk } = await import('./ui/ink-imports.js');
+        const inkModule = await initInk();
+        const { App } = await import('./ui/App.js');
+
+        // Enter alternate screen
+        process.stdout.write('\x1b[?1049h');
+
+        const app = inkModule.render(React.createElement(App, { bus }));
+        const result = await runLoop({ dry, model, timeout, localCommits, amend, mock, simulate }, bus);
+
+        app.unmount();
+        process.stdout.write('\x1b[?1049l'); // leave alternate screen
+        process.exit(result.exitCode);
+      } else {
+        // Non-TUI fallback (piped, dry-run, no TTY)
+        const result = await runLoop({ dry, model, timeout, localCommits, amend, mock, simulate }, bus);
+        process.exit(result.exitCode);
+      }
       break;
     }
-    case 'status':
-    case 'watch': {
-      const watch = command === 'watch' || args.includes('--watch') || args.includes('-w');
+    case 'status': {
+      const watch = args.includes('--watch') || args.includes('-w');
       const mock = args.includes('--mock');
       const { showStatus } = await import('./loop.js');
       await showStatus(watch, mock);
