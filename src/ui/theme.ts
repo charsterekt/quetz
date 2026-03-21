@@ -3,12 +3,18 @@
 export const colors = {
   brand: 'green',
   brandBold: 'greenBright',
+  text: 'white',
   issue: 'cyan',
   success: 'green',
   warning: 'yellow',
   error: 'red',
   dim: 'gray',
-  border: 'green',
+  border: 'gray',
+  divider: 'gray',
+  agentHeader: 'cyan',
+  quetzHeader: 'magenta',
+  toolName: 'cyan',
+  pr: 'blue',
 } as const;
 
 export const phaseIcons: Record<string, string> = {

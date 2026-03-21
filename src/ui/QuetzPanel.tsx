@@ -59,7 +59,8 @@ export const QuetzPanel: React.FC<QuetzPanelProps> = ({ bus }) => {
 
   return (
     <Box flexDirection="column" flexGrow={1} minWidth={25} borderStyle="single" borderColor={colors.border} paddingX={1}>
-      <Text bold color={colors.brand}>Quetz Log</Text>
+      <Text bold color={colors.quetzHeader}>Quetz Log</Text>
+      <Text color={colors.divider} wrap="truncate">{'─'.repeat(30)}</Text>
       <Box flexDirection="column" flexGrow={1}>
         {lines.slice(-15).map((line, i) => {
           const isError = line.startsWith('FAILURE') || line.startsWith('ERROR');

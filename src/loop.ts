@@ -324,12 +324,11 @@ export async function runLoop(
     const prompt = assemblePrompt(issueDetails, bdPrime, config, localCommits, amend, isFirstIssue);
 
     // 5. Spawn agent
-    if (bus) bus.emit('loop:phase', { phase: 'agent_running' });
-    else process.stdout.write(dim('\n  Starting agent…\n'));
-
     const agentStart = Date.now();
     const agentTimeout = opts.timeout ?? config.agent.timeout;
     const agentModel = opts.model ?? config.agent.model ?? 'sonnet';
+    if (bus) bus.emit('loop:phase', { phase: 'agent_running', detail: agentModel });
+    else process.stdout.write(dim('\n  Starting agent…\n'));
     log('AGENT', `model=${agentModel}, timeout=${agentTimeout}m`);
 
     let exitCode: number;

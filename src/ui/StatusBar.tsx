@@ -16,7 +16,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ bus }) => {
   const prLabel = state.prNumber ? `PR #${state.prNumber}` : '---';
 
   return (
-    <Box borderStyle="single" borderColor={colors.border} paddingX={1}>
+    <Box borderStyle="single" borderColor={colors.dim} paddingX={1}>
       <Text color={colors.brand} bold>{icon}</Text>
       <Text> Issue {state.iteration}/{state.total}</Text>
       <Text dimColor> | </Text>
