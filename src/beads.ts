@@ -1,4 +1,5 @@
 import { execSync, execFileSync } from 'child_process';
+import { MOCK_ISSUES } from './mock-data.js';
 
 export interface BeadsIssue {
   id: string;
@@ -22,6 +23,24 @@ export interface BeadsDependency {
   type: string;
 }
 
+// ── Mock mode ────────────────────────────────────────────────────────────────
+
+let mockMode = false;
+
+export function enableMockMode(): void {
+  mockMode = true;
+}
+
+export function disableMockMode(): void {
+  mockMode = false;
+}
+
+export function isMockMode(): boolean {
+  return mockMode;
+}
+
+// ── bd wrappers ───────────────────────────────────────────────────────────────
+
 function exec(cmd: string): string {
   try {
     return execSync(cmd, { encoding: 'utf-8' });
@@ -34,16 +53,33 @@ function exec(cmd: string): string {
 }
 
 export function getReadyIssues(): BeadsIssue[] {
+  if (mockMode) return MOCK_ISSUES.filter(i => i.status === 'ready');
   const output = exec('bd ready --json');
   const parsed: unknown = JSON.parse(output);
   if (!Array.isArray(parsed)) return [];
   return parsed as BeadsIssue[];
 }
 
+export function listAllIssues(): BeadsIssue[] {
+  if (mockMode) return MOCK_ISSUES;
+  try {
+    const output = execSync('bd list --json', { encoding: 'utf-8' });
+    const parsed: unknown = JSON.parse(output);
+    return Array.isArray(parsed) ? (parsed as BeadsIssue[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function getIssueDetails(id: string): BeadsIssue {
   // Validate issue ID to prevent command injection (alphanumeric, hyphens, underscores only)
   if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
     throw new Error(`Invalid issue ID format: ${id}`);
+  }
+  if (mockMode) {
+    const issue = MOCK_ISSUES.find(i => i.id === id);
+    if (!issue) throw new Error(`Mock issue not found: ${id}`);
+    return issue;
   }
   try {
     const output = execFileSync('bd', ['show', id, '--json'], { encoding: 'utf-8' });

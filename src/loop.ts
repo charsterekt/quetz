@@ -1,5 +1,5 @@
 import { loadConfig } from './config.js';
-import { getReadyIssues, getIssueDetails, getPrimeContext } from './beads.js';
+import { getReadyIssues, getIssueDetails, getPrimeContext, listAllIssues, enableMockMode } from './beads.js';
 import { checkoutDefault, pullDefault, countNewCommits, getCommitCountAhead } from './git.js';
 import { assemblePrompt } from './prompt.js';
 import { spawnAgent } from './agent.js';
@@ -86,42 +86,11 @@ function getStatusDisplay(
   );
 }
 
-export async function showStatus(watch: boolean = false): Promise<void> {
+export async function showStatus(watch: boolean = false, mock: boolean = false): Promise<void> {
+  if (mock) enableMockMode();
   const config = loadConfig();
 
-  if (watch) {
-    process.stdout.write(brand('\nQuetz Status (--watch mode)\n'));
-    process.stdout.write('Press Ctrl+C to exit\n\n');
-
-    while (true) {
-      let readyIssues: { id: string; title: string; priority: number }[] = [];
-      try {
-        readyIssues = getReadyIssues();
-      } catch {
-        process.stderr.write(error('Failed to query bd ready.\n'));
-        process.exit(1);
-      }
-
-      let allIssues: { status: string }[] = [];
-      try {
-        const raw = execSync('bd list --json', { encoding: 'utf-8' });
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) allIssues = parsed as { status: string }[];
-      } catch {
-        // bd list may not exist; fall back gracefully
-      }
-
-      const total = allIssues.length;
-      const inProgress = allIssues.filter(i => i.status === 'in_progress').length;
-      const completed = allIssues.filter(i => i.status === 'closed' || i.status === 'done').length;
-      const ready = readyIssues.length;
-      const nextIssue = readyIssues[0];
-
-      process.stdout.write('\x1b[2J\x1b[0f');
-      process.stdout.write(getStatusDisplay(ready, inProgress, completed, total, nextIssue, config));
-      await sleep(5000);
-    }
-  } else {
+  function fetchStatusData() {
     let readyIssues: { id: string; title: string; priority: number }[] = [];
     try {
       readyIssues = getReadyIssues();
@@ -129,33 +98,40 @@ export async function showStatus(watch: boolean = false): Promise<void> {
       process.stderr.write(error('Failed to query bd ready.\n'));
       process.exit(1);
     }
-
-    let allIssues: { status: string }[] = [];
-    try {
-      const raw = execSync('bd list --json', { encoding: 'utf-8' });
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) allIssues = parsed as { status: string }[];
-    } catch {
-      // bd list may not exist; fall back gracefully
-    }
-
+    const allIssues = listAllIssues();
     const total = allIssues.length;
     const inProgress = allIssues.filter(i => i.status === 'in_progress').length;
     const completed = allIssues.filter(i => i.status === 'closed' || i.status === 'done').length;
     const ready = readyIssues.length;
     const nextIssue = readyIssues[0];
+    return { ready, inProgress, completed, total, nextIssue };
+  }
 
-    process.stdout.write('\n' + getStatusDisplay(ready, inProgress, completed, total, nextIssue, config));
+  if (watch) {
+    process.stdout.write(brand('\nQuetz Status') + (mock ? dim(' [mock]') : '') + '\n');
+    process.stdout.write('Press Ctrl+C to exit\n\n');
+
+    while (true) {
+      const data = fetchStatusData();
+      process.stdout.write('\x1b[2J\x1b[H');
+      process.stdout.write(getStatusDisplay(data.ready, data.inProgress, data.completed, data.total, data.nextIssue, config));
+      await sleep(5000);
+    }
+  } else {
+    const data = fetchStatusData();
+    process.stdout.write('\n' + getStatusDisplay(data.ready, data.inProgress, data.completed, data.total, data.nextIssue, config));
   }
 }
 
 // ── Run loop ─────────────────────────────────────────────────────────────────
 
-export async function runLoop(opts: { dry: boolean; model?: string; timeout?: number; verbose?: boolean; localCommits?: boolean; amend?: boolean }): Promise<void> {
+export async function runLoop(opts: { dry: boolean; model?: string; timeout?: number; verbose?: boolean; localCommits?: boolean; amend?: boolean; mock?: boolean; simulate?: boolean }): Promise<void> {
   if (opts.verbose) {
     setVerbose(true);
     log('QUETZ', 'Verbose mode enabled');
   }
+  const simulate = opts.simulate ?? false;
+  if (opts.mock || simulate) enableMockMode();
 
   const projectRoot = process.cwd();
   const config = loadConfig(projectRoot);
@@ -211,13 +187,16 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
   const localCommits = opts.localCommits ?? false;
   const amend = opts.amend ?? false;
   const localMode = localCommits || amend; // no GitHub API needed
-  const octokit = localMode ? null : createOctokit();
+  const octokit = (localMode || simulate) ? null : createOctokit();
   let iteration = 0;
   const loopStart = Date.now();
   let totalIssuesCompleted = 0;
   let totalPrsMerged = 0;
   let totalCommitsLanded = 0;
   let isFirstIssue = true; // tracks first vs. subsequent issues in amend mode
+  // In simulate mode, track which mock issues have been "consumed" so the loop
+  // advances through the list instead of re-fetching the same first issue.
+  const simulateCompleted = new Set<string>();
 
   while (true) {
     iteration++;
@@ -231,13 +210,18 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
       process.exit(1);
     }
 
+    // In simulate mode, filter out already-completed issues
+    if (simulate) {
+      issues = issues.filter(i => !simulateCompleted.has(i.id));
+    }
+
     if (issues.length === 0) {
       if (iteration === 1) {
         process.stdout.write(waiting('\nNo ready issues found. The serpent sleeps.\n'));
       } else {
         let finalCommitHash: string | undefined;
         let finalCommitMsg: string | undefined;
-        if (amend) {
+        if (amend && !simulate) {
           try {
             const gitLog = execSync(`git log -1 --format=%H %s`, { encoding: 'utf-8', cwd: projectRoot }).trim();
             const spaceIdx = gitLog.indexOf(' ');
@@ -306,8 +290,8 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
     printPickup(issue.id, issue.title, issue.priority, issue.issue_type);
 
-    // 4. Git reset to default branch (skip in amend mode — we accumulate on current branch)
-    if (!amend) {
+    // 4. Git reset to default branch (skip in amend mode and simulate mode)
+    if (!amend && !simulate) {
       if (!tui.isActive()) {
         process.stdout.write(dim(`  git checkout ${config.github.defaultBranch} && git pull…\n`));
       }
@@ -321,7 +305,7 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
     }
 
     // 5. Assemble prompt
-    const bdPrime = getPrimeContext();
+    const bdPrime = simulate ? '' : getPrimeContext();
     const prompt = assemblePrompt(issueDetails, bdPrime, config, localCommits, amend, isFirstIssue);
 
     // 6. Spawn agent — set up TUI for streaming output
@@ -355,7 +339,64 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
     const agentElapsed = formatElapsed(Date.now() - agentStart);
 
-    if (amend) {
+    if (simulate) {
+      // ── Simulate path: fake the post-agent lifecycle so you see every phase ─
+      const fakePrNum = 100 + iteration;
+      const fakePrTitle = `feat: ${issueDetails.title.toLowerCase()} (${issue.id})`;
+      const fakePrUrl = `https://github.com/${config.github.owner}/${config.github.repo}/pull/${fakePrNum}`;
+
+      // Show polling phase
+      if (tui.isActive()) {
+        tui.writeHeader({
+          issueIdStr: issue.id,
+          issueTitle: issueDetails.title ?? issue.title,
+          iteration,
+          total: issueTotal,
+          elapsed: agentElapsed,
+          phase: 'polling',
+        });
+        tui.writeFooter({
+          issueIdStr: issue.id,
+          phase: 'polling',
+          elapsed: agentElapsed,
+        });
+      }
+
+      // Simulate PR detection delay
+      await sleep(1500);
+      printPRFound(fakePrNum, fakePrTitle, fakePrUrl);
+
+      // Simulate merge poll delay
+      const pollTimer = startElapsedTimer('polling', issue.id, iteration, issueTotal, fakePrNum);
+      await sleep(3000);
+      pollTimer.stop();
+
+      // Celebrate
+      totalIssuesCompleted++;
+      totalPrsMerged++;
+      simulateCompleted.add(issue.id);
+      const remaining = issues.length - 1;
+
+      if (tui.isActive()) {
+        tui.writeHeader({
+          issueIdStr: issue.id,
+          issueTitle: issueDetails.title ?? issue.title,
+          iteration,
+          total: issueTotal,
+          elapsed: formatElapsed(Date.now() - agentStart),
+          phase: 'celebration',
+        });
+        tui.writeFooter({
+          issueIdStr: issue.id,
+          phase: 'celebration',
+          elapsed: formatElapsed(Date.now() - agentStart),
+          prNumber: fakePrNum,
+        });
+      }
+      printMerged(fakePrNum, issue.id, remaining);
+      await sleep(2000);
+
+    } else if (amend) {
       // ── Amend path: verify commit count, update isFirstIssue, then continue ─
       if (tui.isActive()) {
         tui.writeHeader({

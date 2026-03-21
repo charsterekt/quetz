@@ -136,13 +136,19 @@ The user can fully override this template in `.quetzrc.yml`. The default is a st
 ### 2.4 Agent Spawning
 
 ```typescript
-const agent = spawn('claude', ['-p', prompt, '--dangerously-skip-permissions'], {
-  stdio: 'inherit',  // all output goes straight to the user's terminal
-  cwd: projectRoot,  // run in the project directory
+const args = ['--model', model, '--dangerously-skip-permissions', '-p'];
+const proc = spawn('claude', args, {
+  stdio: ['pipe', 'inherit', 'inherit'],  // stdin piped, stdout/stderr to terminal
+  cwd: projectRoot,
+  shell: process.platform === 'win32',    // resolve claude.cmd on Windows
 });
+proc.stdin.write(prompt);
+proc.stdin.end();
 ```
 
-`stdio: 'inherit'` is critical. The user sees exactly what they'd see running Claude Code manually — every file edit, every test run, every commit message. Quetz adds its own status chrome above and below this, but the agent session is unfiltered.
+The prompt is piped via stdin rather than passed as a command-line argument. This avoids OS argument-length limits (Windows truncates at ~8K characters; assembled prompts with beads context regularly exceed this).
+
+stdout/stderr are inherited so the user sees exactly what they'd see running Claude Code manually — every file edit, every test run, every commit message. Quetz adds its own status chrome above and below this, but the agent session is unfiltered.
 
 The agent process is a black box to Quetz. It does not parse agent output, detect intermediate states, or send signals to the agent. It waits for the process to exit.
 
@@ -177,7 +183,30 @@ every <pollInterval> seconds:
 
 On success, Quetz prints a merge confirmation with the PR link, then loops back to step 1.
 
-### 2.7 Failure Handling
+### 2.7 Alternative Run Modes
+
+The default loop (sections 2.1–2.6) uses the full PR lifecycle. Two alternative modes skip GitHub entirely:
+
+**`--local-commits` mode:** After the agent exits, Quetz checks for new commits on the current branch relative to the default branch. If commits exist, the issue is considered done. No PR detection, no merge polling, no GitHub API access. Useful for workflows where PRs are not required.
+
+**`--amend` mode:** Like `--local-commits`, but accumulates all issue work into a single rolling commit. The first issue creates a new commit; subsequent issues amend onto it. Also skips git checkout/pull between iterations so work stays on a single branch. Useful for bundling many small issues into one atomic change.
+
+These two flags are mutually exclusive.
+
+### 2.8 Mock and Simulate Modes
+
+**`--mock`:** Replaces all `bd` calls with a built-in set of fake issues (defined in `src/mock-data.ts`). The loop runs normally against these issues — real git, real agent, real GitHub. Useful when `bd` is not installed or no Beads graph exists.
+
+**`--simulate`:** Full visual test of the entire loop without external dependencies. Implies `--mock`, and additionally:
+- Skips git checkout/pull
+- Skips `bd prime`
+- Spawns a real Claude agent for each mock issue (you see streaming output)
+- After the agent exits, simulates PR detection (1.5s delay), merge polling (3s delay), and merge celebration
+- Tracks completed mock issues so the loop advances, then shows the victory screen
+
+This lets developers verify every TUI phase end-to-end.
+
+### 2.9 Failure Handling
 
 Quetz has exactly one failure mode: **notify and exit.**
 
@@ -249,20 +278,38 @@ The user confirms or overrides each value.
 ### 4.1 Commands
 
 ```
-quetz init      First-time setup. Generates .quetzrc.yml, runs preflight checks,
-                optionally scaffolds GitHub Actions.
+quetz init         First-time setup. Generates .quetzrc.yml, runs preflight checks,
+                   optionally scaffolds GitHub Actions.
 
-quetz run       Start the dev loop. Runs until all issues are resolved or a
-                failure occurs.
+quetz run          Start the dev loop. Runs until all issues are resolved or a
+                   failure occurs.
 
-quetz run --dry Show what would happen: lists issues in order, prints the prompt
-                for the first one, exits without spawning.
+quetz run --dry    Show what would happen: lists issues in order, prints the prompt
+                   for the first one, exits without spawning.
 
-quetz status    Show current loop state: how many issues remain, what's in
-                progress, last completed issue.
+quetz status       Show current loop state: how many issues remain, what's in
+                   progress, last completed issue.
 
-quetz help      Show all commands with descriptions.
+quetz watch        Alias for quetz status --watch. Live-refreshing status (5s).
+
+quetz help         Show all commands with descriptions.
 ```
+
+**Flags for `quetz run`:**
+
+| Flag | Description |
+|---|---|
+| `--dry` | Preview mode: list issues, print first prompt, exit |
+| `--model <model>` | Override agent model (default: sonnet) |
+| `--timeout <min>` | Kill agent after N minutes (default: 30) |
+| `--verbose` | Debug logging to stderr |
+| `--no-animate` | Disable TUI; plain scrolling output |
+| `--local-commits` | Skip PR lifecycle; verify local commits only |
+| `--amend` | Accumulate all issues into a single rolling commit |
+| `--mock` | Use built-in fake issues (no `bd` required) |
+| `--simulate` | Full visual test: mock issues + real agent + simulated PR lifecycle |
+
+`--local-commits` and `--amend` are mutually exclusive. `--simulate` implies `--mock`.
 
 ### 4.2 Output Design
 
@@ -532,13 +579,16 @@ quetz/
 │   ├── config.ts              # .quetzrc.yml loader/writer, schema validation
 │   ├── init.ts                # quetz init flow — preflight, config gen, actions
 │   ├── loop.ts                # Main run loop — orchestrates everything
-│   ├── agent.ts               # Claude Code process spawning + lifecycle
-│   ├── beads.ts               # bd CLI wrapper — ready, show, prime
+│   ├── agent.ts               # Claude Code spawn with stdin-piped prompt
+│   ├── beads.ts               # bd CLI wrapper — ready, show, prime + mock mode
+│   ├── mock-data.ts           # Built-in fake issues for --mock and --simulate
 │   ├── github.ts              # Octokit — PR detection, merge polling
 │   ├── prompt.ts              # Prompt template assembly + variable injection
 │   ├── git.ts                 # Git operations — checkout, pull (minimal)
 │   ├── preflight.ts           # CLI availability checks (claude, gh, bd, git)
+│   ├── verbose.ts             # Global verbose flag, log() helper (stderr)
 │   ├── display/
+│   │   ├── tui.ts             # Full-screen TUI — alt buffer, scroll regions
 │   │   ├── terminal.ts        # Colour helpers, ANSI codes, terminal size
 │   │   ├── spinner.ts         # Animated spinner for polling states
 │   │   ├── banner.ts          # ASCII art, startup animation, usage banner
@@ -572,12 +622,18 @@ Kept minimal. Quetz is a thin wrapper — it should install fast and break rarel
 ```typescript
 import { spawn } from 'child_process';
 
-export function spawnAgent(prompt: string, cwd: string, timeout: number): Promise<number> {
+export function spawnAgent(prompt: string, cwd: string, timeout: number, model = 'sonnet'): Promise<number> {
   return new Promise((resolve, reject) => {
-    const proc = spawn('claude', ['-p', prompt, '--dangerously-skip-permissions'], {
-      stdio: 'inherit',
+    const args = ['--model', model, '--dangerously-skip-permissions', '-p'];
+    const proc = spawn('claude', args, {
+      stdio: ['pipe', 'inherit', 'inherit'],
       cwd,
+      shell: process.platform === 'win32',
     });
+
+    // Pipe prompt via stdin to avoid OS arg-length limits
+    proc.stdin!.write(prompt);
+    proc.stdin!.end();
 
     const timer = setTimeout(() => {
       proc.kill('SIGTERM');
@@ -599,20 +655,23 @@ export function spawnAgent(prompt: string, cwd: string, timeout: number): Promis
 
 **Beads integration (beads.ts):**
 ```typescript
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
+import { MOCK_ISSUES } from './mock-data.js';
+
+let mockMode = false;
+export function enableMockMode(): void { mockMode = true; }
 
 export function getReadyIssues(): BeadsIssue[] {
+  if (mockMode) return MOCK_ISSUES.filter(i => i.status === 'ready');
   const output = execSync('bd ready --json', { encoding: 'utf-8' });
   return JSON.parse(output);
 }
 
 export function getIssueDetails(id: string): BeadsIssue {
-  const output = execSync(`bd show ${id} --json`, { encoding: 'utf-8' });
+  if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error(`Invalid issue ID: ${id}`);
+  if (mockMode) return MOCK_ISSUES.find(i => i.id === id)!;
+  const output = execFileSync('bd', ['show', id, '--json'], { encoding: 'utf-8' });
   return JSON.parse(output);
-}
-
-export function getPrimeContext(): string {
-  return execSync('bd prime', { encoding: 'utf-8' });
 }
 ```
 
@@ -685,7 +744,7 @@ These are explicitly out of scope but worth noting for later:
 - **Webhook listener** — replace polling with GitHub webhook events for faster merge detection.
 - **Plugin system** — hooks for custom behaviour at each loop stage (pre-agent, post-merge, etc.).
 - **Support for other agents** — Codex, Amp, Cursor, etc. (different spawn commands, same loop).
-- **`quetz watch`** — a mode that runs continuously, picking up new issues as they're created (daemon mode).
+- **Daemon watch mode** — `quetz watch` currently aliases `quetz status --watch`; future version could auto-run when new issues appear.
 
 ---
 

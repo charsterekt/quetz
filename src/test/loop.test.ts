@@ -8,6 +8,10 @@ vi.mock('../beads.js', () => ({
   getReadyIssues: vi.fn(),
   getIssueDetails: vi.fn(),
   getPrimeContext: vi.fn(),
+  listAllIssues: vi.fn(() => []),
+  enableMockMode: vi.fn(),
+  disableMockMode: vi.fn(),
+  isMockMode: vi.fn(() => false),
 }));
 vi.mock('../git.js', () => ({
   checkoutDefault: vi.fn(),

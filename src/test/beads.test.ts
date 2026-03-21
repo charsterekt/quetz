@@ -6,13 +6,15 @@ vi.mock('child_process', () => ({
 }));
 
 import * as childProcess from 'child_process';
-import { getReadyIssues, getIssueDetails, getPrimeContext } from '../beads.js';
+import { getReadyIssues, getIssueDetails, getPrimeContext, listAllIssues, enableMockMode, disableMockMode } from '../beads.js';
+import { MOCK_ISSUES } from '../mock-data.js';
 
 const mockExecSync = vi.mocked(childProcess.execSync);
 const mockExecFileSync = vi.mocked(childProcess.execFileSync);
 
 afterEach(() => {
   vi.clearAllMocks();
+  disableMockMode();
 });
 
 describe('getReadyIssues', () => {
@@ -70,5 +72,47 @@ describe('getPrimeContext', () => {
   it('returns empty string on failure', () => {
     mockExecSync.mockImplementation(() => { throw new Error('bd prime failed'); });
     expect(getPrimeContext()).toBe('');
+  });
+});
+
+describe('mock mode', () => {
+  it('getReadyIssues returns only ready mock issues without calling bd', () => {
+    enableMockMode();
+    const result = getReadyIssues();
+    expect(mockExecSync).not.toHaveBeenCalled();
+    expect(result.every(i => i.status === 'ready')).toBe(true);
+    expect(result.length).toBeGreaterThan(0);
+  });
+
+  it('listAllIssues returns all mock issues including non-ready ones', () => {
+    enableMockMode();
+    const result = listAllIssues();
+    expect(mockExecSync).not.toHaveBeenCalled();
+    expect(result).toEqual(MOCK_ISSUES);
+    const statuses = result.map(i => i.status);
+    expect(statuses).toContain('ready');
+    expect(statuses).toContain('in_progress');
+    expect(statuses).toContain('closed');
+  });
+
+  it('getIssueDetails finds mock issue by id without calling bd', () => {
+    enableMockMode();
+    const issue = getIssueDetails('mock-001');
+    expect(mockExecFileSync).not.toHaveBeenCalled();
+    expect(issue.id).toBe('mock-001');
+    expect(issue.title).toBeTruthy();
+  });
+
+  it('getIssueDetails throws when mock id not found', () => {
+    enableMockMode();
+    expect(() => getIssueDetails('mock-999')).toThrow('Mock issue not found');
+  });
+
+  it('disableMockMode restores bd calls', () => {
+    enableMockMode();
+    disableMockMode();
+    mockExecSync.mockReturnValue('[]' as never);
+    getReadyIssues();
+    expect(mockExecSync).toHaveBeenCalledWith('bd ready --json', expect.any(Object));
   });
 });
