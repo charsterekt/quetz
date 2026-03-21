@@ -58,6 +58,25 @@ export function getCommitCountAhead(defaultBranch: string, cwd: string = process
   return countNewCommits(defaultBranch, cwd);
 }
 
+/** Get the current branch name. */
+export function getCurrentBranch(cwd: string = process.cwd()): string {
+  try {
+    return exec('git rev-parse --abbrev-ref HEAD', cwd);
+  } catch {
+    return '';
+  }
+}
+
+/** Delete a local branch (non-force). Returns true if deleted. */
+export function deleteBranch(branch: string, cwd: string = process.cwd()): boolean {
+  try {
+    exec(`git branch -D ${branch}`, cwd);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Parse "owner" and "repo" from a GitHub remote URL (HTTPS or SSH). */
 export function parseOwnerRepo(remoteUrl: string): { owner: string; repo: string } {
   // HTTPS: https://github.com/owner/repo.git

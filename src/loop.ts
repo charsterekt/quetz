@@ -1,6 +1,6 @@
 import { loadConfig } from './config.js';
 import { getReadyIssues, getIssueDetails, getPrimeContext, listAllIssues, enableMockMode } from './beads.js';
-import { checkoutDefault, pullDefault, countNewCommits, getCommitCountAhead } from './git.js';
+import { checkoutDefault, pullDefault, countNewCommits, getCommitCountAhead, getCurrentBranch, deleteBranch } from './git.js';
 import { assemblePrompt } from './prompt.js';
 import { spawnAgent } from './agent.js';
 import { createOctokit, findPR, pollForMerge } from './github.js';
@@ -184,7 +184,7 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
   }
 
   // ── Normal run loop ───────────────────────────────────────────────────────
-  const localCommits = opts.localCommits ?? false;
+  const localCommits = simulate ? true : (opts.localCommits ?? false);
   const amend = opts.amend ?? false;
   const localMode = localCommits || amend; // no GitHub API needed
   const octokit = (localMode || simulate) ? null : createOctokit();
@@ -395,6 +395,18 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
       }
       printMerged(fakePrNum, issue.id, remaining);
       await sleep(2000);
+
+      // Cleanup: return to default branch and delete agent's temp branch
+      const agentBranch = getCurrentBranch(projectRoot);
+      if (agentBranch && agentBranch !== config.github.defaultBranch) {
+        try {
+          checkoutDefault(config.github.defaultBranch, projectRoot);
+          deleteBranch(agentBranch, projectRoot);
+          log('SIMULATE', `Cleaned up branch: ${agentBranch}`);
+        } catch {
+          log('SIMULATE', `Warning: could not clean up branch ${agentBranch}`);
+        }
+      }
 
     } else if (amend) {
       // ── Amend path: verify commit count, update isFirstIssue, then continue ─
