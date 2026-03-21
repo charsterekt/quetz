@@ -59,6 +59,8 @@ async function main(): Promise<void> {
       const verbose = args.includes('--verbose');
       const localCommits = args.includes('--local-commits');
       const amend = args.includes('--amend');
+      const mock = args.includes('--mock');
+      const simulate = args.includes('--simulate');
 
       // Validate mutual exclusion: --amend and --local-commits cannot be used together
       if (amend && localCommits) {
@@ -91,13 +93,15 @@ async function main(): Promise<void> {
       await printSerpentAnimated(!noAnimate && process.stdout.isTTY && !dry);
 
       const { runLoop } = await import('./loop.js');
-      await runLoop({ dry, model, timeout, verbose, localCommits, amend });
+      await runLoop({ dry, model, timeout, verbose, localCommits, amend, mock, simulate });
       break;
     }
-    case 'status': {
-      const watch = args.includes('--watch') || args.includes('-w');
+    case 'status':
+    case 'watch': {
+      const watch = command === 'watch' || args.includes('--watch') || args.includes('-w');
+      const mock = args.includes('--mock');
       const { showStatus } = await import('./loop.js');
-      await showStatus(watch);
+      await showStatus(watch, mock);
       break;
     }
     default: {

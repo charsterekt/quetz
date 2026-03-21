@@ -2,9 +2,10 @@ import { spawn } from 'child_process';
 
 /**
  * Spawn a Claude Code agent process and wait for it to exit.
- * stdio is inherited so the user sees all agent output in real time.
+ * The prompt is piped via stdin (avoids OS arg-length limits).
+ * stdout/stderr are inherited so the user sees agent output in real time.
  *
- * @param prompt         The prompt string passed via -p
+ * @param prompt         The prompt string piped to stdin
  * @param cwd            Working directory for the agent
  * @param timeoutMinutes Kill the agent after this many minutes (default 30)
  * @param model          Claude model to use (default: sonnet)
@@ -20,15 +21,20 @@ export function spawnAgent(
     let proc: ReturnType<typeof spawn>;
 
     try {
-      const args = ['-p', prompt, '--model', model, '--dangerously-skip-permissions'];
+      const args = ['--model', model, '--dangerously-skip-permissions', '-p'];
       proc = spawn('claude', args, {
-        stdio: 'inherit',
+        stdio: ['pipe', 'inherit', 'inherit'],
         cwd,
+        shell: process.platform === 'win32',
       });
     } catch (err) {
       reject(new Error(`Failed to spawn claude: ${(err as Error).message}`));
       return;
     }
+
+    // Feed the prompt via stdin then close — avoids Windows 8k arg limit
+    proc.stdin!.write(prompt);
+    proc.stdin!.end();
 
     const timeoutMs = timeoutMinutes * 60 * 1000;
     const timer = setTimeout(() => {

@@ -158,7 +158,12 @@ Start the dev loop. Runs until all issues are resolved or a failure occurs.
 | `--timeout <minutes>` | `30` | Kill agent if it runs longer than this |
 | `--verbose` | — | Enable debug logging to stderr (`[category] message` format) |
 | `--no-animate` | — | Disable TUI and animations; plain scrolling output |
-| `--local-commits` | — | Skip PR detection/merge polling; verify local commits only |
+| `--local-commits` | — | Skip PR lifecycle; verify local commits only |
+| `--amend` | — | Accumulate all issue work into a single rolling commit (no PR) |
+| `--mock` | — | Use built-in fake issues instead of calling `bd` |
+| `--simulate` | — | Full visual test run: mock issues, real agent, simulated PR lifecycle |
+
+`--local-commits` and `--amend` are mutually exclusive. Both skip GitHub API access entirely.
 
 ### `quetz validate`
 
@@ -176,6 +181,16 @@ Show current loop state: issues ready, in progress, and completed.
 quetz status           # Snapshot
 quetz status --watch   # Refresh every 5 seconds
 quetz status -w        # Same
+quetz status --mock    # Use fake issues (no bd required)
+```
+
+### `quetz watch`
+
+Alias for `quetz status --watch`. Live-refreshing status display (5-second interval).
+
+```bash
+quetz watch            # Live status
+quetz watch --mock     # Live status with fake issues
 ```
 
 ### `quetz help`
@@ -208,7 +223,7 @@ Quetz calls `bd ready --json` and takes the first unblocked, highest-priority is
 
 ### Agent spawning
 
-The agent runs with `stdio: 'inherit'` — you see everything it does, streamed into the TUI's content region. Quetz never parses agent output. It spawns, waits for exit, then looks for the PR.
+The agent runs as a child process with stdout/stderr inherited — you see everything it does, streamed into the TUI's content region. The prompt is piped via stdin (not as a command-line argument) to avoid OS argument-length limits on Windows. Quetz never parses agent output. It spawns, waits for exit, then looks for the PR.
 
 If the agent runs past `agent.timeout` minutes, Quetz kills it and exits with code 1.
 
@@ -224,7 +239,30 @@ Quetz polls the PR state every `poll.interval` seconds. When it merges, Quetz ce
 
 ### `--local-commits` mode
 
-Skips PR detection and merge polling entirely. Quetz verifies that the agent pushed commits to the remote, then moves on. Useful for workflows where PRs are not required.
+Skips PR detection and merge polling entirely. After the agent exits, Quetz verifies that new commits exist on the current branch, then moves on. No GitHub API access required.
+
+### `--amend` mode
+
+Accumulates all issue work into a single rolling commit. The first issue creates a new commit; subsequent issues amend onto it. Useful for bundling multiple small issues into one atomic change. No GitHub API access required.
+
+### `--simulate` mode
+
+End-to-end visual test of the full Quetz loop without needing `bd` or GitHub:
+
+- Uses built-in mock issues (implies `--mock`)
+- Skips git checkout/pull
+- Spawns a real Claude agent for each mock issue
+- After the agent finishes, simulates PR detection (1.5s), merge polling (3s), and celebration
+- Loops through all mock issues and shows the victory screen
+
+This lets you see every TUI phase — pickup, agent streaming, PR found, merge, celebration — without touching real infrastructure.
+
+```bash
+quetz run --simulate                    # full visual test
+quetz run --simulate --model haiku      # faster/cheaper agents
+quetz run --simulate --timeout 2        # 2-min agent cap per issue
+quetz run --simulate --no-animate       # skip serpent animation
+```
 
 ---
 
@@ -334,8 +372,9 @@ src/
 ├── config.ts           .quetzrc.yml loader/validator/defaults
 ├── init.ts             quetz init — preflight, config gen, Actions scaffold
 ├── loop.ts             Main run loop orchestration
-├── agent.ts            child_process.spawn('claude', ...) with stdio: 'inherit'
-├── beads.ts            Typed wrappers around bd ready/show/prime
+├── agent.ts            Spawn claude with prompt via stdin, stdout/stderr inherited
+├── beads.ts            Typed wrappers around bd ready/show/prime + mock mode
+├── mock-data.ts        Built-in fake issues for --mock and --simulate
 ├── github.ts           Octokit-based PR detection and merge polling
 ├── prompt.ts           Handlebars template assembly
 ├── git.ts              git checkout and git pull only
