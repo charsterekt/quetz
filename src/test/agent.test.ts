@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { createBus } from '../events.js';
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn(),
@@ -64,7 +65,27 @@ describe('spawnAgent', () => {
     );
   });
 
-  it('renders text_delta stream events to stdout', async () => {
+  it('emits agent:text events via bus for text_delta stream events', async () => {
+    const bus = createBus();
+    const textHandler = vi.fn();
+    bus.on('agent:text', textHandler);
+
+    mockQuery.mockReturnValue(mockQueryResult([
+      {
+        type: 'stream_event',
+        event: {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'text_delta', text: 'hello' },
+        },
+      },
+      { type: 'result', subtype: 'success', is_error: false, result: 'done' },
+    ]));
+    await spawnAgent('do stuff', '/tmp', 30, 'sonnet', bus);
+    expect(textHandler).toHaveBeenCalledWith({ text: 'hello' });
+  });
+
+  it('falls back to stdout.write when no bus provided', async () => {
     const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
     mockQuery.mockReturnValue(mockQueryResult([
       {
@@ -82,8 +103,13 @@ describe('spawnAgent', () => {
     stdoutSpy.mockRestore();
   });
 
-  it('renders tool use summaries with name and abbreviated input on block stop', async () => {
-    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+  it('emits agent:tool_start on content_block_start and agent:tool_done on content_block_stop', async () => {
+    const bus = createBus();
+    const startHandler = vi.fn();
+    const doneHandler = vi.fn();
+    bus.on('agent:tool_start', startHandler);
+    bus.on('agent:tool_done', doneHandler);
+
     mockQuery.mockReturnValue(mockQueryResult([
       {
         type: 'stream_event',
@@ -107,15 +133,16 @@ describe('spawnAgent', () => {
       },
       { type: 'result', subtype: 'success', is_error: false, result: 'done' },
     ]));
-    await spawnAgent('do stuff', '/tmp', 30);
-    const toolCall = stdoutSpy.mock.calls.find(c => String(c[0]).includes('Read'));
-    expect(toolCall).toBeTruthy();
-    expect(String(toolCall![0])).toContain('src/foo.ts');
-    stdoutSpy.mockRestore();
+    await spawnAgent('do stuff', '/tmp', 30, 'sonnet', bus);
+    expect(startHandler).toHaveBeenCalledWith({ index: 1, name: 'Read' });
+    expect(doneHandler).toHaveBeenCalledWith({ index: 1, name: 'Read', summary: expect.stringContaining('src/foo.ts') });
   });
 
   it('reassembles chunked input_json_delta across multiple events', async () => {
-    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const bus = createBus();
+    const doneHandler = vi.fn();
+    bus.on('agent:tool_done', doneHandler);
+
     mockQuery.mockReturnValue(mockQueryResult([
       {
         type: 'stream_event',
@@ -147,15 +174,18 @@ describe('spawnAgent', () => {
       },
       { type: 'result', subtype: 'success', is_error: false, result: 'done' },
     ]));
-    await spawnAgent('do stuff', '/tmp', 30);
-    const toolCall = stdoutSpy.mock.calls.find(c => String(c[0]).includes('Edit'));
-    expect(toolCall).toBeTruthy();
-    expect(String(toolCall![0])).toContain('a/b/c.ts');
-    stdoutSpy.mockRestore();
+    await spawnAgent('do stuff', '/tmp', 30, 'sonnet', bus);
+    expect(doneHandler).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Edit',
+      summary: expect.stringContaining('a/b/c.ts'),
+    }));
   });
 
-  it('renders Bash tool with truncated command summary', async () => {
-    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+  it('emits agent:tool_done with Bash command summary', async () => {
+    const bus = createBus();
+    const doneHandler = vi.fn();
+    bus.on('agent:tool_done', doneHandler);
+
     mockQuery.mockReturnValue(mockQueryResult([
       {
         type: 'stream_event',
@@ -179,15 +209,18 @@ describe('spawnAgent', () => {
       },
       { type: 'result', subtype: 'success', is_error: false, result: 'done' },
     ]));
-    await spawnAgent('do stuff', '/tmp', 30);
-    const toolCall = stdoutSpy.mock.calls.find(c => String(c[0]).includes('Bash'));
-    expect(toolCall).toBeTruthy();
-    expect(String(toolCall![0])).toContain('npm test');
-    stdoutSpy.mockRestore();
+    await spawnAgent('do stuff', '/tmp', 30, 'sonnet', bus);
+    expect(doneHandler).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Bash',
+      summary: 'npm test',
+    }));
   });
 
-  it('renders Grep tool with quoted pattern', async () => {
-    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+  it('emits agent:tool_done with Grep quoted pattern', async () => {
+    const bus = createBus();
+    const doneHandler = vi.fn();
+    bus.on('agent:tool_done', doneHandler);
+
     mockQuery.mockReturnValue(mockQueryResult([
       {
         type: 'stream_event',
@@ -211,10 +244,11 @@ describe('spawnAgent', () => {
       },
       { type: 'result', subtype: 'success', is_error: false, result: 'done' },
     ]));
-    await spawnAgent('do stuff', '/tmp', 30);
-    const toolCall = stdoutSpy.mock.calls.find(c => String(c[0]).includes('"TODO"'));
-    expect(toolCall).toBeTruthy();
-    stdoutSpy.mockRestore();
+    await spawnAgent('do stuff', '/tmp', 30, 'sonnet', bus);
+    expect(doneHandler).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Grep',
+      summary: '"TODO"',
+    }));
   });
 
   it('uses default model "sonnet" when no model specified', async () => {
@@ -278,14 +312,27 @@ describe('spawnAgent', () => {
     expect(callArgs.options.abortController).toBeInstanceOf(AbortController);
   });
 
-  it('forwards stderr output via SDK callback', async () => {
+  it('emits agent:stderr via bus when bus provided', async () => {
+    const bus = createBus();
+    const stderrHandler = vi.fn();
+    bus.on('agent:stderr', stderrHandler);
+
+    mockQuery.mockReturnValue(mockQueryResult([
+      { type: 'result', subtype: 'success', is_error: false, result: 'done' },
+    ]));
+    await spawnAgent('do stuff', '/tmp', 30, 'sonnet', bus);
+    const callArgs = mockQuery.mock.calls[0][0] as any;
+    expect(typeof callArgs.options.stderr).toBe('function');
+    callArgs.options.stderr('test error');
+    expect(stderrHandler).toHaveBeenCalledWith({ data: 'test error' });
+  });
+
+  it('forwards stderr to process.stderr when no bus', async () => {
     mockQuery.mockReturnValue(mockQueryResult([
       { type: 'result', subtype: 'success', is_error: false, result: 'done' },
     ]));
     await spawnAgent('do stuff', '/tmp', 30);
     const callArgs = mockQuery.mock.calls[0][0] as any;
-    expect(typeof callArgs.options.stderr).toBe('function');
-    // Verify the stderr callback writes to process.stderr
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
     callArgs.options.stderr('test error');
     expect(stderrSpy).toHaveBeenCalledWith('test error');
@@ -293,6 +340,7 @@ describe('spawnAgent', () => {
   });
 
   it('rejects when async generator throws mid-iteration', async () => {
+    const bus = createBus();
     mockQuery.mockReturnValue((async function* () {
       yield {
         type: 'stream_event',
@@ -300,8 +348,7 @@ describe('spawnAgent', () => {
       };
       throw new Error('network disconnected');
     })() as any);
-    vi.spyOn(process.stdout, 'write').mockReturnValue(true);
-    await expect(spawnAgent('do stuff', '/tmp', 30)).rejects.toThrow('network disconnected');
+    await expect(spawnAgent('do stuff', '/tmp', 30, 'sonnet', bus)).rejects.toThrow('network disconnected');
   });
 
   it('returns 1 when result subtype is success but is_error is true', async () => {
@@ -311,8 +358,11 @@ describe('spawnAgent', () => {
     expect(await spawnAgent('do stuff', '/tmp', 30)).toBe(1);
   });
 
-  it('renders unknown tool names using first string value from input', async () => {
-    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+  it('emits agent:tool_done for unknown tool names using first string value', async () => {
+    const bus = createBus();
+    const doneHandler = vi.fn();
+    bus.on('agent:tool_done', doneHandler);
+
     mockQuery.mockReturnValue(mockQueryResult([
       {
         type: 'stream_event',
@@ -336,10 +386,10 @@ describe('spawnAgent', () => {
       },
       { type: 'result', subtype: 'success', is_error: false, result: 'done' },
     ]));
-    await spawnAgent('do stuff', '/tmp', 30);
-    const toolCall = stdoutSpy.mock.calls.find(c => String(c[0]).includes('CustomMcpTool'));
-    expect(toolCall).toBeTruthy();
-    expect(String(toolCall![0])).toContain('search term');
-    stdoutSpy.mockRestore();
+    await spawnAgent('do stuff', '/tmp', 30, 'sonnet', bus);
+    expect(doneHandler).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'CustomMcpTool',
+      summary: 'search term',
+    }));
   });
 });

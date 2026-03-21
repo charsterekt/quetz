@@ -97,7 +97,8 @@ async function main(): Promise<void> {
       }
 
       const { runLoop } = await import('./loop.js');
-      await runLoop({ dry, model, timeout, localCommits, amend, mock, simulate });
+      const result = await runLoop({ dry, model, timeout, localCommits, amend, mock, simulate });
+      process.exit(result.exitCode);
       break;
     }
     case 'status':
