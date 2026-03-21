@@ -13,12 +13,20 @@ Quetz is a local npm package that wraps the Claude Code CLI into a self-feeding 
 ```bash
 npm install              # install dependencies
 npm run build            # compile TypeScript to dist/
-npm run dev              # build in watch mode (if configured)
+npm run dev              # build in watch mode
+npm run clean            # remove dist/
+npm test                 # run all tests (vitest)
+npm run test:watch       # run tests in watch mode
+npx vitest run src/test/config.test.ts   # run a single test file
 npx quetz init           # first-time project setup
 npx quetz run            # start the dev loop
 npx quetz run --dry      # preview without executing
+npx quetz run --mock     # run with fake issues (no real bd/git needed)
+npx quetz run --simulate # mock issues + real agent + fake PR lifecycle
 npx quetz status         # show loop progress
 ```
+
+There is no eslint or prettier config — TypeScript strict mode is the linter.
 
 ## Issue Tracking
 
@@ -48,22 +56,26 @@ Key modules in `src/`:
 |---|---|
 | `cli.ts` | Entry point, command router, exit codes (0/1/2/3) |
 | `config.ts` | `.quetzrc.yml` loader/writer/validator |
-| `loop.ts` | Main run loop orchestration |
-| `agent.ts` | `child_process.spawn('claude', ...)` with `stdio: 'inherit'` |
-| `beads.ts` | Typed wrappers around `bd ready`, `bd show`, `bd prime` |
+| `loop.ts` | Main run loop orchestration (~550 lines, the core of the product) |
+| `agent.ts` | Spawns agent via `@anthropic-ai/claude-agent-sdk` with streaming output |
+| `beads.ts` | Typed wrappers around `bd ready`, `bd show`, `bd prime`; mock mode support |
 | `github.ts` | Octokit-based PR detection and merge polling |
 | `prompt.ts` | Handlebars template assembly with issue/context variables |
-| `git.ts` | Only two operations: `git checkout` and `git pull` |
+| `git.ts` | `git checkout`, `git pull`, branch/remote helpers |
 | `preflight.ts` | Checks for claude, gh, bd, git availability and auth |
 | `init.ts` | `quetz init` — preflight, config gen, Actions scaffolding |
-| `display/` | terminal colors, spinner, banner, status line, messages |
+| `events.ts` | Typed event bus (QuetzBus) for loop→TUI communication |
+| `mock-data.ts` | Built-in fake issues for `--mock`/`--simulate` modes |
+| `verbose.ts` | Global verbose flag and `log(category, msg)` helper |
+| `display/` | Terminal color palette (chalk), ANSI helpers |
+| `ui/` | Ink React components for full-screen TUI (App, AgentPanel, QuetzPanel, StatusBar) |
 
 ## Key Design Constraints
 
 - **No retries.** Every failure mode is: notify and exit. The user fixes and reruns.
 - **Agent is a black box.** Quetz never parses agent output or sends signals. It spawns, waits for exit, then looks for the PR.
 - **Sequential only.** One loop, one agent at a time. No parallelism in v0.1.
-- **Minimal deps.** @octokit/rest, chalk, ora, yaml, handlebars. No heavy frameworks.
+- **Minimal deps.** @octokit/rest, chalk, yaml, handlebars, ink (React TUI). No heavy frameworks.
 - **Under 2000 lines of TypeScript** total for v0.1.0.
 - **PR detection is loose.** Quetz doesn't dictate branch names — it discovers what the agent did by searching recent PRs that reference the issue ID.
 - **Config lives in `.quetzrc.yml`** at project root. See spec section 3.1 for full schema.
