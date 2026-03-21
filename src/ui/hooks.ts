@@ -1,6 +1,38 @@
 import { useState, useEffect, useRef } from 'react';
 import type { QuetzBus, QuetzEventName, QuetzEvent, QuetzPhase } from '../events.js';
 
+export interface ProgressState {
+  iteration: number;
+  total: number;
+}
+
+/**
+ * Lightweight hook for progress bar: only re-renders on pickup/start events,
+ * never on a timer tick. Keeps the timer isolated to StatusBar only (quetz-nc4).
+ */
+export function useProgress(bus: QuetzBus): ProgressState {
+  const [state, setState] = useState<ProgressState>({ iteration: 0, total: 0 });
+
+  useEffect(() => {
+    const onPickup = (p: QuetzEvent['loop:issue_pickup']) => {
+      setState({ iteration: p.iteration, total: p.total });
+    };
+    const onStart = (p: QuetzEvent['loop:start']) => {
+      setState(prev => ({ ...prev, total: p.total }));
+    };
+
+    bus.on('loop:issue_pickup', onPickup);
+    bus.on('loop:start', onStart);
+
+    return () => {
+      bus.off('loop:issue_pickup', onPickup);
+      bus.off('loop:start', onStart);
+    };
+  }, [bus]);
+
+  return state;
+}
+
 export function useEventLog(
   bus: QuetzBus,
   eventNames: QuetzEventName[],

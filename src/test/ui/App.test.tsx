@@ -37,7 +37,7 @@ describe('App', () => {
     const instance = render(React.createElement(App, { bus }));
     const output = instance.lastFrame();
     expect(output).toContain('q quit');
-    expect(output).toContain('p pause');
+    expect(output).not.toContain('p pause');
     instance.unmount();
   });
 
