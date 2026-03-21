@@ -116,14 +116,11 @@ async function main(): Promise<void> {
         const inkModule = await initInk();
         const { App } = await import('./ui/App.js');
 
-        // Enter alternate screen
-        process.stdout.write('\x1b[?1049h');
-
+        // Render Ink first so it sets up stdin raw mode before any escape codes are written
         const app = inkModule.render(React.createElement(App, { bus }));
         const result = await runLoop({ dry, model, timeout, localCommits, amend, mock, simulate }, bus);
 
         app.unmount();
-        process.stdout.write('\x1b[?1049l'); // leave alternate screen
         process.exit(result.exitCode);
       } else {
         // Non-TUI fallback (piped, dry-run, no TTY)
