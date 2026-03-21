@@ -1,6 +1,5 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKMessage, SDKResultMessage, SDKPartialAssistantMessage } from '@anthropic-ai/claude-agent-sdk';
-import { dim, waiting, brand } from './display/terminal.js';
 
 /**
  * Spawn a Claude Code agent via the SDK and wait for it to complete.
@@ -107,7 +106,7 @@ function renderStreamEvent(event: any, blocks: Map<number, BlockState>): void {
         let input: Record<string, any> = {};
         try { input = JSON.parse(inputStr); } catch { /* partial/empty is fine */ }
         const summary = formatToolSummary(block.name, input);
-        process.stdout.write(`  ${waiting('▸')} ${brand(block.name)} ${dim(summary)}\n`);
+        process.stdout.write(`  [${block.name}] ${summary}\n`);
         blocks.delete(event.index);
       }
       break;

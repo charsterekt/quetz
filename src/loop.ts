@@ -18,7 +18,6 @@ import {
   type VictoryStats,
 } from './display/messages.js';
 import { brand, success, waiting, error, dim } from './display/terminal.js';
-import * as tui from './display/tui.js';
 import { formatElapsed, updateStatusLine } from './display/status.js';
 import { execSync } from 'child_process';
 
@@ -35,23 +34,6 @@ function startElapsedTimer(
   const interval = setInterval(() => {
     const elapsed = formatElapsed(Date.now() - startTime);
     updateStatusLine({ iteration, total, issueIdStr, phase, elapsed, prNumber });
-    if (tui.isActive()) {
-      tui.writeHeader({
-        issueIdStr,
-        issueTitle: '',
-        iteration,
-        total,
-        elapsed,
-        phase,
-      });
-    }
-    if (tui.consumeResize()) {
-      // Re-render header and footer on terminal resize
-      if (tui.isActive()) {
-        tui.writeHeader({ issueIdStr, issueTitle: '', iteration, total, elapsed, phase });
-        tui.writeFooter({ issueIdStr, phase, elapsed, prNumber });
-      }
-    }
   }, 1000);
   return { stop: () => clearInterval(interval) };
 }
@@ -236,21 +218,6 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
           commitHash: finalCommitHash,
           commitMsg: finalCommitMsg,
         };
-        if (tui.isActive()) {
-          tui.writeHeader({
-            issueIdStr: '',
-            issueTitle: '',
-            iteration: totalIssuesCompleted,
-            total: totalIssuesCompleted,
-            elapsed: stats.totalTime,
-            phase: 'victory',
-          });
-          tui.writeFooter({
-            issueIdStr: '',
-            phase: 'victory',
-            elapsed: stats.totalTime,
-          });
-        }
         printVictory(stats);
       }
       process.exit(0);
@@ -267,30 +234,11 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
       // fall back to ready data
     }
 
-    // 3. Update TUI header for agent phase
-    if (tui.isActive()) {
-      tui.writeHeader({
-        issueIdStr: issue.id,
-        issueTitle: issueDetails.title ?? issue.title,
-        iteration,
-        total: issueTotal,
-        elapsed: '0m 00s',
-        phase: 'agent',
-      });
-      tui.writeFooter({
-        issueIdStr: issue.id,
-        phase: 'agent',
-        elapsed: '0m 00s',
-      });
-    }
-
     printPickup(issue.id, issue.title, issue.priority, issue.issue_type);
 
-    // 4. Git reset to default branch (skip in amend mode and simulate mode)
+    // 3. Git reset to default branch (skip in amend mode and simulate mode)
     if (!amend && !simulate) {
-      if (!tui.isActive()) {
-        process.stdout.write(dim(`  git checkout ${config.github.defaultBranch} && git pull…\n`));
-      }
+      process.stdout.write(dim(`  git checkout ${config.github.defaultBranch} && git pull…\n`));
       try {
         checkoutDefault(config.github.defaultBranch, projectRoot);
         pullDefault(config.github.defaultBranch, projectRoot);
@@ -300,63 +248,35 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
       }
     }
 
-    // 5. Assemble prompt
+    // 4. Assemble prompt
     const bdPrime = simulate ? '' : getPrimeContext();
     const prompt = assemblePrompt(issueDetails, bdPrime, config, localCommits, amend, isFirstIssue);
 
-    // 6. Spawn agent — set up TUI for streaming output
+    // 5. Spawn agent
     printAgentStarting();
 
     const agentStart = Date.now();
     const agentTimeout = opts.timeout ?? config.agent.timeout;
     const agentModel = opts.model ?? config.agent.model ?? 'sonnet';
-    log('AGENT', `Spawning: claude -p <prompt> --model ${agentModel} --dangerously-skip-permissions`);
-    log('AGENT', `Timeout: ${agentTimeout} minutes`);
-
-    // Start elapsed timer (updates header + footer every second)
-    const agentTimer = startElapsedTimer('agent', issue.id, iteration, issueTotal);
+    log('AGENT', `model=${agentModel}, timeout=${agentTimeout}m`);
 
     const exitCode = await spawnAgent(prompt, projectRoot, agentTimeout, agentModel).catch(err => {
-      agentTimer.stop();
       process.stderr.write(error(`\nAgent error: ${(err as Error).message}\n`));
       process.exit(1);
     });
 
-    agentTimer.stop();
-
     if (exitCode !== 0) {
-      if (!tui.isActive()) {
-        const hint = localMode ? 'Checking for local commit…' : 'Attempting PR detection…';
-        process.stdout.write(waiting(`\n  Agent exited with code ${exitCode}. ${hint}\n`));
-      }
+      const hint = localMode ? 'Checking for local commit…' : 'Attempting PR detection…';
+      process.stdout.write(waiting(`\n  Agent exited with code ${exitCode}. ${hint}\n`));
     }
 
     printAgentComplete();
-
-    const agentElapsed = formatElapsed(Date.now() - agentStart);
 
     if (simulate) {
       // ── Simulate path: fake the post-agent lifecycle so you see every phase ─
       const fakePrNum = 100 + iteration;
       const fakePrTitle = `feat: ${issueDetails.title.toLowerCase()} (${issue.id})`;
       const fakePrUrl = `https://github.com/${config.github.owner}/${config.github.repo}/pull/${fakePrNum}`;
-
-      // Show polling phase
-      if (tui.isActive()) {
-        tui.writeHeader({
-          issueIdStr: issue.id,
-          issueTitle: issueDetails.title ?? issue.title,
-          iteration,
-          total: issueTotal,
-          elapsed: agentElapsed,
-          phase: 'polling',
-        });
-        tui.writeFooter({
-          issueIdStr: issue.id,
-          phase: 'polling',
-          elapsed: agentElapsed,
-        });
-      }
 
       // Simulate PR detection delay
       await sleep(1500);
@@ -373,22 +293,6 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
       simulateCompleted.add(issue.id);
       const remaining = issues.length - 1;
 
-      if (tui.isActive()) {
-        tui.writeHeader({
-          issueIdStr: issue.id,
-          issueTitle: issueDetails.title ?? issue.title,
-          iteration,
-          total: issueTotal,
-          elapsed: formatElapsed(Date.now() - agentStart),
-          phase: 'celebration',
-        });
-        tui.writeFooter({
-          issueIdStr: issue.id,
-          phase: 'celebration',
-          elapsed: formatElapsed(Date.now() - agentStart),
-          prNumber: fakePrNum,
-        });
-      }
       printMerged(fakePrNum, issue.id, remaining);
       await sleep(2000);
 
@@ -406,22 +310,6 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
     } else if (amend) {
       // ── Amend path: verify commit count, update isFirstIssue, then continue ─
-      if (tui.isActive()) {
-        tui.writeHeader({
-          issueIdStr: issue.id,
-          issueTitle: issueDetails.title ?? issue.title,
-          iteration,
-          total: issueTotal,
-          elapsed: agentElapsed,
-          phase: 'commit',
-        });
-        tui.writeFooter({
-          issueIdStr: issue.id,
-          phase: 'commit',
-          elapsed: agentElapsed,
-        });
-      }
-
       const commitCount = getCommitCountAhead(config.github.defaultBranch, projectRoot);
       log('GIT', `Commits ahead of ${config.github.defaultBranch}: ${commitCount}`);
 
@@ -442,22 +330,6 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
     } else if (localCommits) {
       // ── Local-commits path: verify a commit landed, then continue ──────────
-      if (tui.isActive()) {
-        tui.writeHeader({
-          issueIdStr: issue.id,
-          issueTitle: issueDetails.title ?? issue.title,
-          iteration,
-          total: issueTotal,
-          elapsed: agentElapsed,
-          phase: 'commit',
-        });
-        tui.writeFooter({
-          issueIdStr: issue.id,
-          phase: 'commit',
-          elapsed: agentElapsed,
-        });
-      }
-
       const newCommits = countNewCommits(config.github.defaultBranch, projectRoot);
       log('GIT', `New commits since ${config.github.defaultBranch}: ${newCommits}`);
 
@@ -473,23 +345,7 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
     } else {
       // ── PR path: detect PR and poll for merge ──────────────────────────────
-      if (tui.isActive()) {
-        tui.writeHeader({
-          issueIdStr: issue.id,
-          issueTitle: issueDetails.title ?? issue.title,
-          iteration,
-          total: issueTotal,
-          elapsed: agentElapsed,
-          phase: 'polling',
-        });
-        tui.writeFooter({
-          issueIdStr: issue.id,
-          phase: 'polling',
-          elapsed: agentElapsed,
-        });
-      }
-
-      // 7. Detect PR
+      // 6. Detect PR
       log('GITHUB', `Searching for PR referencing ${issue.id}`);
       const spawnTime = new Date(agentStart);
       const pr = await findPR(
@@ -510,7 +366,7 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
 
       printPRFound(pr.number, pr.title, pr.html_url);
 
-      // 8. Poll for merge — update footer with PR number
+      // 7. Poll for merge
       log('GITHUB', `Polling PR #${pr.number} for merge`);
       const pollTimer = startElapsedTimer('polling', issue.id, iteration, issueTotal, pr.number);
 
@@ -521,9 +377,7 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
         pr.number,
         config,
         (elapsed) => {
-          if (!tui.isActive()) {
-            process.stdout.write(dim(`  Waiting… ${elapsed}\r`));
-          }
+          process.stdout.write(dim(`  Waiting… ${elapsed}\r`));
           log('GITHUB', `Still waiting… PR #${pr.number} not yet merged (${elapsed} elapsed)`);
         }
       );
@@ -536,22 +390,6 @@ export async function runLoop(opts: { dry: boolean; model?: string; timeout?: nu
           totalIssuesCompleted++;
           totalPrsMerged++;
           const remaining = issues.length - 1;
-          if (tui.isActive()) {
-            tui.writeHeader({
-              issueIdStr: issue.id,
-              issueTitle: issueDetails.title ?? issue.title,
-              iteration,
-              total: issueTotal,
-              elapsed: formatElapsed(Date.now() - agentStart),
-              phase: 'celebration',
-            });
-            tui.writeFooter({
-              issueIdStr: issue.id,
-              phase: 'celebration',
-              elapsed: formatElapsed(Date.now() - agentStart),
-              prNumber: pr.number,
-            });
-          }
           printMerged(pr.number, issue.id, remaining);
           await sleep(2000); // Brief celebration pause before next issue
           break;

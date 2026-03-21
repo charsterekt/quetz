@@ -19,8 +19,21 @@ async function main(): Promise<void> {
   }
 
   if (!command || command === 'help' || command === '--help' || command === '-h') {
-    const { printHelp } = await import('./display/banner.js');
-    printHelp();
+    process.stdout.write('Usage: quetz <command> [options]\n\n');
+    process.stdout.write('Commands:\n');
+    process.stdout.write('  init              Initialize quetz in this project\n');
+    process.stdout.write('  run               Start the dev loop\n');
+    process.stdout.write('  run --dry         Preview without executing\n');
+    process.stdout.write('  run --local-commits  Commit locally instead of PR\n');
+    process.stdout.write('  run --amend       Amend all work into one commit\n');
+    process.stdout.write('  run --simulate    Simulate the full loop (mock + fake lifecycle)\n');
+    process.stdout.write('  run --model <m>   Override agent model\n');
+    process.stdout.write('  run --timeout <m> Override agent timeout (minutes)\n');
+    process.stdout.write('  status            Show loop progress\n');
+    process.stdout.write('  watch             Watch loop progress (live)\n');
+    process.stdout.write('  validate          Validate .quetzrc.yml\n');
+    process.stdout.write('  config show       Show resolved config\n');
+    process.stdout.write('\n');
     process.exit(EXIT_SUCCESS);
   }
 
@@ -55,7 +68,6 @@ async function main(): Promise<void> {
     }
     case 'run': {
       const dry = args.includes('--dry');
-      const noAnimate = args.includes('--no-animate');
       const localCommits = args.includes('--local-commits');
       const amend = args.includes('--amend');
       const mock = args.includes('--mock');
@@ -84,13 +96,6 @@ async function main(): Promise<void> {
         }
       }
 
-      // Enter TUI (alternate screen buffer) and show startup serpent
-      const tuiModule = await import('./display/tui.js');
-      if (process.stdout.isTTY && !dry) tuiModule.enter();
-
-      const { printSerpentAnimated } = await import('./display/banner.js');
-      await printSerpentAnimated(!noAnimate && process.stdout.isTTY && !dry);
-
       const { runLoop } = await import('./loop.js');
       await runLoop({ dry, model, timeout, localCommits, amend, mock, simulate });
       break;
@@ -104,9 +109,7 @@ async function main(): Promise<void> {
       break;
     }
     default: {
-      process.stderr.write(`Unknown command: ${command}\n`);
-      const { printHelp } = await import('./display/banner.js');
-      printHelp();
+      process.stderr.write(`Unknown command: ${command}\nRun "quetz help" for usage.\n`);
       process.exit(EXIT_FAILURE);
     }
   }

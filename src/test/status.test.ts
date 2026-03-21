@@ -12,12 +12,6 @@ vi.mock('../display/terminal.js', () => ({
   chrome: (t: string) => t,
 }));
 
-// Mock tui so isActive() returns false in tests (no alt-screen side effects)
-vi.mock('../display/tui.js', () => ({
-  isActive: () => false,
-  writeFooter: vi.fn(),
-}));
-
 import { formatStatusLine, formatElapsed, updateStatusLine, clearStatusLine, type StatusState } from '../display/status.js';
 
 let stdoutSpy: ReturnType<typeof vi.spyOn>;

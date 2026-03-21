@@ -1,7 +1,6 @@
 // Persistent status line management (spec 6.4)
 
 import { brand, issueId, waiting, dim } from './terminal.js';
-import * as tui from './tui.js';
 
 export interface StatusState {
   iteration: number;
@@ -39,18 +38,6 @@ export function renderStatusLine(state: StatusState): string {
 }
 
 export function updateStatusLine(state: StatusState): void {
-  if (tui.isActive()) {
-    // Use absolute cursor positioning to update sticky footer
-    tui.writeFooter({
-      issueIdStr: state.issueIdStr,
-      phase: state.phase,
-      elapsed: state.elapsed,
-      prNumber: state.prNumber,
-    });
-    return;
-  }
-
-  // Fallback: carriage-return overwrite for non-TUI mode
   const line = renderStatusLine(state);
   const plain = formatStatusLine(state);
   const clearLen = Math.max(lastLineLength, plain.length);
@@ -59,7 +46,6 @@ export function updateStatusLine(state: StatusState): void {
 }
 
 export function clearStatusLine(): void {
-  if (tui.isActive()) return; // Footer persists in TUI mode
   if (lastLineLength > 0) {
     process.stdout.write(`\r${' '.repeat(lastLineLength)}\r`);
     lastLineLength = 0;

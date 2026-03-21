@@ -12,15 +12,6 @@ vi.mock('../display/terminal.js', () => ({
   chrome: (t: string) => t,
 }));
 
-// Mock tui so isActive() returns false — tests use plain-text fallback paths
-vi.mock('../display/tui.js', () => ({
-  isActive: () => false,
-  clearContentArea: vi.fn(),
-  writePanel: vi.fn(),
-  ANSI: { resetScroll: '' },
-  HEADER_ROWS: 3,
-}));
-
 import { printPickup, printAgentComplete, printPRFound, printMerged, printVictory, printFailure, printAmendComplete } from '../display/messages.js';
 
 let stdoutSpy: ReturnType<typeof vi.spyOn>;
