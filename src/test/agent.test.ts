@@ -52,7 +52,7 @@ describe('spawnAgent', () => {
     expect(code).toBe(0);
     expect(mockSpawn).toHaveBeenCalledWith(
       'claude',
-      ['--model', 'sonnet', '--dangerously-skip-permissions', '--output-format', 'stream-json', '-p'],
+      ['--model', 'sonnet', '--verbose', '--dangerously-skip-permissions', '--output-format', 'stream-json', '-p'],
       expect.objectContaining({ cwd: '/tmp' })
     );
   });
@@ -65,10 +65,11 @@ describe('spawnAgent', () => {
     expect((proc as any).stdin.written).toBe(longPrompt);
   });
 
-  it('uses stream-json output format and pipes all stdio', async () => {
+  it('uses --verbose and stream-json output format with piped stdio', async () => {
     mockSpawn.mockReturnValue(makeProc(0));
     await spawnAgent('do stuff', '/tmp', 30);
     const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
+    expect(spawnArgs).toContain('--verbose');
     expect(spawnArgs).toContain('--output-format');
     expect(spawnArgs).toContain('stream-json');
     const spawnOpts = mockSpawn.mock.calls[0][2] as { stdio: string[] };
@@ -116,7 +117,7 @@ describe('spawnAgent', () => {
     await spawnAgent('fix the bug', '/repo', 30, 'opus');
     expect(mockSpawn).toHaveBeenCalledWith(
       'claude',
-      ['--model', 'opus', '--dangerously-skip-permissions', '--output-format', 'stream-json', '-p'],
+      ['--model', 'opus', '--verbose', '--dangerously-skip-permissions', '--output-format', 'stream-json', '-p'],
       expect.any(Object)
     );
   });

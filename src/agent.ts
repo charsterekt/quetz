@@ -27,6 +27,7 @@ export function spawnAgent(
     try {
       const args = [
         '--model', model,
+        '--verbose',
         '--dangerously-skip-permissions',
         '--output-format', 'stream-json',
         '-p',

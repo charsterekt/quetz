@@ -56,7 +56,6 @@ async function main(): Promise<void> {
     case 'run': {
       const dry = args.includes('--dry');
       const noAnimate = args.includes('--no-animate');
-      const verbose = args.includes('--verbose');
       const localCommits = args.includes('--local-commits');
       const amend = args.includes('--amend');
       const mock = args.includes('--mock');
@@ -93,7 +92,7 @@ async function main(): Promise<void> {
       await printSerpentAnimated(!noAnimate && process.stdout.isTTY && !dry);
 
       const { runLoop } = await import('./loop.js');
-      await runLoop({ dry, model, timeout, verbose, localCommits, amend, mock, simulate });
+      await runLoop({ dry, model, timeout, localCommits, amend, mock, simulate });
       break;
     }
     case 'status':
