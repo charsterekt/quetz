@@ -130,7 +130,11 @@ async function main(): Promise<void> {
           } catch { /* keyboard shortcuts unavailable on this terminal */ }
         }
 
-        const app = inkModule.render(React.createElement(App, { bus }));
+        // Quit promise: resolves when user presses q, racing against runLoop.
+        let resolveQuit!: () => void;
+        const quitPromise = new Promise<void>(resolve => { resolveQuit = resolve; });
+
+        const app = inkModule.render(React.createElement(App, { bus, onQuit: resolveQuit }));
 
         // Yield one event-loop tick so React useEffect hooks can register bus
         // listeners before runLoop starts emitting loop:start / loop:issue_pickup.
@@ -138,10 +142,24 @@ async function main(): Promise<void> {
         // UI shows blank/0/0 until the second issue begins.
         await new Promise<void>(resolve => setImmediate(resolve));
 
-        const result = await runLoop({ dry, model, timeout, localCommits, amend, mock, simulate }, bus);
+        // Enter alternate screen AFTER Ink has finished raw-mode setup.
+        // Writing before render() would block Ink's stdin ownership (quetz-3g0).
+        process.stdout.write('\x1b[?1049h\x1b[2J\x1b[H');
 
+        // Restore terminal on Ctrl+C so the main screen comes back cleanly.
+        const onSigint = () => { process.stdout.write('\x1b[?1049l'); process.exit(0); };
+        process.once('SIGINT', onSigint);
+
+        const raceResult = await Promise.race([
+          runLoop({ dry, model, timeout, localCommits, amend, mock, simulate }, bus)
+            .then(r => ({ exitCode: r.exitCode })),
+          quitPromise.then(() => ({ exitCode: 0 })),
+        ]);
+
+        process.off('SIGINT', onSigint);
+        process.stdout.write('\x1b[?1049l');
         app.unmount();
-        process.exit(result.exitCode);
+        process.exit(raceResult.exitCode);
       } else {
         // Non-TUI fallback (piped, dry-run, no TTY)
         const result = await runLoop({ dry, model, timeout, localCommits, amend, mock, simulate }, bus);

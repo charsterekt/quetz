@@ -1,7 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { ink } from './ink-imports.js';
 import { colors } from './theme.js';
-import { usePhase } from './hooks.js';
+import { useProgress } from './hooks.js';
 import { AgentPanel } from './AgentPanel.js';
 import { QuetzPanel } from './QuetzPanel.js';
 import { StatusBar } from './StatusBar.js';
@@ -23,8 +23,7 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
 
 export const App: React.FC<AppProps> = ({ bus, onQuit }) => {
   const { Box, Text, useInput, useApp } = ink();
-  const phase = usePhase(bus);
-  const [paused, setPaused] = useState(false);
+  const progress = useProgress(bus);
   const { exit } = useApp();
 
   const handleQuit = useCallback(() => {
@@ -34,7 +33,6 @@ export const App: React.FC<AppProps> = ({ bus, onQuit }) => {
 
   useInput((input: string, key: { upArrow: boolean; downArrow: boolean }) => {
     if (input === 'q') handleQuit();
-    if (input === 'p') setPaused(prev => !prev);
     if (key.upArrow) (bus as any)._agentScroll?.('up');
     if (key.downArrow) (bus as any)._agentScroll?.('down');
   });
@@ -48,8 +46,7 @@ export const App: React.FC<AppProps> = ({ bus, onQuit }) => {
           <Text dimColor> The Feathered Serpent Dev Loop</Text>
         </Box>
         <Box>
-          <ProgressBar current={phase.iteration > 0 ? phase.iteration - 1 : 0} total={phase.total} />
-          {paused && <Text color={colors.warning}> [PAUSED]</Text>}
+          <ProgressBar current={progress.iteration > 0 ? progress.iteration - 1 : 0} total={progress.total} />
         </Box>
       </Box>
 
@@ -64,7 +61,7 @@ export const App: React.FC<AppProps> = ({ bus, onQuit }) => {
 
       {/* Keyboard hint */}
       <Box paddingX={1}>
-        <Text dimColor>q quit | p pause | arrows scroll agent</Text>
+        <Text dimColor>q quit | arrows scroll agent</Text>
       </Box>
     </Box>
   );
