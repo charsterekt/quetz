@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { QuetzBus, QuetzEventName, QuetzEvent, QuetzPhase } from '../events.js';
+import { createSessionHistoryState, reduceSessionHistory, type SessionHistoryState } from './session-history.js';
 
 export interface ProgressState {
   iteration: number;
@@ -128,6 +129,50 @@ export function usePhase(bus: QuetzBus): PhaseState {
       clearInterval(timer);
     };
   }, [bus]);
+
+  return state;
+}
+
+export function useSessionHistory(bus: QuetzBus, maxSessions: number = 20): SessionHistoryState {
+  const [state, setState] = useState<SessionHistoryState>(() => createSessionHistoryState());
+
+  useEffect(() => {
+    const apply = (event: Parameters<typeof reduceSessionHistory>[1]) => {
+      setState(prev => reduceSessionHistory(prev, event, maxSessions));
+    };
+
+    const onPickup = (payload: QuetzEvent['loop:issue_pickup']) => apply({ type: 'loop:issue_pickup', payload });
+    const onPhase = (payload: QuetzEvent['loop:phase']) => apply({ type: 'loop:phase', payload });
+    const onText = (payload: QuetzEvent['agent:text']) => apply({ type: 'agent:text', payload });
+    const onToolDone = (payload: QuetzEvent['agent:tool_done']) => apply({ type: 'agent:tool_done', payload });
+    const onStderr = (payload: QuetzEvent['agent:stderr']) => apply({ type: 'agent:stderr', payload });
+    const onMerged = () => apply({ type: 'loop:merged' });
+    const onCommit = () => apply({ type: 'loop:commit_landed' });
+    const onAmend = () => apply({ type: 'loop:amend_complete' });
+    const onFailure = () => apply({ type: 'loop:failure' });
+
+    bus.on('loop:issue_pickup', onPickup);
+    bus.on('loop:phase', onPhase);
+    bus.on('agent:text', onText);
+    bus.on('agent:tool_done', onToolDone);
+    bus.on('agent:stderr', onStderr);
+    bus.on('loop:merged', onMerged);
+    bus.on('loop:commit_landed', onCommit);
+    bus.on('loop:amend_complete', onAmend);
+    bus.on('loop:failure', onFailure);
+
+    return () => {
+      bus.off('loop:issue_pickup', onPickup);
+      bus.off('loop:phase', onPhase);
+      bus.off('agent:text', onText);
+      bus.off('agent:tool_done', onToolDone);
+      bus.off('agent:stderr', onStderr);
+      bus.off('loop:merged', onMerged);
+      bus.off('loop:commit_landed', onCommit);
+      bus.off('loop:amend_complete', onAmend);
+      bus.off('loop:failure', onFailure);
+    };
+  }, [bus, maxSessions]);
 
   return state;
 }

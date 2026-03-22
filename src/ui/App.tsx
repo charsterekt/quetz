@@ -1,10 +1,12 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ink } from './ink-imports.js';
 import { colors } from './theme.js';
-import { useProgress } from './hooks.js';
+import { useProgress, useSessionHistory } from './hooks.js';
 import { AgentPanel } from './AgentPanel.js';
 import { QuetzPanel } from './QuetzPanel.js';
 import { StatusBar } from './StatusBar.js';
+import { HistoryPanel } from './HistoryPanel.js';
+import { SessionDetailPanel } from './SessionDetailPanel.js';
 import type { QuetzBus } from '../events.js';
 
 interface AppProps {
@@ -15,60 +17,163 @@ interface AppProps {
   version?: string;
 }
 
+type RightView = 'dashboard' | 'history' | 'detail';
+
 function ProgressBar({ current, total }: { current: number; total: number }) {
   const { Text } = ink();
   const width = 20;
   const filled = total > 0 ? Math.round((current / total) * width) : 0;
   const empty = width - filled;
-  const bar = '\u25B0'.repeat(filled) + '\u25B1'.repeat(empty);
+  const bar = '■'.repeat(filled) + '□'.repeat(empty);
   return <Text dimColor>{bar} {current}/{total}</Text>;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(value, max));
 }
 
 export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', version = '' }) => {
   const { Box, Text, useInput } = ink();
   const progress = useProgress(bus);
+  const { completedSessions } = useSessionHistory(bus);
 
   const [failureReason, setFailureReason] = useState<string | null>(null);
+  const [rightView, setRightView] = useState<RightView>('dashboard');
+  const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(undefined);
+  const [detailScrollOffset, setDetailScrollOffset] = useState(0);
+
+  const selectedSession = useMemo(
+    () => completedSessions.find(session => session.issueId === selectedSessionId),
+    [completedSessions, selectedSessionId]
+  );
+
   useEffect(() => {
-    const onFailure = (p: { reason: string }) => setFailureReason(p.reason);
+    const onFailure = (payload: { reason: string }) => setFailureReason(payload.reason);
     bus.on('loop:failure', onFailure);
     return () => { bus.off('loop:failure', onFailure); };
   }, [bus]);
 
-  // Don't call Ink's exit() here — cli.ts drives the process lifecycle via
-  // process.exit(). Calling exit() would trigger a double-unmount race that
-  // writes Ink cleanup sequences after the alt-screen restore, causing artifacts.
+  useEffect(() => {
+    if (completedSessions.length === 0) {
+      setSelectedSessionId(undefined);
+      if (rightView !== 'dashboard') setRightView('history');
+      return;
+    }
+
+    if (!selectedSessionId || !completedSessions.some(session => session.issueId === selectedSessionId)) {
+      setSelectedSessionId(completedSessions[0].issueId);
+    }
+  }, [completedSessions, selectedSessionId, rightView]);
+
+  useEffect(() => {
+    if (rightView === 'detail' && !selectedSession) {
+      setRightView('history');
+      setDetailScrollOffset(0);
+    }
+  }, [rightView, selectedSession]);
+
   const handleQuit = useCallback(() => {
     if (onQuit) onQuit();
   }, [onQuit]);
 
-  useInput((input: string, key: { upArrow: boolean; downArrow: boolean }) => {
-    // \x03 is raw Ctrl+C (ETX) — sent when stdin is in raw mode (MINGW64).
-    // In raw mode, SIGINT is suppressed so the process.once('SIGINT') handler
-    // never fires; we must handle it here as a keypress instead.
-    if (input === 'q' || input === '\x03') handleQuit();
-    if (key.upArrow) (bus as any)._agentScroll?.('up');
-    if (key.downArrow) (bus as any)._agentScroll?.('down');
-    if (input === '[') (bus as any)._quetzScroll?.('up');
-    if (input === ']') (bus as any)._quetzScroll?.('down');
+  const moveSelection = useCallback((delta: number) => {
+    if (completedSessions.length === 0) return;
+    const currentIndex = Math.max(
+      0,
+      completedSessions.findIndex(session => session.issueId === selectedSessionId)
+    );
+    const nextIndex = clamp(currentIndex + delta, 0, completedSessions.length - 1);
+    setSelectedSessionId(completedSessions[nextIndex].issueId);
+  }, [completedSessions, selectedSessionId]);
+
+  useInput((input: string, key: { upArrow: boolean; downArrow: boolean; escape: boolean; return: boolean }) => {
+    if (input === 'q' || input === '\x03') {
+      handleQuit();
+      return;
+    }
+
+    if (input === 'h') {
+      setRightView(prev => {
+        if (prev === 'dashboard') return 'history';
+        return prev;
+      });
+      if (!selectedSessionId && completedSessions[0]) {
+        setSelectedSessionId(completedSessions[0].issueId);
+      }
+      return;
+    }
+
+    if (key.escape || input === 'b') {
+      if (rightView === 'detail') {
+        setRightView('history');
+        setDetailScrollOffset(0);
+        return;
+      }
+      if (rightView === 'history') {
+        setRightView('dashboard');
+        return;
+      }
+    }
+
+    if (key.return && rightView === 'history' && selectedSessionId) {
+      setRightView('detail');
+      setDetailScrollOffset(0);
+      return;
+    }
+
+    if (key.upArrow) {
+      if (rightView === 'history') {
+        moveSelection(-1);
+        return;
+      }
+      if (rightView === 'detail') {
+        const maxScroll = Math.max(0, (selectedSession?.lines.length ?? 0) - Math.max(3, (process.stdout.rows ?? 40) - 13));
+        setDetailScrollOffset(prev => Math.min(prev + 3, maxScroll));
+        return;
+      }
+      (bus as any)._agentScroll?.('up');
+      return;
+    }
+
+    if (key.downArrow) {
+      if (rightView === 'history') {
+        moveSelection(1);
+        return;
+      }
+      if (rightView === 'detail') {
+        setDetailScrollOffset(prev => Math.max(0, prev - 3));
+        return;
+      }
+      (bus as any)._agentScroll?.('down');
+      return;
+    }
+
+    if (input === '[' && rightView === 'dashboard') {
+      (bus as any)._quetzScroll?.('up');
+      return;
+    }
+
+    if (input === ']' && rightView === 'dashboard') {
+      (bus as any)._quetzScroll?.('down');
+    }
   });
 
   const rows = process.stdout.rows ?? 40;
   const cols = process.stdout.columns ?? 120;
-
-  // Hard-coded widths prevent Yoga from expanding panels when a long text line
-  // is briefly rendered before truncation kicks in (the "resize flicker" bug).
-  // Quetz gets ~33 % of columns, minimum 36; agent gets the rest.
   const quetzWidth = Math.max(36, Math.round(cols * 0.33));
   const agentWidth = cols - quetzWidth;
 
   const cwdDisplay = cwd.replace(/\\/g, '/');
   const branchSuffix = branch ? `:${branch}` : '';
   const versionLabel = version ? `◆ v${version}` : '';
+  const footerHints = rightView === 'dashboard'
+    ? 'q quit  h runs  ↑↓ agent  [ ] log'
+    : rightView === 'history'
+      ? 'q quit  esc dashboard  enter open  ↑↓ select'
+      : 'q quit  esc back  ↑↓ scroll';
 
   return (
     <Box flexDirection="column" height={rows}>
-      {/* Title bar */}
       <Box borderStyle="single" borderColor={colors.border} paddingX={1} justifyContent="space-between">
         <Box>
           <Text bold color={colors.brandBold}>QUETZ</Text>
@@ -79,30 +184,40 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
         </Box>
       </Box>
 
-      {/* Main content — explicit widths prevent layout flicker on long lines */}
       <Box flexDirection="row" flexGrow={1}>
         <AgentPanel bus={bus} width={agentWidth} />
-        <QuetzPanel bus={bus} width={quetzWidth} />
+        {rightView === 'dashboard' && <QuetzPanel bus={bus} width={quetzWidth} />}
+        {rightView === 'history' && (
+          <HistoryPanel
+            sessions={completedSessions}
+            selectedSessionId={selectedSessionId}
+            width={quetzWidth}
+          />
+        )}
+        {rightView === 'detail' && selectedSession && (
+          <SessionDetailPanel
+            session={selectedSession}
+            width={quetzWidth}
+            scrollOffset={detailScrollOffset}
+          />
+        )}
       </Box>
 
-      {/* Status bar */}
       <StatusBar bus={bus} />
 
-      {/* Error bar — shown when loop:failure fires; prompts user to press q */}
       {failureReason && (
         <Box paddingX={1} borderStyle="single" borderColor={colors.error}>
-          <Text color={colors.error} bold>✗ </Text>
+          <Text color={colors.error} bold>× </Text>
           <Text color={colors.error}>{failureReason}</Text>
-          <Text dimColor>  —  press </Text>
+          <Text dimColor>  press </Text>
           <Text bold>q</Text>
           <Text dimColor> to quit</Text>
         </Box>
       )}
 
-      {/* Footer — path:branch left, hints + version right */}
       <Box paddingX={1} justifyContent="space-between">
         <Text dimColor>{cwdDisplay}<Text color={colors.brand}>{branchSuffix}</Text></Text>
-        <Text dimColor>q quit  ↑↓ agent  [ ] log  {versionLabel}</Text>
+        <Text dimColor>{footerHints}  {versionLabel}</Text>
       </Box>
     </Box>
   );
