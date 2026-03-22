@@ -6,37 +6,34 @@ import type { BeadsIssue } from './beads.js';
 export const MOCK_ISSUES: BeadsIssue[] = [
   {
     id: 'mock-001',
-    title: 'Add rate limiting to API endpoints',
+    title: 'Create mock-output-a.txt',
     description:
-      'Implement token-bucket rate limiting on all public API routes. ' +
-      'Limit to 100 req/min per IP. Return 429 with Retry-After header on breach.',
+      'Create a new file at /tmp/quetz-mock/mock-output-a.txt containing the single line: "mock-001 done".',
     status: 'ready',
     priority: 1,
-    issue_type: 'feature',
+    issue_type: 'chore',
     created_at: '2026-03-20T09:00:00Z',
     updated_at: '2026-03-20T09:00:00Z',
   },
   {
     id: 'mock-002',
-    title: 'Fix memory leak in WebSocket handler',
+    title: 'Create mock-output-b.txt',
     description:
-      'WebSocket connections are not being cleaned up on disconnect. ' +
-      'Event listeners accumulate over time. Reproduce: run stress test for 10 min, check heap.',
+      'Create a new file at /tmp/quetz-mock/mock-output-b.txt containing the single line: "mock-002 done".',
     status: 'ready',
     priority: 1,
-    issue_type: 'bug',
+    issue_type: 'chore',
     created_at: '2026-03-20T10:00:00Z',
     updated_at: '2026-03-20T10:00:00Z',
   },
   {
     id: 'mock-003',
-    title: 'Add dark mode support to dashboard',
+    title: 'Create mock-output-c.txt',
     description:
-      'Add CSS custom properties and a toggle for dark/light mode. ' +
-      'Persist preference in localStorage. Match system preference by default.',
+      'Create a new file at /tmp/quetz-mock/mock-output-c.txt containing the single line: "mock-003 done".',
     status: 'ready',
     priority: 2,
-    issue_type: 'feature',
+    issue_type: 'chore',
     created_at: '2026-03-20T11:00:00Z',
     updated_at: '2026-03-20T11:00:00Z',
   },

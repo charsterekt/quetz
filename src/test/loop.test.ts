@@ -379,19 +379,19 @@ describe('runLoop normal', () => {
     }));
   });
 
-  it('emits loop:warning when agent exits non-zero and still attempts PR detection', async () => {
+  it('returns exitCode 1 immediately when agent exits non-zero without attempting PR detection', async () => {
     mockGetReadyIssues.mockReturnValue([baseIssue]);
     mockGetIssueDetails.mockReturnValue(baseIssue as never);
     mockSpawnAgent.mockResolvedValue(1); // non-zero exit
-    mockFindPR.mockResolvedValue(null);
 
     const bus = createBus();
-    const warningHandler = vi.fn();
-    bus.on('loop:warning', warningHandler);
+    const failHandler = vi.fn();
+    bus.on('loop:failure', failHandler);
     const result = await runLoop({ dry: false }, bus);
     expect(result.exitCode).toBe(1);
-    expect(mockFindPR).toHaveBeenCalled();
-    expect(warningHandler).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('Agent exited with code 1') }));
+    expect(result.reason).toBe('error');
+    expect(mockFindPR).not.toHaveBeenCalled();
+    expect(failHandler).toHaveBeenCalledWith(expect.objectContaining({ reason: expect.stringContaining('Agent exited with code 1') }));
   });
 
   it('emits loop:issue_pickup and loop:phase events', async () => {
