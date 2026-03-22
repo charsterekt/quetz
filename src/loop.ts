@@ -341,9 +341,9 @@ export async function runLoop(
     }
 
     if (exitCode !== 0) {
-      const hint = localMode ? 'Checking for local commit…' : 'Attempting PR detection…';
-      if (bus) bus.emit('loop:warning', { message: `Agent exited with code ${exitCode}. ${hint}` });
-      else process.stdout.write(waiting(`\n  Agent exited with code ${exitCode}. ${hint}\n`));
+      if (bus) bus.emit('loop:failure', { reason: `Agent exited with code ${exitCode}` });
+      else process.stderr.write(error(`\nAgent exited with code ${exitCode}. The serpent retreats.\n`));
+      return { exitCode: 1, reason: 'error' };
     }
 
     if (bus) bus.emit('loop:phase', { phase: 'pr_detecting' });
