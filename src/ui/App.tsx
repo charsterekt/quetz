@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { ink } from './ink-imports.js';
 import { colors } from './theme.js';
 import { useProgress } from './hooks.js';
@@ -25,14 +25,22 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
 }
 
 export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', version = '' }) => {
-  const { Box, Text, useInput, useApp } = ink();
+  const { Box, Text, useInput } = ink();
   const progress = useProgress(bus);
-  const { exit } = useApp();
 
+  const [failureReason, setFailureReason] = useState<string | null>(null);
+  useEffect(() => {
+    const onFailure = (p: { reason: string }) => setFailureReason(p.reason);
+    bus.on('loop:failure', onFailure);
+    return () => { bus.off('loop:failure', onFailure); };
+  }, [bus]);
+
+  // Don't call Ink's exit() here — cli.ts drives the process lifecycle via
+  // process.exit(). Calling exit() would trigger a double-unmount race that
+  // writes Ink cleanup sequences after the alt-screen restore, causing artifacts.
   const handleQuit = useCallback(() => {
     if (onQuit) onQuit();
-    exit();
-  }, [onQuit, exit]);
+  }, [onQuit]);
 
   useInput((input: string, key: { upArrow: boolean; downArrow: boolean }) => {
     if (input === 'q') handleQuit();
@@ -77,7 +85,18 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
       {/* Status bar */}
       <StatusBar bus={bus} />
 
-      {/* Footer — opencode style: path:branch left, hints + version right */}
+      {/* Error bar — shown when loop:failure fires; prompts user to press q */}
+      {failureReason && (
+        <Box paddingX={1} borderStyle="single" borderColor={colors.error}>
+          <Text color={colors.error} bold>✗ </Text>
+          <Text color={colors.error}>{failureReason}</Text>
+          <Text dimColor>  —  press </Text>
+          <Text bold>q</Text>
+          <Text dimColor> to quit</Text>
+        </Box>
+      )}
+
+      {/* Footer — path:branch left, hints + version right */}
       <Box paddingX={1} justifyContent="space-between">
         <Text dimColor>{cwdDisplay}<Text color={colors.brand}>{branchSuffix}</Text></Text>
         <Text dimColor>q quit  ↑↓ agent  [ ] log  {versionLabel}</Text>

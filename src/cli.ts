@@ -143,47 +143,54 @@ async function main(): Promise<void> {
           } catch { /* keyboard shortcuts unavailable on this terminal */ }
         }
 
-        // Quit promise: resolves when user presses q, racing against runLoop.
+        // Quit promise: resolves when user presses q.
         let resolveQuit!: () => void;
         const quitPromise = new Promise<void>(resolve => { resolveQuit = resolve; });
 
-        const app = inkModule.render(
+        // Enter alternate screen BEFORE render so Ink never writes to the main
+        // screen buffer. If we enter after render(), the first Ink frame lands on
+        // the main screen and is then "saved" — restoring it on alt-screen exit
+        // produces the ghost UI artifacts the user sees.
+        process.stdout.write('\x1b[?1049h\x1b[48;2;26;26;46m\x1b[2J\x1b[H');
+
+        inkModule.render(
           React.createElement(App, { bus, onQuit: resolveQuit, cwd, branch, version: pkg.version }),
           { exitOnCtrlC: false },
         );
 
         // Yield one event-loop tick so React useEffect hooks can register bus
         // listeners before runLoop starts emitting loop:start / loop:issue_pickup.
-        // Without this pause those early events are fired into the void and the
-        // UI shows blank/0/0 until the second issue begins.
         await new Promise<void>(resolve => setImmediate(resolve));
 
-        // Enter alternate screen AFTER Ink has finished raw-mode setup.
-        // Writing before render() would block Ink's stdin ownership (quetz-3g0).
-        // Set dark navy background (RGB 26,26,46) then clear to fill it.
-        process.stdout.write('\x1b[?1049h\x1b[48;2;26;26;46m\x1b[2J\x1b[H');
-
-        // Restore terminal on Ctrl+C — unmount Ink first (while still on alt screen)
-        // then clear and switch back so no artifacts bleed onto the main screen.
+        // Restore terminal on Ctrl+C.
         const onSigint = () => {
-          try { app.unmount(); } catch { /* ignore */ }
           process.stdout.write('\x1b[2J\x1b[H\x1b[0m\x1b[?1049l\x1b[?25h');
           process.exit(0);
         };
         process.once('SIGINT', onSigint);
 
-        const raceResult = await Promise.race([
+        // Run the loop. On success, auto-exit. On error, stay alive so the user
+        // can read the highlighted failure before pressing q to quit.
+        let loopExitCode = 0;
+        const exitSignal = new Promise<void>(resolve => {
           runLoop({ dry, model, timeout, localCommits, amend, mock, simulate }, bus)
-            .then(r => ({ exitCode: r.exitCode })),
-          quitPromise.then(() => ({ exitCode: 0 })),
-        ]);
+            .then(r => {
+              loopExitCode = r.exitCode;
+              if (r.exitCode === 0) resolve(); // success → auto-exit
+              // error → stay alive; quitPromise drives the exit
+            })
+            .catch(() => { loopExitCode = 1; resolve(); });
+          quitPromise.then(resolve);
+        });
+
+        await exitSignal;
 
         process.off('SIGINT', onSigint);
-        // Unmount Ink while still on the alternate screen so its cleanup sequences
-        // are discarded, then clear + restore — no artifacts on the main screen.
-        app.unmount();
+        // Clear the alt screen and restore the main screen. Do NOT call
+        // app.unmount() here — that would write Ink cleanup sequences after the
+        // alt-screen restore and leave artifacts. process.exit() terminates Ink.
         process.stdout.write('\x1b[2J\x1b[H\x1b[0m\x1b[?1049l\x1b[?25h');
-        process.exit(raceResult.exitCode);
+        process.exit(loopExitCode);
       } else {
         // Non-TUI fallback (piped, dry-run, no TTY)
         const result = await runLoop({ dry, model, timeout, localCommits, amend, mock, simulate }, bus);
