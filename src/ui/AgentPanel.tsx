@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ink } from './ink-imports.js';
 import { colors, getToolStyle } from './theme.js';
+import { useAgentHeaderState } from './hooks.js';
 import type { QuetzBus, QuetzEvent } from '../events.js';
 
 const MAX_LINES = 500;
@@ -33,15 +34,14 @@ interface AgentPanelProps {
 
 export const AgentPanel: React.FC<AgentPanelProps> = ({ bus, width }) => {
   const { Box, Text } = ink();
+  const headerState = useAgentHeaderState(bus);
   const [lines, setLines] = useState<AgentLine[]>([]);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [spinnerFrame, setSpinnerFrame] = useState(0);
-  const [isRunning, setIsRunning] = useState(false);
-  const [issueId, setIssueId] = useState('');
-  const [agentModel, setAgentModel] = useState('');
   const autoScrollRef = useRef(true);
   const textBufferRef = useRef('');
   const isFirstTextRef = useRef(true); // true → next text line starts a new run
+  const isRunning = headerState.phase === 'agent_running';
 
   // Spinner animation — only when agent is running
   useEffect(() => {
@@ -63,8 +63,6 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ bus, width }) => {
       setLines([]);
       setScrollOffset(0);
       setSpinnerFrame(0);
-      setIsRunning(false);
-      setAgentModel('');
       autoScrollRef.current = true;
       textBufferRef.current = '';
       isFirstTextRef.current = true;
@@ -99,16 +97,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ bus, width }) => {
 
     const onPickup = (p: QuetzEvent['loop:issue_pickup']) => {
       resetPanel();
-      setIssueId(p.id);
     };
 
     const onPhase = (p: QuetzEvent['loop:phase']) => {
       if (p.phase === 'agent_running') {
-        setIsRunning(true);
         isFirstTextRef.current = true;
-        if (p.detail) setAgentModel(p.detail);
-      } else {
-        setIsRunning(false);
       }
     };
 
@@ -163,8 +156,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ bus, width }) => {
 
   const scrollbar = renderScrollbar(lines.length, visibleH, scrollOffset);
 
-  const headerLabel = issueId
-    ? `Agent: ${issueId}${agentModel ? ' | ' + agentModel : ''}`
+  const headerLabel = headerState.issueId
+    ? `Agent: ${headerState.issueId}${headerState.agentModel ? ' | ' + headerState.agentModel : ''}`
     : 'Agent Output';
 
   return (

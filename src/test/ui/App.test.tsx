@@ -107,6 +107,24 @@ describe('App', () => {
     instance.unmount();
   });
 
+  it('keeps the agent header visible after moving into polling phases', async () => {
+    const bus = createBus();
+    const instance = render(React.createElement(App, { bus }));
+    await waitForRender();
+
+    bus.emit('loop:issue_pickup', { id: 'mock-003', title: 'Create mock output c', priority: 2, type: 'chore', iteration: 3, total: 3 });
+    bus.emit('loop:phase', { phase: 'agent_running', detail: 'sonnet' });
+    await waitForRender();
+
+    bus.emit('loop:phase', { phase: 'pr_detecting' });
+    bus.emit('loop:phase', { phase: 'pr_polling' });
+    await waitForRender();
+
+    const output = instance.lastFrame();
+    expect(output).toContain('Agent: mock-003');
+    instance.unmount();
+  });
+
   it('opens recent runs view and shows completed sessions', async () => {
     const bus = createBus();
     const instance = render(React.createElement(App, { bus }));

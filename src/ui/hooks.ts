@@ -77,6 +77,12 @@ export interface PhaseState {
   prUrl?: string;
 }
 
+export interface AgentHeaderState {
+  phase: QuetzPhase;
+  issueId: string;
+  agentModel: string;
+}
+
 export function usePhase(bus: QuetzBus): PhaseState {
   const [state, setState] = useState<PhaseState>({
     phase: 'idle',
@@ -127,6 +133,42 @@ export function usePhase(bus: QuetzBus): PhaseState {
       bus.off('loop:pr_found', onPR);
       bus.off('loop:start', onStart);
       clearInterval(timer);
+    };
+  }, [bus]);
+
+  return state;
+}
+
+export function useAgentHeaderState(bus: QuetzBus): AgentHeaderState {
+  const [state, setState] = useState<AgentHeaderState>({
+    phase: 'idle',
+    issueId: '',
+    agentModel: '',
+  });
+
+  useEffect(() => {
+    const onPickup = (p: QuetzEvent['loop:issue_pickup']) => {
+      setState(prev => ({
+        ...prev,
+        issueId: p.id,
+        agentModel: '',
+      }));
+    };
+
+    const onPhase = (p: QuetzEvent['loop:phase']) => {
+      setState(prev => ({
+        ...prev,
+        phase: p.phase,
+        ...(p.phase === 'agent_running' && p.detail ? { agentModel: p.detail } : {}),
+      }));
+    };
+
+    bus.on('loop:issue_pickup', onPickup);
+    bus.on('loop:phase', onPhase);
+
+    return () => {
+      bus.off('loop:issue_pickup', onPickup);
+      bus.off('loop:phase', onPhase);
     };
   }, [bus]);
 
