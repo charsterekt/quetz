@@ -12,13 +12,20 @@ declare module 'ink' {
     height?: number | string;
     minWidth?: number;
     minHeight?: number;
+    maxWidth?: number;
+    maxHeight?: number;
     paddingX?: number;
     paddingY?: number;
     padding?: number;
+    paddingLeft?: number;
+    paddingRight?: number;
+    paddingTop?: number;
+    paddingBottom?: number;
     borderStyle?: 'single' | 'double' | 'round' | 'bold' | 'singleDouble' | 'doubleSingle' | 'classic' | 'arrow';
     borderColor?: string;
     justifyContent?: 'flex-start' | 'flex-end' | 'center' | 'space-between' | 'space-around' | 'space-evenly';
     alignItems?: 'flex-start' | 'flex-end' | 'center' | 'stretch';
+    overflow?: 'hidden' | 'visible';
     children?: ReactNode;
   }
 
@@ -56,6 +63,15 @@ declare module 'ink' {
     cleanup: () => void;
   }
 
+  interface RenderOptions {
+    stdout?: NodeJS.WriteStream;
+    stderr?: NodeJS.WriteStream;
+    stdin?: NodeJS.ReadStream;
+    debug?: boolean;
+    exitOnCtrlC?: boolean;
+    patchConsole?: boolean;
+  }
+
   export const Box: FC<BoxProps>;
   export const Text: FC<TextProps>;
   export const Newline: FC;
@@ -63,7 +79,7 @@ declare module 'ink' {
   export const Static: FC<{ items: any[]; children: (item: any, index: number) => ReactNode }>;
   export const Transform: FC<{ transform: (children: string) => string; children?: ReactNode }>;
 
-  export function render(node: ReactNode): Instance;
+  export function render(node: ReactNode, options?: RenderOptions): Instance;
   export function measureElement(ref: any): { width: number; height: number };
 
   export function useInput(handler: (input: string, key: KeyInput) => void, options?: { isActive?: boolean }): void;

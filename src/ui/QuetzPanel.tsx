@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ink } from './ink-imports.js';
 import { colors } from './theme.js';
 import { useEventLog } from './hooks.js';
@@ -9,6 +9,8 @@ const QUETZ_EVENTS: QuetzEventName[] = [
   'loop:merged', 'loop:commit_landed', 'loop:amend_complete',
   'loop:victory', 'loop:failure', 'loop:warning', 'loop:dry_issues',
 ];
+
+const PANEL_OVERHEAD = 11;
 
 function formatEvent(event: QuetzEventName, payload: any): string {
   switch (event) {
@@ -48,27 +50,102 @@ function formatEvent(event: QuetzEventName, payload: any): string {
   }
 }
 
-interface QuetzPanelProps {
-  bus: QuetzBus;
+function getLineStyle(text: string): { color?: string; icon: string } {
+  if (text.startsWith('FAILURE') || text.startsWith('ERROR')) return { color: colors.error, icon: '✗' };
+  if (text.startsWith('MERGED') || text.startsWith('VICTORY') || text.startsWith('COMMIT')) return { color: colors.success, icon: '✓' };
+  if (text.startsWith('WARN')) return { color: colors.warning, icon: '⚠' };
+  if (text.startsWith('PICKUP') || text.startsWith('PR')) return { color: colors.issue, icon: '→' };
+  if (text.startsWith('START') || text.startsWith('DRY')) return { color: colors.brand, icon: '▶' };
+  return { icon: '·' };
 }
 
-export const QuetzPanel: React.FC<QuetzPanelProps> = ({ bus }) => {
+function renderScrollbar(total: number, visible: number, offset: number): string[] {
+  if (total <= visible) return Array(visible).fill(' ');
+  const thumbSize = Math.max(1, Math.round((visible / total) * visible));
+  const maxS = total - visible;
+  const thumbPos = maxS > 0
+    ? Math.round(((maxS - offset) / maxS) * (visible - thumbSize))
+    : visible - thumbSize;
+  return Array.from({ length: visible }, (_, i) =>
+    (i >= thumbPos && i < thumbPos + thumbSize) ? '█' : '░'
+  );
+}
+
+interface QuetzPanelProps {
+  bus: QuetzBus;
+  /** Explicit outer width in columns — prevents layout flicker on long lines */
+  width: number;
+}
+
+export const QuetzPanel: React.FC<QuetzPanelProps> = ({ bus, width }) => {
   const { Box, Text } = ink();
   const formatter = useMemo(() => formatEvent, []);
-  const lines = useEventLog(bus, QUETZ_EVENTS, formatter, 200);
+  const allLines = useEventLog(bus, QUETZ_EVENTS, formatter, 200);
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const autoScrollRef = useRef(true);
+
+  const visibleH = Math.max(3, (process.stdout.rows ?? 40) - PANEL_OVERHEAD);
+  const maxScroll = Math.max(0, allLines.length - visibleH);
+
+  // Auto-scroll to bottom on new content
+  useEffect(() => {
+    if (autoScrollRef.current) setScrollOffset(0);
+  }, [allLines.length]);
+
+  // Scroll handler exposed via bus
+  useEffect(() => {
+    const onScroll = (dir: 'up' | 'down') => {
+      if (dir === 'up') {
+        autoScrollRef.current = false;
+        setScrollOffset(prev => Math.min(prev + 3, maxScroll));
+      } else {
+        setScrollOffset(prev => {
+          const next = Math.max(0, prev - 3);
+          if (next === 0) autoScrollRef.current = true;
+          return next;
+        });
+      }
+    };
+    (bus as any)._quetzScroll = onScroll;
+    return () => { delete (bus as any)._quetzScroll; };
+  }, [bus, maxScroll]);
+
+  const visibleLines = (() => {
+    const start = scrollOffset > 0
+      ? Math.max(0, allLines.length - scrollOffset - visibleH)
+      : Math.max(0, allLines.length - visibleH);
+    const end = scrollOffset > 0 ? allLines.length - scrollOffset : allLines.length;
+    return allLines.slice(start, end);
+  })();
+
+  // Pad to exactly visibleH rows so panel height never changes
+  const paddedLines = [...visibleLines];
+  while (paddedLines.length < visibleH) paddedLines.push('');
+
+  const scrollbar = renderScrollbar(allLines.length, visibleH, scrollOffset);
 
   return (
-    <Box flexDirection="column" flexGrow={1} minWidth={25} borderStyle="single" borderColor={colors.border} paddingX={1}>
+    <Box flexDirection="column" width={width} borderStyle="single" borderColor={colors.border} paddingX={1}>
       <Text bold color={colors.quetzHeader}>Quetz Log</Text>
-      <Text color={colors.divider} wrap="truncate">{'─'.repeat(30)}</Text>
-      <Box flexDirection="column" flexGrow={1}>
-        {lines.slice(-15).map((line, i) => {
-          const isError = line.startsWith('FAILURE') || line.startsWith('ERROR');
-          const isSuccess = line.startsWith('MERGED') || line.startsWith('VICTORY') || line.startsWith('COMMIT');
-          const isWarn = line.startsWith('WARN');
-          const color = isError ? colors.error : isSuccess ? colors.success : isWarn ? colors.warning : undefined;
-          return <Text key={i} color={color} wrap="truncate">{line}</Text>;
-        })}
+      <Text color={colors.divider} wrap="truncate">{'─'.repeat(width)}</Text>
+      <Box flexDirection="row" flexGrow={1}>
+        <Box flexDirection="column" flexGrow={1} minWidth={0}>
+          {paddedLines.map((line, i) => {
+            if (!line) return <Text key={i}> </Text>;
+            const { color, icon } = getLineStyle(line);
+            return (
+              <Text key={i} wrap="truncate">
+                <Text color={color || colors.dim}>{icon} </Text>
+                <Text color={color}>{line}</Text>
+              </Text>
+            );
+          })}
+        </Box>
+        <Box flexDirection="column" width={1}>
+          {scrollbar.map((c, i) => (
+            <Text key={i} color={c === '█' ? colors.quetzHeader : colors.scrollTrack}>{c}</Text>
+          ))}
+        </Box>
       </Box>
     </Box>
   );
