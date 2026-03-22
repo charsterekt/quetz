@@ -112,9 +112,22 @@ async function main(): Promise<void> {
         }
 
         const React = require('react');
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { execSync } = require('child_process');
         const { initInk } = await import('./ui/ink-imports.js');
         const inkModule = await initInk();
         const { App } = await import('./ui/App.js');
+
+        // Gather footer metadata (best-effort — ignore errors)
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const pkg = require('../package.json');
+        const cwd = process.cwd().replace(/\\/g, '/');
+        let branch = '';
+        try {
+          branch = (execSync('git rev-parse --abbrev-ref HEAD', {
+            encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+          }) as string).trim();
+        } catch { /* not a git repo */ }
 
         // MINGW64 / Git Bash: stdin.isTTY may be false even when the terminal is
         // interactive. Ink skips setRawMode when isTTY is falsy, so useInput never
@@ -134,7 +147,10 @@ async function main(): Promise<void> {
         let resolveQuit!: () => void;
         const quitPromise = new Promise<void>(resolve => { resolveQuit = resolve; });
 
-        const app = inkModule.render(React.createElement(App, { bus, onQuit: resolveQuit }));
+        const app = inkModule.render(
+          React.createElement(App, { bus, onQuit: resolveQuit, cwd, branch, version: pkg.version }),
+          { exitOnCtrlC: false },
+        );
 
         // Yield one event-loop tick so React useEffect hooks can register bus
         // listeners before runLoop starts emitting loop:start / loop:issue_pickup.
@@ -147,8 +163,13 @@ async function main(): Promise<void> {
         // Set dark navy background (RGB 26,26,46) then clear to fill it.
         process.stdout.write('\x1b[?1049h\x1b[48;2;26;26;46m\x1b[2J\x1b[H');
 
-        // Restore terminal on Ctrl+C so the main screen comes back cleanly.
-        const onSigint = () => { process.stdout.write('\x1b[0m\x1b[?1049l'); process.exit(0); };
+        // Restore terminal on Ctrl+C — unmount Ink first (while still on alt screen)
+        // then clear and switch back so no artifacts bleed onto the main screen.
+        const onSigint = () => {
+          try { app.unmount(); } catch { /* ignore */ }
+          process.stdout.write('\x1b[2J\x1b[H\x1b[0m\x1b[?1049l\x1b[?25h');
+          process.exit(0);
+        };
         process.once('SIGINT', onSigint);
 
         const raceResult = await Promise.race([
@@ -158,8 +179,10 @@ async function main(): Promise<void> {
         ]);
 
         process.off('SIGINT', onSigint);
-        process.stdout.write('\x1b[0m\x1b[?1049l');
+        // Unmount Ink while still on the alternate screen so its cleanup sequences
+        // are discarded, then clear + restore — no artifacts on the main screen.
         app.unmount();
+        process.stdout.write('\x1b[2J\x1b[H\x1b[0m\x1b[?1049l\x1b[?25h');
         process.exit(raceResult.exitCode);
       } else {
         // Non-TUI fallback (piped, dry-run, no TTY)
