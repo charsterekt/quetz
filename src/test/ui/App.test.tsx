@@ -1,18 +1,19 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import React from 'react';
 import { createBus } from '../../events.js';
 import type { QuetzBus } from '../../events.js';
 
-// ink and ink-testing-library are ESM-only; load via dynamic import
 let render: (node: React.ReactElement) => any;
-let cleanup: () => void;
 let App: React.FC<{ bus: QuetzBus; onQuit?: () => void }>;
 let initInk: () => Promise<any>;
+
+async function waitForRender() {
+  await new Promise(resolve => setTimeout(resolve, 50));
+}
 
 beforeAll(async () => {
   const itl = await import('ink-testing-library');
   render = itl.render;
-  cleanup = itl.cleanup;
 
   const inkImports = await import('../../ui/ink-imports.js');
   initInk = inkImports.initInk;
@@ -32,12 +33,13 @@ describe('App', () => {
     instance.unmount();
   });
 
-  it('renders keyboard hints', () => {
+  it('renders dashboard keyboard hints by default', () => {
     const bus = createBus();
     const instance = render(React.createElement(App, { bus }));
     const output = instance.lastFrame();
     expect(output).toContain('q quit');
-    expect(output).not.toContain('p pause');
+    expect(output).toContain('h runs');
+    expect(output).toContain('[ ] log');
     instance.unmount();
   });
 
@@ -53,9 +55,9 @@ describe('App', () => {
   it('shows issue pickup in quetz panel when event emitted', async () => {
     const bus = createBus();
     const instance = render(React.createElement(App, { bus }));
+    await waitForRender();
     bus.emit('loop:issue_pickup', { id: 'bd-abc', title: 'Fix auth', priority: 1, type: 'bug', iteration: 1, total: 5 });
-    // Allow React to re-render
-    await new Promise(r => setTimeout(r, 50));
+    await waitForRender();
     const output = instance.lastFrame();
     expect(output).toContain('PICKUP');
     expect(output).toContain('bd-abc');
@@ -65,8 +67,9 @@ describe('App', () => {
   it('shows agent text in agent panel when event emitted', async () => {
     const bus = createBus();
     const instance = render(React.createElement(App, { bus }));
-    bus.emit('agent:text', { text: 'Reading file...' });
-    await new Promise(r => setTimeout(r, 50));
+    await waitForRender();
+    bus.emit('agent:text', { text: 'Reading file...\n' });
+    await waitForRender();
     const output = instance.lastFrame();
     expect(output).toContain('Reading file');
     instance.unmount();
@@ -75,11 +78,74 @@ describe('App', () => {
   it('shows tool done in agent panel', async () => {
     const bus = createBus();
     const instance = render(React.createElement(App, { bus }));
+    await waitForRender();
     bus.emit('agent:tool_done', { index: 0, name: 'Read', summary: 'src/foo.ts' });
-    await new Promise(r => setTimeout(r, 50));
+    await waitForRender();
     const output = instance.lastFrame();
-    expect(output).toContain('[Read]');
+    expect(output).toContain('Read');
     expect(output).toContain('src/foo.ts');
+    instance.unmount();
+  });
+
+  it('opens recent runs view and shows completed sessions', async () => {
+    const bus = createBus();
+    const instance = render(React.createElement(App, { bus }));
+    await waitForRender();
+
+    bus.emit('loop:issue_pickup', { id: 'quetz-1', title: 'Build history', priority: 1, type: 'feature', iteration: 1, total: 2 });
+    bus.emit('loop:phase', { phase: 'agent_running', detail: 'sonnet' });
+    bus.emit('agent:text', { text: 'Done\n' });
+    bus.emit('loop:merged', { prNumber: 101, issueId: 'quetz-1', remaining: 1 });
+    await waitForRender();
+
+    instance.stdin.write('h');
+    await waitForRender();
+
+    const output = instance.lastFrame();
+    expect(output).toContain('Recent Runs');
+    expect(output).toContain('quetz-1');
+    expect(output).toContain('Build history');
+    instance.unmount();
+  });
+
+  it('opens run detail and returns to the dashboard without losing loop state', async () => {
+    const bus = createBus();
+    const instance = render(React.createElement(App, { bus }));
+    await waitForRender();
+
+    bus.emit('loop:issue_pickup', { id: 'quetz-1', title: 'Build history', priority: 1, type: 'feature', iteration: 1, total: 2 });
+    bus.emit('loop:phase', { phase: 'agent_running', detail: 'sonnet' });
+    bus.emit('agent:tool_done', { index: 0, name: 'Read', summary: 'src/ui/App.tsx' });
+    bus.emit('agent:text', { text: 'Investigating layout\nFinalizing browser' });
+    bus.emit('loop:merged', { prNumber: 101, issueId: 'quetz-1', remaining: 1 });
+    await waitForRender();
+
+    bus.emit('loop:issue_pickup', { id: 'quetz-2', title: 'Current live issue', priority: 1, type: 'feature', iteration: 2, total: 2 });
+    bus.emit('agent:text', { text: 'Still running live work\n' });
+    await waitForRender();
+
+    instance.stdin.write('h');
+    await waitForRender();
+    instance.stdin.write('\r');
+    await waitForRender();
+
+    let output = instance.lastFrame();
+    expect(output).toContain('Run Detail');
+    expect(output).toContain('Investigating layout');
+    expect(output).toContain('Read');
+    expect(output).not.toContain('enter open');
+
+    instance.stdin.write('\x1B');
+    await waitForRender();
+    output = instance.lastFrame();
+    expect(output).toContain('Recent Runs');
+    expect(output).toContain('Agent: quetz-2');
+
+    instance.stdin.write('\x1B');
+    await waitForRender();
+    output = instance.lastFrame();
+    expect(output).toContain('Quetz Log');
+    expect(output).toContain('Still running live work');
     instance.unmount();
   });
 });

@@ -35,6 +35,7 @@ describe('StatusBar', () => {
   it('updates issue info on loop:issue_pickup', async () => {
     const bus = createBus();
     const instance = render(React.createElement(StatusBar, { bus }));
+    await new Promise(r => setTimeout(r, 50));
     bus.emit('loop:issue_pickup', { id: 'bd-xyz', title: 'Add tests', priority: 2, type: 'chore', iteration: 3, total: 10 });
     await new Promise(r => setTimeout(r, 50));
     const output = instance.lastFrame();
@@ -46,6 +47,7 @@ describe('StatusBar', () => {
   it('updates phase on loop:phase', async () => {
     const bus = createBus();
     const instance = render(React.createElement(StatusBar, { bus }));
+    await new Promise(r => setTimeout(r, 50));
     bus.emit('loop:phase', { phase: 'agent_running' });
     await new Promise(r => setTimeout(r, 50));
     const output = instance.lastFrame();
@@ -56,6 +58,7 @@ describe('StatusBar', () => {
   it('shows PR number on loop:pr_found', async () => {
     const bus = createBus();
     const instance = render(React.createElement(StatusBar, { bus }));
+    await new Promise(r => setTimeout(r, 50));
     bus.emit('loop:pr_found', { number: 42, title: 'Fix auth', url: 'https://github.com/test/pr/42' });
     await new Promise(r => setTimeout(r, 50));
     const output = instance.lastFrame();

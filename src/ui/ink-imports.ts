@@ -6,8 +6,14 @@
 
 type InkModule = typeof import('ink');
 
-// eslint-disable-next-line @typescript-eslint/no-implied-eval
-const dynamicImport = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<any>;
+const dynamicImport = (() => {
+  if (process.env.VITEST) {
+    return (specifier: string) => import(specifier);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  return new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<any>;
+})();
 
 let _ink: InkModule | null = null;
 
