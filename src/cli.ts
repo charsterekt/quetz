@@ -151,9 +151,12 @@ async function main(): Promise<void> {
         // screen buffer. If we enter after render(), the first Ink frame lands on
         // the main screen and is then "saved" — restoring it on alt-screen exit
         // produces the ghost UI artifacts the user sees.
-        process.stdout.write('\x1b[?1049h\x1b[48;2;26;26;46m\x1b[2J\x1b[H');
+        // \x1b[?25l hides the cursor for the entire TUI session: the cursor
+        // jumping to new positions on every Ink render is the primary cause of
+        // visible flicker, especially in the bottom half of the screen.
+        process.stdout.write('\x1b[?1049h\x1b[48;2;26;26;46m\x1b[2J\x1b[H\x1b[?25l');
 
-        inkModule.render(
+        const app = inkModule.render(
           React.createElement(App, { bus, onQuit: resolveQuit, cwd, branch, version: pkg.version }),
           { exitOnCtrlC: false },
         );
@@ -162,11 +165,21 @@ async function main(): Promise<void> {
         // listeners before runLoop starts emitting loop:start / loop:issue_pickup.
         await new Promise<void>(resolve => setImmediate(resolve));
 
-        // Restore terminal on Ctrl+C.
-        const onSigint = () => {
+        // cleanupTui: unmount Ink (stops renderer, flushes final sequences to alt
+        // screen), then clear the alt screen and restore the main screen.
+        // Calling unmount() before \x1b[?1049l ensures Ink's own cursor-movement
+        // cleanup lands on the alt screen buffer (discarded on restore) rather
+        // than bleeding onto the main screen.
+        const cleanupTui = (exitCode: number) => {
+          app.unmount();
           process.stdout.write('\x1b[2J\x1b[H\x1b[0m\x1b[?1049l\x1b[?25h');
-          process.exit(0);
+          process.exit(exitCode);
         };
+
+        // Ctrl+C: in raw mode the terminal sends \x03 (ETX) instead of SIGINT,
+        // so a SIGINT handler alone is not enough on MINGW64. We handle SIGINT
+        // here as a belt-and-suspenders measure for non-raw-mode terminals.
+        const onSigint = () => cleanupTui(0);
         process.once('SIGINT', onSigint);
 
         // Run the loop. On success, auto-exit. On error, stay alive so the user
@@ -186,11 +199,7 @@ async function main(): Promise<void> {
         await exitSignal;
 
         process.off('SIGINT', onSigint);
-        // Clear the alt screen and restore the main screen. Do NOT call
-        // app.unmount() here — that would write Ink cleanup sequences after the
-        // alt-screen restore and leave artifacts. process.exit() terminates Ink.
-        process.stdout.write('\x1b[2J\x1b[H\x1b[0m\x1b[?1049l\x1b[?25h');
-        process.exit(loopExitCode);
+        cleanupTui(loopExitCode);
       } else {
         // Non-TUI fallback (piped, dry-run, no TTY)
         const result = await runLoop({ dry, model, timeout, localCommits, amend, mock, simulate }, bus);

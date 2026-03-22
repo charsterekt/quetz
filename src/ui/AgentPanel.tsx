@@ -46,7 +46,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ bus, width }) => {
   // Spinner animation — only when agent is running
   useEffect(() => {
     if (!isRunning) return;
-    const timer = setInterval(() => setSpinnerFrame(f => (f + 1) % SPINNER_FRAMES.length), 80);
+    const timer = setInterval(() => setSpinnerFrame(f => (f + 1) % SPINNER_FRAMES.length), 150);
     return () => clearInterval(timer);
   }, [isRunning]);
 
