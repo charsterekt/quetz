@@ -87,6 +87,26 @@ describe('App', () => {
     instance.unmount();
   });
 
+  it('resets agent output and header state when a new issue is picked up', async () => {
+    const bus = createBus();
+    const instance = render(React.createElement(App, { bus }));
+    await waitForRender();
+
+    bus.emit('loop:issue_pickup', { id: 'quetz-1', title: 'First issue', priority: 1, type: 'feature', iteration: 1, total: 2 });
+    bus.emit('loop:phase', { phase: 'agent_running', detail: 'sonnet' });
+    bus.emit('agent:text', { text: 'Old output line\n' });
+    await waitForRender();
+
+    bus.emit('loop:issue_pickup', { id: 'quetz-2', title: 'Second issue', priority: 1, type: 'feature', iteration: 2, total: 2 });
+    await waitForRender();
+
+    const output = instance.lastFrame();
+    expect(output).toContain('Agent: quetz-2');
+    expect(output).not.toContain('Old output line');
+    expect(output).not.toContain('sonnet');
+    instance.unmount();
+  });
+
   it('opens recent runs view and shows completed sessions', async () => {
     const bus = createBus();
     const instance = render(React.createElement(App, { bus }));
@@ -145,7 +165,8 @@ describe('App', () => {
     await waitForRender();
     output = instance.lastFrame();
     expect(output).toContain('Quetz Log');
-    expect(output).toContain('Still running live work');
+    expect(output).toContain('PICKUP');
+    expect(output).toContain('quetz-2');
     instance.unmount();
   });
 });

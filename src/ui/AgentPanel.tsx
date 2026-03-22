@@ -59,6 +59,17 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ bus, width }) => {
   }, []);
 
   useEffect(() => {
+    const resetPanel = () => {
+      setLines([]);
+      setScrollOffset(0);
+      setSpinnerFrame(0);
+      setIsRunning(false);
+      setAgentModel('');
+      autoScrollRef.current = true;
+      textBufferRef.current = '';
+      isFirstTextRef.current = true;
+    };
+
     const flushBuffer = (keepRef = false) => {
       if (textBufferRef.current.trim()) {
         const type: LineType = isFirstTextRef.current ? 'first-text' : 'text';
@@ -87,8 +98,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ bus, width }) => {
     };
 
     const onPickup = (p: QuetzEvent['loop:issue_pickup']) => {
-      flushBuffer();
-      isFirstTextRef.current = true;
+      resetPanel();
       setIssueId(p.id);
     };
 
@@ -159,7 +169,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ bus, width }) => {
 
   return (
     <Box flexDirection="column" width={width} borderStyle="single" borderColor={colors.border} paddingX={1}>
-      <Text bold color={colors.agentHeader}>{headerLabel}</Text>
+      <Text bold color={colors.agentHeader} wrap="truncate">{headerLabel}</Text>
       <Text color={colors.divider} wrap="truncate">{'─'.repeat(width)}</Text>
       <Box flexDirection="row" flexGrow={1}>
         <Box flexDirection="column" flexGrow={1} minWidth={0}>
