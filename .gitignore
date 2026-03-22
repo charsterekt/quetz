@@ -33,3 +33,6 @@ Thumbs.db
 
 # CI
 .github/workflows/
+
+# Design files
+*.pen
