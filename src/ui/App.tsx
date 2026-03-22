@@ -43,7 +43,10 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
   }, [onQuit]);
 
   useInput((input: string, key: { upArrow: boolean; downArrow: boolean }) => {
-    if (input === 'q') handleQuit();
+    // \x03 is raw Ctrl+C (ETX) — sent when stdin is in raw mode (MINGW64).
+    // In raw mode, SIGINT is suppressed so the process.once('SIGINT') handler
+    // never fires; we must handle it here as a keypress instead.
+    if (input === 'q' || input === '\x03') handleQuit();
     if (key.upArrow) (bus as any)._agentScroll?.('up');
     if (key.downArrow) (bus as any)._agentScroll?.('down');
     if (input === '[') (bus as any)._quetzScroll?.('up');
