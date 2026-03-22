@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ink } from './ink-imports.js';
 import { colors } from './theme.js';
-import { useProgress, useSessionHistory } from './hooks.js';
+import { useEventLog, useProgress, useSessionHistory } from './hooks.js';
 import { AgentPanel } from './AgentPanel.js';
-import { QuetzPanel } from './QuetzPanel.js';
+import { QuetzPanel, QUETZ_EVENTS, formatQuetzEvent } from './QuetzPanel.js';
 import { StatusBar } from './StatusBar.js';
 import { HistoryPanel } from './HistoryPanel.js';
 import { SessionDetailPanel } from './SessionDetailPanel.js';
@@ -36,6 +36,8 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
   const { Box, Text, useInput } = ink();
   const progress = useProgress(bus);
   const { completedSessions } = useSessionHistory(bus);
+  const quetzLogFormatter = useMemo(() => formatQuetzEvent, []);
+  const quetzLines = useEventLog(bus, QUETZ_EVENTS, quetzLogFormatter, 200);
 
   const [failureReason, setFailureReason] = useState<string | null>(null);
   const [rightView, setRightView] = useState<RightView>('dashboard');
@@ -186,7 +188,7 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
 
       <Box flexDirection="row" flexGrow={1}>
         <AgentPanel bus={bus} width={agentWidth} />
-        {rightView === 'dashboard' && <QuetzPanel bus={bus} width={quetzWidth} />}
+        {rightView === 'dashboard' && <QuetzPanel bus={bus} lines={quetzLines} width={quetzWidth} />}
         {rightView === 'history' && (
           <HistoryPanel
             sessions={completedSessions}

@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ink } from './ink-imports.js';
 import { colors } from './theme.js';
-import { useEventLog } from './hooks.js';
 import type { QuetzBus, QuetzEventName } from '../events.js';
 
-const QUETZ_EVENTS: QuetzEventName[] = [
+export const QUETZ_EVENTS: QuetzEventName[] = [
   'loop:start', 'loop:issue_pickup', 'loop:phase', 'loop:pr_found',
   'loop:merged', 'loop:commit_landed', 'loop:amend_complete',
   'loop:victory', 'loop:failure', 'loop:warning', 'loop:dry_issues',
@@ -12,7 +11,7 @@ const QUETZ_EVENTS: QuetzEventName[] = [
 
 const PANEL_OVERHEAD = 11;
 
-function formatEvent(event: QuetzEventName, payload: any): string {
+export function formatQuetzEvent(event: QuetzEventName, payload: any): string {
   switch (event) {
     case 'loop:start':
       return `START ${payload.total} issues`;
@@ -73,24 +72,23 @@ function renderScrollbar(total: number, visible: number, offset: number): string
 
 interface QuetzPanelProps {
   bus: QuetzBus;
+  lines: string[];
   /** Explicit outer width in columns — prevents layout flicker on long lines */
   width: number;
 }
 
-export const QuetzPanel: React.FC<QuetzPanelProps> = ({ bus, width }) => {
+export const QuetzPanel: React.FC<QuetzPanelProps> = ({ bus, lines, width }) => {
   const { Box, Text } = ink();
-  const formatter = useMemo(() => formatEvent, []);
-  const allLines = useEventLog(bus, QUETZ_EVENTS, formatter, 200);
   const [scrollOffset, setScrollOffset] = useState(0);
   const autoScrollRef = useRef(true);
 
   const visibleH = Math.max(3, (process.stdout.rows ?? 40) - PANEL_OVERHEAD);
-  const maxScroll = Math.max(0, allLines.length - visibleH);
+  const maxScroll = Math.max(0, lines.length - visibleH);
 
   // Auto-scroll to bottom on new content
   useEffect(() => {
     if (autoScrollRef.current) setScrollOffset(0);
-  }, [allLines.length]);
+  }, [lines.length]);
 
   // Scroll handler exposed via bus
   useEffect(() => {
@@ -112,17 +110,17 @@ export const QuetzPanel: React.FC<QuetzPanelProps> = ({ bus, width }) => {
 
   const visibleLines = (() => {
     const start = scrollOffset > 0
-      ? Math.max(0, allLines.length - scrollOffset - visibleH)
-      : Math.max(0, allLines.length - visibleH);
-    const end = scrollOffset > 0 ? allLines.length - scrollOffset : allLines.length;
-    return allLines.slice(start, end);
+      ? Math.max(0, lines.length - scrollOffset - visibleH)
+      : Math.max(0, lines.length - visibleH);
+    const end = scrollOffset > 0 ? lines.length - scrollOffset : lines.length;
+    return lines.slice(start, end);
   })();
 
   // Pad to exactly visibleH rows so panel height never changes
   const paddedLines = [...visibleLines];
   while (paddedLines.length < visibleH) paddedLines.push('');
 
-  const scrollbar = renderScrollbar(allLines.length, visibleH, scrollOffset);
+  const scrollbar = renderScrollbar(lines.length, visibleH, scrollOffset);
 
   return (
     <Box flexDirection="column" width={width} borderStyle="single" borderColor={colors.border} paddingX={1}>
