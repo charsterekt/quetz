@@ -7,7 +7,7 @@ import { QuetzPanel, QUETZ_EVENTS, formatQuetzEvent } from './QuetzPanel.js';
 import { StatusBar } from './StatusBar.js';
 import { HistoryPanel } from './HistoryPanel.js';
 import { SessionDetailPanel } from './SessionDetailPanel.js';
-import { getRenderableRows, getVisiblePanelRows } from './viewport.js';
+import { getRenderableRows, getVisiblePanelRows, useTerminalViewport } from './viewport.js';
 import type { QuetzBus } from '../events.js';
 
 interface AppProps {
@@ -35,6 +35,7 @@ function clamp(value: number, min: number, max: number): number {
 
 export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', version = '' }) => {
   const { Box, Text, useInput } = ink();
+  const viewport = useTerminalViewport();
   const progress = useProgress(bus);
   const { completedSessions } = useSessionHistory(bus);
   const quetzLogFormatter = useMemo(() => formatQuetzEvent, []);
@@ -130,7 +131,7 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
         return;
       }
       if (rightView === 'detail') {
-        const maxScroll = Math.max(0, (selectedSession?.lines.length ?? 0) - getVisiblePanelRows(13));
+        const maxScroll = Math.max(0, (selectedSession?.lines.length ?? 0) - getVisiblePanelRows(viewport.rows, 13));
         setDetailScrollOffset(prev => Math.min(prev + 3, maxScroll));
         return;
       }
@@ -161,10 +162,12 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
     }
   });
 
-  const rows = getRenderableRows();
-  const cols = process.stdout.columns ?? 120;
+  const rows = getRenderableRows(viewport.rows);
+  const cols = viewport.columns;
   const quetzWidth = Math.max(36, Math.round(cols * 0.33));
   const agentWidth = cols - quetzWidth;
+  const panelVisibleHeight = getVisiblePanelRows(viewport.rows, 11);
+  const detailVisibleHeight = getVisiblePanelRows(viewport.rows, 13);
 
   const cwdDisplay = cwd.replace(/\\/g, '/');
   const branchSuffix = branch ? `:${branch}` : '';
@@ -188,8 +191,8 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
       </Box>
 
       <Box flexDirection="row" flexGrow={1}>
-        <AgentPanel bus={bus} width={agentWidth} />
-        {rightView === 'dashboard' && <QuetzPanel bus={bus} lines={quetzLines} width={quetzWidth} />}
+        <AgentPanel bus={bus} width={agentWidth} visibleHeight={panelVisibleHeight} />
+        {rightView === 'dashboard' && <QuetzPanel bus={bus} lines={quetzLines} width={quetzWidth} visibleHeight={panelVisibleHeight} />}
         {rightView === 'history' && (
           <HistoryPanel
             sessions={completedSessions}
@@ -201,6 +204,7 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
           <SessionDetailPanel
             session={selectedSession}
             width={quetzWidth}
+            visibleHeight={detailVisibleHeight}
             scrollOffset={detailScrollOffset}
           />
         )}

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ink } from './ink-imports.js';
 import { colors } from './theme.js';
-import { getVisiblePanelRows } from './viewport.js';
 import type { QuetzBus, QuetzEventName } from '../events.js';
 
 export const QUETZ_EVENTS: QuetzEventName[] = [
@@ -10,7 +9,6 @@ export const QUETZ_EVENTS: QuetzEventName[] = [
   'loop:victory', 'loop:failure', 'loop:warning', 'loop:dry_issues',
 ];
 
-const PANEL_OVERHEAD = 11;
 
 export function formatQuetzEvent(event: QuetzEventName, payload: any): string {
   switch (event) {
@@ -76,14 +74,15 @@ interface QuetzPanelProps {
   lines: string[];
   /** Explicit outer width in columns — prevents layout flicker on long lines */
   width: number;
+  visibleHeight: number;
 }
 
-export const QuetzPanel: React.FC<QuetzPanelProps> = ({ bus, lines, width }) => {
+export const QuetzPanel: React.FC<QuetzPanelProps> = ({ bus, lines, width, visibleHeight }) => {
   const { Box, Text } = ink();
   const [scrollOffset, setScrollOffset] = useState(0);
   const autoScrollRef = useRef(true);
 
-  const visibleH = getVisiblePanelRows(PANEL_OVERHEAD);
+  const visibleH = visibleHeight;
   const maxScroll = Math.max(0, lines.length - visibleH);
 
   // Auto-scroll to bottom on new content

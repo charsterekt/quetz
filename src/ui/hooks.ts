@@ -2,6 +2,15 @@ import { useState, useEffect, useRef } from 'react';
 import type { QuetzBus, QuetzEventName, QuetzEvent, QuetzPhase } from '../events.js';
 import { createSessionHistoryState, reduceSessionHistory, type SessionHistoryState } from './session-history.js';
 
+const ELAPSED_UPDATE_MS = 60_000;
+
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+}
+
 export interface ProgressState {
   iteration: number;
   total: number;
@@ -9,7 +18,8 @@ export interface ProgressState {
 
 /**
  * Lightweight hook for progress bar: only re-renders on pickup/start events,
- * never on a timer tick. Keeps the timer isolated to StatusBar only (quetz-nc4).
+ * never on a timer tick. Any timer-driven state change in Ink redraws the
+ * whole frame, so progress must stay event-driven.
  */
 export function useProgress(bus: QuetzBus): ProgressState {
   const [state, setState] = useState<ProgressState>({ iteration: 0, total: 0 });
@@ -98,17 +108,32 @@ export function usePhase(bus: QuetzBus): PhaseState {
   useEffect(() => {
     const onPickup = (p: QuetzEvent['loop:issue_pickup']) => {
       startRef.current = Date.now();
-      setState(prev => ({ ...prev, issueId: p.id, issueTitle: p.title, iteration: p.iteration, total: p.total, prNumber: undefined, prUrl: undefined }));
+      setState(prev => ({
+        ...prev,
+        issueId: p.id,
+        issueTitle: p.title,
+        iteration: p.iteration,
+        total: p.total,
+        elapsed: '0m 00s',
+        prNumber: undefined,
+        prUrl: undefined,
+      }));
     };
     const onPhase = (p: QuetzEvent['loop:phase']) => {
       setState(prev => ({
         ...prev,
         phase: p.phase,
+        elapsed: formatElapsed(Date.now() - startRef.current),
         ...(p.phase === 'agent_running' && p.detail ? { agentModel: p.detail } : {}),
       }));
     };
     const onPR = (p: QuetzEvent['loop:pr_found']) => {
-      setState(prev => ({ ...prev, prNumber: p.number, prUrl: p.url }));
+      setState(prev => ({
+        ...prev,
+        elapsed: formatElapsed(Date.now() - startRef.current),
+        prNumber: p.number,
+        prUrl: p.url,
+      }));
     };
     const onStart = (p: QuetzEvent['loop:start']) => {
       setState(prev => ({ ...prev, total: p.total }));
@@ -120,12 +145,12 @@ export function usePhase(bus: QuetzBus): PhaseState {
     bus.on('loop:start', onStart);
 
     const timer = setInterval(() => {
-      const ms = Date.now() - startRef.current;
-      const totalSeconds = Math.floor(ms / 1000);
-      const minutes = Math.floor(totalSeconds / 60);
-      const seconds = totalSeconds % 60;
-      setState(prev => ({ ...prev, elapsed: `${minutes}m ${String(seconds).padStart(2, '0')}s` }));
-    }, 1000);
+      setState(prev => {
+        if (!prev.issueId) return prev;
+        const nextElapsed = formatElapsed(Date.now() - startRef.current);
+        return prev.elapsed === nextElapsed ? prev : { ...prev, elapsed: nextElapsed };
+      });
+    }, ELAPSED_UPDATE_MS);
 
     return () => {
       bus.off('loop:issue_pickup', onPickup);

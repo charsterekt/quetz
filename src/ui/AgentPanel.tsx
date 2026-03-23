@@ -2,13 +2,11 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ink } from './ink-imports.js';
 import { colors, getToolStyle } from './theme.js';
 import { useAgentHeaderState } from './hooks.js';
-import { getVisiblePanelRows } from './viewport.js';
 import type { QuetzBus, QuetzEvent } from '../events.js';
 
 const MAX_LINES = 500;
 // Rows consumed outside panel content:
 // title-bar(3) + status-bar(3) + footer(1) + panel-border(2) + panel-header(1) + panel-divider(1) = 11
-const PANEL_OVERHEAD = 11;
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
@@ -31,9 +29,10 @@ interface AgentPanelProps {
   bus: QuetzBus;
   /** Explicit outer width in columns — prevents layout flicker on long lines */
   width: number;
+  visibleHeight: number;
 }
 
-export const AgentPanel: React.FC<AgentPanelProps> = ({ bus, width }) => {
+export const AgentPanel: React.FC<AgentPanelProps> = ({ bus, width, visibleHeight }) => {
   const { Box, Text } = ink();
   const headerState = useAgentHeaderState(bus);
   const [lines, setLines] = useState<AgentLine[]>([]);
@@ -118,7 +117,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ bus, width }) => {
     };
   }, [bus, addLine]);
 
-  const visibleH = getVisiblePanelRows(PANEL_OVERHEAD);
+  const visibleH = visibleHeight;
   const maxScroll = Math.max(0, lines.length - visibleH);
 
   // Scroll handler exposed via bus

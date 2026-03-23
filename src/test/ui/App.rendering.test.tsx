@@ -19,14 +19,22 @@ class MemoryTTY extends PassThrough {
   columns: number;
   rows: number;
   output = '';
+  writes: string[] = [];
 
   constructor(columns: number, rows: number) {
     super();
     this.columns = columns;
     this.rows = rows;
     this.on('data', chunk => {
-      this.output += chunk.toString();
+      const text = chunk.toString();
+      this.output += text;
+      this.writes.push(text);
     });
+  }
+
+  reset(): void {
+    this.output = '';
+    this.writes = [];
   }
 }
 
@@ -102,5 +110,32 @@ describe('App Ink rendering', () => {
     await waitForRender();
 
     expect(stdout.output).not.toContain(ansiEscapes.clearTerminal);
+  });
+
+  it('stays idle without periodic repaint writes', async () => {
+    const stdout = new MemoryTTY(120, 40);
+    const stdin = new MemoryInput();
+    const bus = createBus();
+
+    const instance = inkRender(
+      React.createElement(App, { bus }),
+      {
+        stdout,
+        stderr: stdout,
+        stdin,
+        exitOnCtrlC: false,
+        patchConsole: false,
+      },
+    );
+
+    await waitForRender();
+    stdout.reset();
+
+    await new Promise(resolve => setTimeout(resolve, 1200));
+
+    instance.unmount();
+    await waitForRender();
+
+    expect(stdout.writes).toEqual([]);
   });
 });
