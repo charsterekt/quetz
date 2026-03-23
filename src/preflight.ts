@@ -1,4 +1,7 @@
 import { execSync } from 'child_process';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { getRemoteUrl, parseOwnerRepo, getDefaultBranch } from './git.js';
 
 export interface PreflightResult {
@@ -27,6 +30,24 @@ function tryExec(cmd: string): { ok: boolean; output: string } {
   }
 }
 
+/**
+ * Returns true if a Claude Code auth token can be found without running inference.
+ * Checks (in order):
+ *  1. ANTHROPIC_API_KEY environment variable (API-key auth)
+ *  2. ANTHROPIC_AUTH_TOKEN environment variable (OAuth token env override)
+ *  3. <homedir>/.claude/.credentials.json (OAuth token written by `claude login`)
+ *
+ * Uses os.homedir() + path.join() so the check is OS-agnostic.
+ */
+export function claudeAuthTokenExists(): boolean {
+  if (process.env['ANTHROPIC_API_KEY']) return true;
+  if (process.env['ANTHROPIC_AUTH_TOKEN']) return true;
+  // os.homedir() returns the platform-appropriate home directory;
+  // path.join() uses the native separator (backslash on Windows, slash elsewhere).
+  const credPath = path.join(os.homedir(), '.claude', '.credentials.json');
+  return fs.existsSync(credPath);
+}
+
 function checkClaudeCode(): void {
   const version = tryExec('claude --version');
   if (!version.ok) {
@@ -35,8 +56,7 @@ function checkClaudeCode(): void {
     );
   }
 
-  const auth = tryExec('claude --print "echo hello"');
-  if (!auth.ok) {
+  if (!claudeAuthTokenExists()) {
     throw new PreflightError(
       'Claude Code is installed but not authenticated. Run `claude` and complete login.'
     );

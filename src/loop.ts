@@ -337,7 +337,7 @@ export async function runLoop(
     const agentStart = Date.now();
     const agentTimeout = opts.timeout ?? config.agent.timeout;
     const agentModel = opts.model ?? config.agent.model ?? 'sonnet';
-    const agentThinkingLevel = opts.thinkingLevel ?? config.agent.thinkingLevel;
+    const agentThinkingLevel: ClaudeThinkingLevel = opts.thinkingLevel ?? config.agent.thinkingLevel ?? 'medium';
     if (bus) {
       bus.emit('loop:phase', {
         phase: 'agent_running',
