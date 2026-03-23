@@ -156,8 +156,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ bus, width, visibleHeigh
 
   const scrollbar = renderScrollbar(lines.length, visibleH, scrollOffset);
 
+  const headerParts = [headerState.issueId];
+  if (headerState.agentModel) headerParts.push(headerState.agentModel);
+  if (headerState.agentThinkingLevel) headerParts.push(`think: ${headerState.agentThinkingLevel}`);
   const headerLabel = headerState.issueId
-    ? `Agent: ${headerState.issueId}${headerState.agentModel ? ' | ' + headerState.agentModel : ''}`
+    ? `Agent: ${headerParts.join(' | ')}`
     : 'Agent Output';
 
   return (

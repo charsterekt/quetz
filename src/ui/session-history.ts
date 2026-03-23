@@ -45,7 +45,7 @@ export type SessionHistoryEvent =
     type: 'loop:issue_pickup';
     payload: { id: string; title: string; priority: number; type: string; iteration: number; total: number };
   }
-  | { type: 'loop:phase'; payload: { phase: string; detail?: string } }
+  | { type: 'loop:phase'; payload: { phase: string; detail?: string; agentModel?: string } }
   | { type: 'agent:text'; payload: { text: string } }
   | { type: 'agent:tool_done'; payload: { name: string; summary: string } }
   | { type: 'agent:stderr'; payload: { data: string } }
@@ -86,14 +86,14 @@ export function reduceSessionHistory(
       };
 
     case 'loop:phase':
-      if (!state.activeSession || event.payload.phase !== 'agent_running' || !event.payload.detail) {
+      if (!state.activeSession || event.payload.phase !== 'agent_running') {
         return state;
       }
       return {
         ...state,
         activeSession: {
           ...state.activeSession,
-          model: event.payload.detail,
+          model: event.payload.agentModel ?? event.payload.detail ?? state.activeSession.model,
         },
       };
 

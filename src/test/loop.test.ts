@@ -413,6 +413,36 @@ describe('runLoop normal', () => {
     expect(phaseHandler).toHaveBeenCalledWith(expect.objectContaining({ phase: 'agent_running' }));
     expect(phaseHandler).toHaveBeenCalledWith(expect.objectContaining({ phase: 'pr_detecting' }));
   });
+
+  it('forwards thinking level to the agent and agent_running event', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockFindPR.mockResolvedValue({ number: 42, title: 'Fix', html_url: 'https://gh/pr/42' } as never);
+    mockPollForMerge.mockResolvedValue({ status: 'merged', pr: { html_url: 'https://gh/pr/42' } } as never);
+
+    const bus = createBus();
+    const phaseHandler = vi.fn();
+    bus.on('loop:phase', phaseHandler);
+
+    await runLoop({ dry: false, thinkingLevel: 'medium' }, bus);
+
+    expect(mockSpawnAgent).toHaveBeenCalledWith(
+      'assembled prompt',
+      expect.any(String),
+      30,
+      'sonnet',
+      bus,
+      'medium',
+    );
+    expect(phaseHandler).toHaveBeenCalledWith(expect.objectContaining({
+      phase: 'agent_running',
+      agentModel: 'sonnet',
+      agentThinkingLevel: 'medium',
+    }));
+  });
 });
 
 // ── runLoop (local-commits) ──────────────────────────────────────────────────

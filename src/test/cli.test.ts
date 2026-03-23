@@ -108,6 +108,7 @@ describe('main', () => {
       {
         dry: false,
         model: undefined,
+        thinkingLevel: undefined,
         timeout: undefined,
         localCommits: false,
         amend: false,
@@ -123,5 +124,36 @@ describe('main', () => {
       .join('');
     expect(stderrOutput).not.toContain('Terminal too small');
     expect(stderrOutput).not.toContain('below recommended');
+  });
+
+  it('parses --thinking-level and forwards it to runLoop', async () => {
+    const bus = { emit: vi.fn(), on: vi.fn() };
+    mockCreateBus.mockReturnValue(bus as never);
+    mockRunLoop.mockResolvedValue({ exitCode: 0 } as never);
+
+    process.argv = ['node', 'quetz', 'run', '--dry', '--thinking-level', 'medium'];
+    setStdoutSize(false, 120, 40);
+
+    await expect(main()).rejects.toMatchObject({ code: 0 });
+
+    expect(mockRunLoop).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dry: true,
+        thinkingLevel: 'medium',
+      }),
+      bus,
+    );
+  });
+
+  it('fails fast on an invalid --thinking-level value', async () => {
+    process.argv = ['node', 'quetz', 'run', '--thinking-level', 'turbo'];
+
+    await expect(main()).rejects.toMatchObject({ code: 1 });
+
+    const stderrOutput = stderrSpy.mock.calls
+      .map((call: Parameters<typeof process.stderr.write>) => String(call[0]))
+      .join('');
+    expect(stderrOutput).toContain('invalid --thinking-level');
+    expect(mockRunLoop).not.toHaveBeenCalled();
   });
 });

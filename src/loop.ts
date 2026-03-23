@@ -1,4 +1,5 @@
 import { loadConfig } from './config.js';
+import type { ClaudeThinkingLevel } from './config.js';
 import { getReadyIssues, getIssueDetails, getPrimeContext, listAllIssues, enableMockMode } from './beads.js';
 import { checkoutDefault, pullDefault, countNewCommits, getCommitCountAhead, getCurrentBranch, deleteBranch } from './git.js';
 import { assemblePrompt } from './prompt.js';
@@ -116,7 +117,16 @@ export async function showStatus(watch: boolean = false, mock: boolean = false):
 // ── Run loop ─────────────────────────────────────────────────────────────────
 
 export async function runLoop(
-  opts: { dry: boolean; model?: string; timeout?: number; localCommits?: boolean; amend?: boolean; mock?: boolean; simulate?: boolean },
+  opts: {
+    dry: boolean;
+    model?: string;
+    thinkingLevel?: ClaudeThinkingLevel;
+    timeout?: number;
+    localCommits?: boolean;
+    amend?: boolean;
+    mock?: boolean;
+    simulate?: boolean;
+  },
   bus?: QuetzBus
 ): Promise<LoopResult> {
   // Only enable verbose in non-TUI mode. In TUI mode (bus present), stderr
@@ -327,13 +337,24 @@ export async function runLoop(
     const agentStart = Date.now();
     const agentTimeout = opts.timeout ?? config.agent.timeout;
     const agentModel = opts.model ?? config.agent.model ?? 'sonnet';
-    if (bus) bus.emit('loop:phase', { phase: 'agent_running', detail: agentModel });
+    const agentThinkingLevel = opts.thinkingLevel ?? config.agent.thinkingLevel;
+    if (bus) {
+      bus.emit('loop:phase', {
+        phase: 'agent_running',
+        detail: agentModel,
+        agentModel,
+        agentThinkingLevel,
+      });
+    }
     else process.stdout.write(dim('\n  Starting agent…\n'));
-    log('AGENT', `model=${agentModel}, timeout=${agentTimeout}m`);
+    log(
+      'AGENT',
+      `model=${agentModel}, timeout=${agentTimeout}m${agentThinkingLevel ? `, thinking=${agentThinkingLevel}` : ''}`
+    );
 
     let exitCode: number;
     try {
-      exitCode = await spawnAgent(prompt, projectRoot, agentTimeout, agentModel, bus);
+      exitCode = await spawnAgent(prompt, projectRoot, agentTimeout, agentModel, bus, agentThinkingLevel);
     } catch (err) {
       if (bus) bus.emit('loop:failure', { reason: `Agent error: ${(err as Error).message}` });
       else process.stderr.write(error(`\nAgent error: ${(err as Error).message}\n`));

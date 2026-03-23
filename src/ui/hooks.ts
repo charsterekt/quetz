@@ -80,6 +80,7 @@ export interface PhaseState {
   issueId: string;
   issueTitle: string;
   agentModel: string;
+  agentThinkingLevel: string;
   iteration: number;
   total: number;
   elapsed: string;
@@ -91,6 +92,7 @@ export interface AgentHeaderState {
   phase: QuetzPhase;
   issueId: string;
   agentModel: string;
+  agentThinkingLevel: string;
 }
 
 export function usePhase(bus: QuetzBus): PhaseState {
@@ -99,6 +101,7 @@ export function usePhase(bus: QuetzBus): PhaseState {
     issueId: '',
     issueTitle: '',
     agentModel: '',
+    agentThinkingLevel: '',
     iteration: 0,
     total: 0,
     elapsed: '0m 00s',
@@ -114,6 +117,7 @@ export function usePhase(bus: QuetzBus): PhaseState {
         issueTitle: p.title,
         iteration: p.iteration,
         total: p.total,
+        agentThinkingLevel: '',
         elapsed: '0m 00s',
         prNumber: undefined,
         prUrl: undefined,
@@ -124,8 +128,16 @@ export function usePhase(bus: QuetzBus): PhaseState {
         ...prev,
         phase: p.phase,
         elapsed: formatElapsed(Date.now() - startRef.current),
-        ...(p.phase === 'agent_running' && p.detail ? { agentModel: p.detail } : {}),
+        ...(p.phase === 'agent_running'
+          ? {
+            agentModel: p.agentModel ?? p.detail ?? prev.agentModel,
+            agentThinkingLevel: p.agentThinkingLevel ?? '',
+          }
+          : {}),
       }));
+    };
+    const onFailure = () => {
+      setState(prev => ({ ...prev, phase: 'error' }));
     };
     const onPR = (p: QuetzEvent['loop:pr_found']) => {
       setState(prev => ({
@@ -141,6 +153,7 @@ export function usePhase(bus: QuetzBus): PhaseState {
 
     bus.on('loop:issue_pickup', onPickup);
     bus.on('loop:phase', onPhase);
+    bus.on('loop:failure', onFailure);
     bus.on('loop:pr_found', onPR);
     bus.on('loop:start', onStart);
 
@@ -155,6 +168,7 @@ export function usePhase(bus: QuetzBus): PhaseState {
     return () => {
       bus.off('loop:issue_pickup', onPickup);
       bus.off('loop:phase', onPhase);
+      bus.off('loop:failure', onFailure);
       bus.off('loop:pr_found', onPR);
       bus.off('loop:start', onStart);
       clearInterval(timer);
@@ -169,6 +183,7 @@ export function useAgentHeaderState(bus: QuetzBus): AgentHeaderState {
     phase: 'idle',
     issueId: '',
     agentModel: '',
+    agentThinkingLevel: '',
   });
 
   useEffect(() => {
@@ -177,6 +192,7 @@ export function useAgentHeaderState(bus: QuetzBus): AgentHeaderState {
         ...prev,
         issueId: p.id,
         agentModel: '',
+        agentThinkingLevel: '',
       }));
     };
 
@@ -184,16 +200,26 @@ export function useAgentHeaderState(bus: QuetzBus): AgentHeaderState {
       setState(prev => ({
         ...prev,
         phase: p.phase,
-        ...(p.phase === 'agent_running' && p.detail ? { agentModel: p.detail } : {}),
+        ...(p.phase === 'agent_running'
+          ? {
+            agentModel: p.agentModel ?? p.detail ?? prev.agentModel,
+            agentThinkingLevel: p.agentThinkingLevel ?? '',
+          }
+          : {}),
       }));
+    };
+    const onFailure = () => {
+      setState(prev => ({ ...prev, phase: 'error' }));
     };
 
     bus.on('loop:issue_pickup', onPickup);
     bus.on('loop:phase', onPhase);
+    bus.on('loop:failure', onFailure);
 
     return () => {
       bus.off('loop:issue_pickup', onPickup);
       bus.off('loop:phase', onPhase);
+      bus.off('loop:failure', onFailure);
     };
   }, [bus]);
 

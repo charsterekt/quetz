@@ -54,6 +54,19 @@ describe('spawnAgent', () => {
     }));
   });
 
+  it('passes Claude effort when a thinking level is provided', async () => {
+    mockQuery.mockReturnValue(mockQueryResult([
+      { type: 'result', subtype: 'success', is_error: false, result: 'done' },
+    ]));
+    await spawnAgent('fix the bug', '/repo', 30, 'opus', undefined, 'medium');
+    expect(mockQuery).toHaveBeenCalledWith(expect.objectContaining({
+      options: expect.objectContaining({
+        model: 'opus',
+        effort: 'medium',
+      }),
+    }));
+  });
+
   it('handles long prompts without truncation (no OS arg-length limits with SDK)', async () => {
     mockQuery.mockReturnValue(mockQueryResult([
       { type: 'result', subtype: 'success', is_error: false, result: 'done' },

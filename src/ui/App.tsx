@@ -20,6 +20,8 @@ interface AppProps {
 
 type RightView = 'dashboard' | 'history' | 'detail';
 
+const FAILURE_BANNER_ROWS = 3;
+
 function ProgressBar({ current, total }: { current: number; total: number }) {
   const { Text } = ink();
   const width = 20;
@@ -45,6 +47,9 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
   const [rightView, setRightView] = useState<RightView>('dashboard');
   const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(undefined);
   const [detailScrollOffset, setDetailScrollOffset] = useState(0);
+  const failureBannerRows = failureReason ? FAILURE_BANNER_ROWS : 0;
+  const panelOverhead = 11 + failureBannerRows;
+  const detailPanelOverhead = 13 + failureBannerRows;
 
   const selectedSession = useMemo(
     () => completedSessions.find(session => session.issueId === selectedSessionId),
@@ -90,8 +95,10 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
     setSelectedSessionId(completedSessions[nextIndex].issueId);
   }, [completedSessions, selectedSessionId]);
 
-  useInput((input: string, key: { upArrow: boolean; downArrow: boolean; escape: boolean; return: boolean }) => {
-    if (input === 'q' || input === '\x03') {
+  useInput((input, key) => {
+    const isCtrlC = input === '\x03' || (key.ctrl && input.toLowerCase() === 'c');
+
+    if (input === 'q' || isCtrlC) {
       handleQuit();
       return;
     }
@@ -131,7 +138,7 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
         return;
       }
       if (rightView === 'detail') {
-        const maxScroll = Math.max(0, (selectedSession?.lines.length ?? 0) - getVisiblePanelRows(viewport.rows, 13));
+        const maxScroll = Math.max(0, (selectedSession?.lines.length ?? 0) - getVisiblePanelRows(viewport.rows, detailPanelOverhead));
         setDetailScrollOffset(prev => Math.min(prev + 3, maxScroll));
         return;
       }
@@ -166,17 +173,17 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
   const cols = viewport.columns;
   const quetzWidth = Math.max(36, Math.round(cols * 0.33));
   const agentWidth = cols - quetzWidth;
-  const panelVisibleHeight = getVisiblePanelRows(viewport.rows, 11);
-  const detailVisibleHeight = getVisiblePanelRows(viewport.rows, 13);
+  const panelVisibleHeight = getVisiblePanelRows(viewport.rows, panelOverhead);
+  const detailVisibleHeight = getVisiblePanelRows(viewport.rows, detailPanelOverhead);
 
   const cwdDisplay = cwd.replace(/\\/g, '/');
   const branchSuffix = branch ? `:${branch}` : '';
   const versionLabel = version ? `◆ v${version}` : '';
   const footerHints = rightView === 'dashboard'
-    ? 'q quit  h runs  ↑↓ agent  [ ] log'
+    ? 'q quit  ctrl+c quit  h runs  ↑↓ agent  [ ] log'
     : rightView === 'history'
-      ? 'q quit  esc dashboard  enter open  ↑↓ select'
-      : 'q quit  esc back  ↑↓ scroll';
+      ? 'q quit  ctrl+c quit  esc dashboard  enter open  ↑↓ select'
+      : 'q quit  ctrl+c quit  esc back  ↑↓ scroll';
 
   return (
     <Box flexDirection="column" height={rows}>
@@ -218,6 +225,8 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
           <Text color={colors.error}>{failureReason}</Text>
           <Text dimColor>  press </Text>
           <Text bold>q</Text>
+          <Text dimColor> or </Text>
+          <Text bold>ctrl+c</Text>
           <Text dimColor> to quit</Text>
         </Box>
       )}
