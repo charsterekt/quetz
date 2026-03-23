@@ -6,7 +6,7 @@ export const EXIT_FAILURE = 1;
 export const EXIT_CONFIG_ERROR = 2;
 export const EXIT_PREFLIGHT_FAILURE = 3;
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const command = args[0];
 
@@ -101,16 +101,6 @@ async function main(): Promise<void> {
 
       // TUI mode: render Ink dashboard if TTY and not dry-run
       if (process.stdout.isTTY && !dry) {
-        const cols = process.stdout.columns ?? 80;
-        const rows = process.stdout.rows ?? 24;
-        if (cols < 100 || rows < 30) {
-          process.stderr.write(`Terminal too small (${cols}x${rows}). Minimum: 100x30.\n`);
-          process.exit(EXIT_FAILURE);
-        }
-        if (cols < 120 || rows < 40) {
-          process.stderr.write(`Warning: terminal ${cols}x${rows} is below recommended 120x40.\n`);
-        }
-
         const React = require('react');
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { execSync } = require('child_process');
