@@ -2,6 +2,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
+export const CLAUDE_THINKING_LEVELS = ['low', 'medium', 'high', 'max'] as const;
+
+export type ClaudeThinkingLevel = (typeof CLAUDE_THINKING_LEVELS)[number];
+
 export interface QuetzConfig {
   github: {
     owner: string;
@@ -12,6 +16,7 @@ export interface QuetzConfig {
   agent: {
     timeout: number;
     model?: string;
+    thinkingLevel?: ClaudeThinkingLevel;
     prompt?: string;
   };
   poll: {
@@ -63,6 +68,10 @@ export class ConfigError extends Error {
   }
 }
 
+export function isClaudeThinkingLevel(value: unknown): value is ClaudeThinkingLevel {
+  return typeof value === 'string' && CLAUDE_THINKING_LEVELS.includes(value as ClaudeThinkingLevel);
+}
+
 export function loadConfig(projectRoot: string = process.cwd()): QuetzConfig {
   const configPath = path.join(projectRoot, CONFIG_FILE);
 
@@ -110,6 +119,13 @@ function validateAndMerge(raw: unknown): QuetzConfig {
   const agent = (obj['agent'] as Record<string, unknown> | undefined) ?? {};
   const poll = (obj['poll'] as Record<string, unknown> | undefined) ?? {};
   const display = (obj['display'] as Record<string, unknown> | undefined) ?? {};
+  const thinkingLevel = agent['thinkingLevel'];
+
+  if (thinkingLevel !== undefined && !isClaudeThinkingLevel(thinkingLevel)) {
+    throw new ConfigError(
+      `${CONFIG_FILE}: "agent.thinkingLevel" must be one of ${CLAUDE_THINKING_LEVELS.join(', ')}.`
+    );
+  }
 
   return {
     github: {
@@ -133,6 +149,7 @@ function validateAndMerge(raw: unknown): QuetzConfig {
         typeof agent['model'] === 'string'
           ? agent['model']
           : DEFAULTS.agent.model,
+      thinkingLevel: thinkingLevel as ClaudeThinkingLevel | undefined,
       prompt:
         typeof agent['prompt'] === 'string' ? agent['prompt'] : undefined,
     },

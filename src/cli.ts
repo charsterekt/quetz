@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { CLAUDE_THINKING_LEVELS, isClaudeThinkingLevel } from './config.js';
+
 // Exit codes per spec section 7.4
 export const EXIT_SUCCESS = 0;
 export const EXIT_FAILURE = 1;
@@ -28,6 +30,7 @@ export async function main(): Promise<void> {
     process.stdout.write('  run --amend       Amend all work into one commit\n');
     process.stdout.write('  run --simulate    Simulate the full loop (mock + fake lifecycle)\n');
     process.stdout.write('  run --model <m>   Override agent model\n');
+    process.stdout.write(`  run --thinking-level <l> Override Claude effort (${CLAUDE_THINKING_LEVELS.join('|')})\n`);
     process.stdout.write('  run --timeout <m> Override agent timeout (minutes)\n');
     process.stdout.write('  status            Show loop progress\n');
     process.stdout.write('  validate          Validate .quetzrc.yml\n');
@@ -85,6 +88,26 @@ export async function main(): Promise<void> {
         model = args[modelIdx + 1];
       }
 
+      // Parse --thinking-level flag
+      let thinkingLevel: typeof CLAUDE_THINKING_LEVELS[number] | undefined;
+      const thinkingLevelIdx = args.indexOf('--thinking-level');
+      if (thinkingLevelIdx !== -1) {
+        const value = args[thinkingLevelIdx + 1];
+        if (!value) {
+          process.stderr.write(
+            `Error: --thinking-level requires a value (${CLAUDE_THINKING_LEVELS.join(', ')}).\n`
+          );
+          process.exit(EXIT_FAILURE);
+        }
+        if (!isClaudeThinkingLevel(value)) {
+          process.stderr.write(
+            `Error: invalid --thinking-level "${value}". Use ${CLAUDE_THINKING_LEVELS.join(', ')}.\n`
+          );
+          process.exit(EXIT_FAILURE);
+        }
+        thinkingLevel = value;
+      }
+
       // Parse --timeout flag
       let timeout: number | undefined;
       const timeoutIdx = args.indexOf('--timeout');
@@ -133,7 +156,7 @@ export async function main(): Promise<void> {
           } catch { /* keyboard shortcuts unavailable on this terminal */ }
         }
 
-        // Quit promise: resolves when user presses q.
+        // Quit promise: resolves when the user asks to exit from the TUI.
         let resolveQuit!: () => void;
         const quitPromise = new Promise<void>(resolve => { resolveQuit = resolve; });
 
@@ -155,6 +178,8 @@ export async function main(): Promise<void> {
         // listeners before runLoop starts emitting loop:start / loop:issue_pickup.
         await new Promise<void>(resolve => setImmediate(resolve));
 
+        let loopExitCode = 0;
+
         // cleanupTui: unmount Ink (stops renderer, flushes final sequences to alt
         // screen), then clear the alt screen and restore the main screen.
         // Calling unmount() before \x1b[?1049l ensures Ink's own cursor-movement
@@ -169,14 +194,13 @@ export async function main(): Promise<void> {
         // Ctrl+C: in raw mode the terminal sends \x03 (ETX) instead of SIGINT,
         // so a SIGINT handler alone is not enough on MINGW64. We handle SIGINT
         // here as a belt-and-suspenders measure for non-raw-mode terminals.
-        const onSigint = () => cleanupTui(0);
+        const onSigint = () => cleanupTui(loopExitCode);
         process.once('SIGINT', onSigint);
 
         // Run the loop. On success, auto-exit. On error, stay alive so the user
         // can read the highlighted failure before pressing q to quit.
-        let loopExitCode = 0;
         const exitSignal = new Promise<void>(resolve => {
-          runLoop({ dry, model, timeout, localCommits, amend, mock, simulate }, bus)
+          runLoop({ dry, model, thinkingLevel, timeout, localCommits, amend, mock, simulate }, bus)
             .then(r => {
               loopExitCode = r.exitCode;
               if (r.exitCode === 0) resolve(); // success → auto-exit
@@ -192,7 +216,7 @@ export async function main(): Promise<void> {
         cleanupTui(loopExitCode);
       } else {
         // Non-TUI fallback (piped, dry-run, no TTY)
-        const result = await runLoop({ dry, model, timeout, localCommits, amend, mock, simulate }, bus);
+        const result = await runLoop({ dry, model, thinkingLevel, timeout, localCommits, amend, mock, simulate }, bus);
         process.exit(result.exitCode);
       }
       break;

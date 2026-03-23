@@ -73,6 +73,7 @@ describe('loadConfig', () => {
       '  automergeLabel: ship-it',
       'agent:',
       '  timeout: 60',
+      '  thinkingLevel: medium',
       '  prompt: "do the thing"',
       'poll:',
       '  interval: 15',
@@ -88,6 +89,7 @@ describe('loadConfig', () => {
     expect(cfg.github.defaultBranch).toBe('develop');
     expect(cfg.github.automergeLabel).toBe('ship-it');
     expect(cfg.agent.timeout).toBe(60);
+    expect(cfg.agent.thinkingLevel).toBe('medium');
     expect(cfg.agent.prompt).toBe('do the thing');
     expect(cfg.poll.interval).toBe(15);
     expect(cfg.poll.mergeTimeout).toBe(30);
@@ -104,6 +106,14 @@ describe('loadConfig', () => {
     const cfg = loadConfig(dir);
     expect(cfg.github.owner).toBe('spaced');
     expect(cfg.github.repo).toBe('also');
+  });
+
+  it('throws ConfigError when agent.thinkingLevel is invalid', () => {
+    fs.writeFileSync(
+      path.join(dir, '.quetzrc.yml'),
+      'github:\n  owner: myorg\n  repo: myrepo\nagent:\n  thinkingLevel: turbo\n'
+    );
+    expect(() => loadConfig(dir)).toThrowError(/thinkingLevel/i);
   });
 });
 

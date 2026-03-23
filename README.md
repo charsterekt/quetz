@@ -155,6 +155,7 @@ Start the dev loop. Runs until all issues are resolved or a failure occurs.
 |---|---|---|
 | `--dry` | — | Preview mode: list issues, print first prompt, exit without spawning |
 | `--model <model>` | `sonnet` | Override agent model (e.g. `haiku`, `sonnet`, `opus`) |
+| `--thinking-level <level>` | config | Override Claude effort level (`low`, `medium`, `high`, `max`) |
 | `--timeout <minutes>` | `30` | Kill agent if it runs longer than this |
 | `--verbose` | — | Enable debug logging to stderr (`[category] message` format) |
 | `--no-animate` | — | Disable TUI and animations; plain scrolling output |
@@ -284,6 +285,7 @@ github:
 agent:
   timeout: 30               # Minutes before killing the agent (default: 30)
   model: "sonnet"           # Claude model to use (default: sonnet)
+  thinkingLevel: "medium"   # Optional Claude effort level: low|medium|high|max
   prompt: |                 # Optional: override the default prompt template
     {{bdPrime}}
     ... custom instructions ...
@@ -303,7 +305,7 @@ display:
 Command-line flags override config values for a single run:
 
 ```bash
-quetz run --model haiku --timeout 60 --no-animate
+quetz run --model haiku --thinking-level low --timeout 60 --no-animate
 ```
 
 ### GitHub Actions for automerge

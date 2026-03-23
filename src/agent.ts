@@ -1,6 +1,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKMessage, SDKResultMessage, SDKPartialAssistantMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { QuetzBus } from './events.js';
+import type { ClaudeThinkingLevel } from './config.js';
 
 /**
  * Spawn a Claude Code agent via the SDK and wait for it to complete.
@@ -10,6 +11,7 @@ import type { QuetzBus } from './events.js';
  * @param timeoutMinutes Kill the agent after this many minutes (default 30)
  * @param model          Claude model to use (default: sonnet)
  * @param bus            Optional event bus for streaming output
+ * @param thinkingLevel  Optional Claude effort level override
  * @returns              Resolved exit code (0 = success)
  */
 export function spawnAgent(
@@ -17,13 +19,14 @@ export function spawnAgent(
   cwd: string,
   timeoutMinutes: number = 30,
   model: string = 'sonnet',
-  bus?: QuetzBus
+  bus?: QuetzBus,
+  thinkingLevel?: ClaudeThinkingLevel
 ): Promise<number> {
   const abortController = new AbortController();
   const timeoutMs = timeoutMinutes * 60 * 1000;
   const timer = setTimeout(() => abortController.abort(), timeoutMs);
 
-  return runQuery(prompt, cwd, model, abortController, timer, timeoutMinutes, bus);
+  return runQuery(prompt, cwd, model, abortController, timer, timeoutMinutes, bus, thinkingLevel);
 }
 
 async function runQuery(
@@ -33,7 +36,8 @@ async function runQuery(
   abortController: AbortController,
   timer: ReturnType<typeof setTimeout>,
   timeoutMinutes: number,
-  bus?: QuetzBus
+  bus?: QuetzBus,
+  thinkingLevel?: ClaudeThinkingLevel
 ): Promise<number> {
   try {
     const q = query({
@@ -47,6 +51,7 @@ async function runQuery(
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         settingSources: ['user', 'project', 'local'],
         includePartialMessages: true,
+        ...(thinkingLevel ? { effort: thinkingLevel } : {}),
         stderr: (data: string) => {
           if (bus) bus.emit('agent:stderr', { data });
           else process.stderr.write(data);

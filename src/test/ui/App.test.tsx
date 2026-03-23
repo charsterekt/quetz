@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, it, expect } from 'vitest';
+import { afterEach, beforeAll, describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { createBus } from '../../events.js';
 import type { QuetzBus } from '../../events.js';
@@ -145,6 +145,59 @@ describe('App', () => {
 
     const output = instance.lastFrame();
     expect(output).toContain('Agent: mock-003');
+    instance.unmount();
+  });
+
+  it('shows the configured thinking level in the agent header', async () => {
+    const bus = createBus();
+    const instance = render(React.createElement(App, { bus }));
+    await waitForRender();
+
+    bus.emit('loop:issue_pickup', { id: 'quetz-think', title: 'Tune effort', priority: 2, type: 'feature', iteration: 1, total: 1 });
+    bus.emit('loop:phase', {
+      phase: 'agent_running',
+      detail: 'opus',
+      agentModel: 'opus',
+      agentThinkingLevel: 'medium',
+    });
+    await waitForRender();
+
+    const output = instance.lastFrame();
+    expect(output).toContain('Agent: quetz-think');
+    expect(output).toContain('opus');
+    expect(output).toContain('think: medium');
+    instance.unmount();
+  });
+
+  it('quits when ctrl+c is pressed', async () => {
+    const bus = createBus();
+    const onQuit = vi.fn();
+    const instance = render(React.createElement(App, { bus, onQuit }));
+    await waitForRender();
+
+    instance.stdin.write('\x03');
+    await waitForRender();
+
+    expect(onQuit).toHaveBeenCalledTimes(1);
+    instance.unmount();
+  });
+
+  it('keeps both panel headers visible when a failure banner is shown', async () => {
+    const bus = createBus();
+    setStdoutSize(120, 24);
+    const instance = render(React.createElement(App, { bus }));
+    await waitForRender();
+
+    bus.emit('loop:issue_pickup', { id: 'mock-001', title: 'Create mock-output-a.txt', priority: 1, type: 'chore', iteration: 1, total: 3 });
+    bus.emit('loop:phase', { phase: 'agent_running', detail: 'sonnet', agentModel: 'sonnet' });
+    bus.emit('loop:failure', { reason: 'Agent exited with code 1' });
+    await waitForRender();
+
+    const output = instance.lastFrame();
+    expect(output).toContain('Agent: mock-001');
+    expect(output).toContain('Quetz Log');
+    expect(output).toContain('Agent exited with code 1');
+    expect(output).toContain('ctrl+c');
     instance.unmount();
   });
 
