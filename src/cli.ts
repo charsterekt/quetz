@@ -120,6 +120,7 @@ export async function main(): Promise<void> {
 
       const { createBus } = await import('./events.js');
       const { runLoop } = await import('./loop.js');
+      const { printLogo } = await import('./display/quetz.js');
       const bus = createBus();
 
       // TUI mode: render Ink dashboard if TTY and not dry-run
@@ -188,6 +189,8 @@ export async function main(): Promise<void> {
         const cleanupTui = (exitCode: number) => {
           app.unmount();
           process.stdout.write('\x1b[2J\x1b[H\x1b[0m\x1b[?1049l\x1b[?25h');
+          printLogo();
+          process.stdout.write('\nQuetz stopped.\n');
           process.exit(exitCode);
         };
 

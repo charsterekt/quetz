@@ -5,6 +5,7 @@ import { useEventLog, useProgress, useSessionHistory } from './hooks.js';
 import { AgentPanel } from './AgentPanel.js';
 import { QuetzPanel, QUETZ_EVENTS, formatQuetzEvent } from './QuetzPanel.js';
 import { StatusBar } from './StatusBar.js';
+import { Logo } from './Logo.js';
 import { HistoryPanel } from './HistoryPanel.js';
 import { SessionDetailPanel } from './SessionDetailPanel.js';
 import { getRenderableRows, getVisiblePanelRows, useTerminalViewport } from './viewport.js';
@@ -48,8 +49,8 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
   const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(undefined);
   const [detailScrollOffset, setDetailScrollOffset] = useState(0);
   const failureBannerRows = failureReason ? FAILURE_BANNER_ROWS : 0;
-  const panelOverhead = 11 + failureBannerRows;
-  const detailPanelOverhead = 13 + failureBannerRows;
+  const panelOverhead = 14 + failureBannerRows;
+  const detailPanelOverhead = 16 + failureBannerRows;
 
   const selectedSession = useMemo(
     () => completedSessions.find(session => session.issueId === selectedSessionId),
@@ -188,10 +189,7 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
   return (
     <Box flexDirection="column" height={rows}>
       <Box borderStyle="single" borderColor={colors.border} paddingX={1} justifyContent="space-between">
-        <Box>
-          <Text bold color={colors.brandBold}>QUETZ</Text>
-          <Text dimColor> The Feathered Serpent Dev Loop</Text>
-        </Box>
+        <Logo maxLines={4} />
         <Box>
           <ProgressBar current={progress.iteration > 0 ? progress.iteration - 1 : 0} total={progress.total} />
         </Box>

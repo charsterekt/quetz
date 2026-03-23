@@ -4,6 +4,7 @@ import * as readline from 'readline';
 import { execSync } from 'child_process';
 import { runPreflight } from './preflight.js';
 import { writeConfig, DEFAULTS } from './config.js';
+import { printLogo } from './display/quetz.js';
 import type { QuetzConfig } from './config.js';
 
 const AUTOMERGE_TEMPLATE = `# .github/workflows/quetz-automerge.yml
@@ -132,6 +133,7 @@ function printLabelReminder(config: QuetzConfig): void {
 }
 
 export async function runInit(projectRoot: string = process.cwd()): Promise<void> {
+  printLogo();
   process.stdout.write('Running preflight checks...\n');
   runPreflight();
   process.stdout.write('  All checks passed.\n');
