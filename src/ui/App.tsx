@@ -7,6 +7,7 @@ import { QuetzPanel, QUETZ_EVENTS, formatQuetzEvent } from './QuetzPanel.js';
 import { StatusBar } from './StatusBar.js';
 import { HistoryPanel } from './HistoryPanel.js';
 import { SessionDetailPanel } from './SessionDetailPanel.js';
+import { getRenderableRows, getVisiblePanelRows } from './viewport.js';
 import type { QuetzBus } from '../events.js';
 
 interface AppProps {
@@ -129,7 +130,7 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
         return;
       }
       if (rightView === 'detail') {
-        const maxScroll = Math.max(0, (selectedSession?.lines.length ?? 0) - Math.max(3, (process.stdout.rows ?? 40) - 13));
+        const maxScroll = Math.max(0, (selectedSession?.lines.length ?? 0) - getVisiblePanelRows(13));
         setDetailScrollOffset(prev => Math.min(prev + 3, maxScroll));
         return;
       }
@@ -160,7 +161,7 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
     }
   });
 
-  const rows = process.stdout.rows ?? 40;
+  const rows = getRenderableRows();
   const cols = process.stdout.columns ?? 120;
   const quetzWidth = Math.max(36, Math.round(cols * 0.33));
   const agentWidth = cols - quetzWidth;

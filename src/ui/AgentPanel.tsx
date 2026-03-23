@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ink } from './ink-imports.js';
 import { colors, getToolStyle } from './theme.js';
 import { useAgentHeaderState } from './hooks.js';
+import { getVisiblePanelRows } from './viewport.js';
 import type { QuetzBus, QuetzEvent } from '../events.js';
 
 const MAX_LINES = 500;
@@ -117,7 +118,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ bus, width }) => {
     };
   }, [bus, addLine]);
 
-  const visibleH = Math.max(3, (process.stdout.rows ?? 40) - PANEL_OVERHEAD);
+  const visibleH = getVisiblePanelRows(PANEL_OVERHEAD);
   const maxScroll = Math.max(0, lines.length - visibleH);
 
   // Scroll handler exposed via bus
