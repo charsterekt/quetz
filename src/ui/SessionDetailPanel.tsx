@@ -1,14 +1,13 @@
 import React from 'react';
 import { ink } from './ink-imports.js';
 import { colors, getToolStyle } from './theme.js';
-import { getVisiblePanelRows } from './viewport.js';
 import type { CompletedSession, SessionTranscriptLine } from './session-history.js';
 
-const PANEL_OVERHEAD = 13;
 
 interface SessionDetailPanelProps {
   session: CompletedSession;
   width: number;
+  visibleHeight: number;
   scrollOffset: number;
 }
 
@@ -65,10 +64,9 @@ function TranscriptLine({ line, index }: { line: SessionTranscriptLine; index: n
   );
 }
 
-export const SessionDetailPanel: React.FC<SessionDetailPanelProps> = ({ session, width, scrollOffset }) => {
+export const SessionDetailPanel: React.FC<SessionDetailPanelProps> = ({ session, width, visibleHeight, scrollOffset }) => {
   const { Box, Text } = ink();
   const statusColor = session.outcome === 'failed' ? colors.error : colors.success;
-  const visibleHeight = getVisiblePanelRows(PANEL_OVERHEAD);
   const maxScroll = Math.max(0, session.lines.length - visibleHeight);
   const effectiveOffset = Math.min(scrollOffset, maxScroll);
   const start = effectiveOffset > 0

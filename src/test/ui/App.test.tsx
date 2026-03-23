@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { afterEach, beforeAll, describe, it, expect } from 'vitest';
 import React from 'react';
 import { createBus } from '../../events.js';
 import type { QuetzBus } from '../../events.js';
@@ -6,6 +6,25 @@ import type { QuetzBus } from '../../events.js';
 let render: (node: React.ReactElement) => any;
 let App: React.FC<{ bus: QuetzBus; onQuit?: () => void }>;
 let initInk: () => Promise<any>;
+const stdoutDescriptors = {
+  columns: Object.getOwnPropertyDescriptor(process.stdout, 'columns'),
+  rows: Object.getOwnPropertyDescriptor(process.stdout, 'rows'),
+};
+
+function setStdoutSize(columns: number, rows: number): void {
+  Object.defineProperty(process.stdout, 'columns', { value: columns, configurable: true });
+  Object.defineProperty(process.stdout, 'rows', { value: rows, configurable: true });
+}
+
+function restoreStdoutDescriptors(): void {
+  for (const [key, descriptor] of Object.entries(stdoutDescriptors)) {
+    if (descriptor) {
+      Object.defineProperty(process.stdout, key, descriptor);
+    } else {
+      delete (process.stdout as unknown as Record<string, unknown>)[key];
+    }
+  }
+}
 
 async function waitForRender() {
   await new Promise(resolve => setTimeout(resolve, 50));
@@ -24,6 +43,10 @@ beforeAll(async () => {
 });
 
 describe('App', () => {
+  afterEach(() => {
+    restoreStdoutDescriptors();
+  });
+
   it('renders title bar with QUETZ branding', () => {
     const bus = createBus();
     const instance = render(React.createElement(App, { bus }));
@@ -185,6 +208,23 @@ describe('App', () => {
     expect(output).toContain('Quetz Log');
     expect(output).toContain('PICKUP');
     expect(output).toContain('quetz-2');
+    instance.unmount();
+  });
+
+  it('updates layout when the terminal is resized', async () => {
+    const bus = createBus();
+    setStdoutSize(120, 40);
+    const instance = render(React.createElement(App, { bus }));
+    await waitForRender();
+
+    const before = instance.lastFrame();
+
+    setStdoutSize(92, 28);
+    process.stdout.emit('resize');
+    await waitForRender();
+
+    const after = instance.lastFrame();
+    expect(after).not.toEqual(before);
     instance.unmount();
   });
 });
