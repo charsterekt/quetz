@@ -47,12 +47,12 @@ describe('App', () => {
     restoreStdoutDescriptors();
   });
 
-  it('renders title bar with QUETZ branding', () => {
+  it('renders title bar with ANSI logo', () => {
     const bus = createBus();
     const instance = render(React.createElement(App, { bus }));
     const output = instance.lastFrame();
-    expect(output).toContain('QUETZ');
-    expect(output).toContain('Feathered Serpent');
+    // Header now shows the ANSI art logo (block characters) instead of text
+    expect(output).toContain('█');
     instance.unmount();
   });
 
