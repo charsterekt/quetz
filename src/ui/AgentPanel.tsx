@@ -158,7 +158,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ bus, width, visibleHeigh
 
   const headerParts = [headerState.issueId];
   if (headerState.agentModel) headerParts.push(headerState.agentModel);
-  if (headerState.agentThinkingLevel) headerParts.push(`think: ${headerState.agentThinkingLevel}`);
+  if (headerState.agentModel) headerParts.push(`think: ${headerState.agentThinkingLevel || 'medium'}`);
   const headerLabel = headerState.issueId
     ? `Agent: ${headerParts.join(' | ')}`
     : 'Agent Output';
