@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ink } from './ink-imports.js';
 import { colors } from './theme.js';
+import { getVisiblePanelRows } from './viewport.js';
 import type { QuetzBus, QuetzEventName } from '../events.js';
 
 export const QUETZ_EVENTS: QuetzEventName[] = [
@@ -82,7 +83,7 @@ export const QuetzPanel: React.FC<QuetzPanelProps> = ({ bus, lines, width }) => 
   const [scrollOffset, setScrollOffset] = useState(0);
   const autoScrollRef = useRef(true);
 
-  const visibleH = Math.max(3, (process.stdout.rows ?? 40) - PANEL_OVERHEAD);
+  const visibleH = getVisiblePanelRows(PANEL_OVERHEAD);
   const maxScroll = Math.max(0, lines.length - visibleH);
 
   // Auto-scroll to bottom on new content
