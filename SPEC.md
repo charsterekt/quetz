@@ -135,24 +135,26 @@ The user can fully override this template in `.quetzrc.yml`. The default is a st
 
 ### 2.4 Agent Spawning
 
+Quetz spawns the agent via the `@anthropic-ai/claude-agent-sdk` package, using the SDK's `query()` function with streaming enabled:
+
 ```typescript
-const args = ['--model', model, '--dangerously-skip-permissions', '-p'];
-const proc = spawn('claude', args, {
-  stdio: ['pipe', 'inherit', 'inherit'],  // stdin piped, stdout/stderr to terminal
-  cwd: projectRoot,
-  shell: process.platform === 'win32',    // resolve claude.cmd on Windows
+import { query } from '@anthropic-ai/claude-agent-sdk';
+
+const abortController = new AbortController();
+const timer = setTimeout(() => abortController.abort(), timeout * 60 * 1000);
+
+const result = await query({
+  prompt,
+  options: { model, cwd, dangerouslySkipPermissions: true },
+  abortController,
 });
-proc.stdin.write(prompt);
-proc.stdin.end();
 ```
 
-The prompt is piped via stdin rather than passed as a command-line argument. This avoids OS argument-length limits (Windows truncates at ~8K characters; assembled prompts with beads context regularly exceed this).
+The SDK streams `SDKMessage` events back to Quetz, which are forwarded through a typed event bus (`QuetzBus`) to the Ink TUI for real-time display — tool starts, tool completions, text output, and stderr. The user sees every file edit, test run, and commit message in the TUI's agent panel.
 
-stdout/stderr are inherited so the user sees exactly what they'd see running Claude Code manually — every file edit, every test run, every commit message. Quetz adds its own status chrome above and below this, but the agent session is unfiltered.
+While Quetz renders agent activity in real time, it does not make control-flow decisions based on agent output. The agent is autonomous — Quetz spawns it, displays its work, and waits for completion.
 
-The agent process is a black box to Quetz. It does not parse agent output, detect intermediate states, or send signals to the agent. It waits for the process to exit.
-
-**Timeout:** Configurable (default: 30 minutes). If the agent process hasn't exited after this duration, Quetz kills it, prints a timeout message, and exits the loop. This catches genuine hangs without interfering with long-running legitimate work.
+**Timeout:** Configurable (default: 30 minutes). Managed via `AbortController` — if the agent hasn't completed after this duration, Quetz aborts it and exits the loop.
 
 ### 2.5 PR Detection
 
@@ -459,9 +461,34 @@ The `MERGE_LABELS` value is injected from the user's configured `automergeLabel`
 
 Quetz should be **fun to watch.** The terminal is the only UI. It needs personality.
 
-### 6.1 Colour Palette
+### 6.1 Ink-Based TUI
 
-All colours use ANSI 256 or basic ANSI codes for maximum terminal compatibility. Quetz auto-detects colour support and falls back to plain text if needed (`NO_COLOR` env var respected).
+When stdout is a TTY and the run is not `--dry`, Quetz renders a full-screen terminal UI using **Ink** (React for the terminal) in an alternate screen buffer. The user's existing terminal content is preserved and restored on exit.
+
+The TUI is built from React components in `src/ui/`, driven by typed events from `QuetzBus` (see `src/events.ts`). All state flows through event handlers — no polling or timers (except elapsed time).
+
+**Layout:**
+
+```
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ ▐ QUETZ ▌  quetz-abc  · "Fix the thing"          ◈ AGENT   Issue 3/12  ⏱ 2m │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+  [scrollable agent output fills this region]
+
+──────────────────────────────────────────────────────────────────────────────
+ [quetz]  quetz-abc  │  Agent running…                                    2m14s
+```
+
+- **StatusBar** (header): phase icon, issue ID + title, iteration counter, mode badge (PR/COMMIT/AMEND), elapsed time
+- **AgentPanel**: scrollable region streaming live agent output — tool executions with color-coded icons, text, errors
+- **QuetzPanel**: loop event log (issue pickup, phase transitions, PR found, merge, victory)
+- **HistoryPanel**: list of completed sessions with outcome badges (right panel)
+- **SessionDetailPanel**: transcript of a selected completed session (right panel)
+
+### 6.2 Colour Palette
+
+Colours are defined in `src/ui/theme.ts` as named constants. The palette uses ANSI 256 / basic ANSI for broad terminal compatibility. `chalk` helpers in `src/display/terminal.ts` provide named colour functions (`brand`, `issueId`, `success`, `waiting`, `error`, `dim`).
 
 | Element | Colour | Purpose |
 |---|---|---|
@@ -471,100 +498,27 @@ All colours use ANSI 256 or basic ANSI codes for maximum terminal compatibility.
 | Waiting / polling | Yellow | In progress |
 | Errors / failures | Red (bold) | Attention |
 | Dim info | Grey | Timestamps, metadata |
-| Agent separator lines | Magenta | Visually separate agent sessions |
 
-### 6.2 ASCII Art
+### 6.3 Phase Icons
 
-On startup (`quetz run`), display a Quetzalcoatl ASCII art with a brief animation (the serpent "flies" in from the left over ~1 second):
+The TUI uses phase icons (defined in `theme.ts`) to indicate loop state:
 
-```
-        ___
-    ~~~/ o \~~~>  
-   ~~~|  =  |~~>  QUETZ v0.1.0
-   ~~~\___/~~~>   The Feathered Serpent Dev Loop
-       ||||
-      ~~||~~
-        ~~
-```
+| Icon | Phase |
+|---|---|
+| `○` | Idle / startup |
+| `◌` | Fetching issues |
+| `◉` | Agent running |
+| `◎` | Polling (PR detection / merge wait) |
+| `●` | Completed / merged |
+| `✗` | Error |
 
-*This is a placeholder — the actual art should be more elaborate and animated. Consider a frame-by-frame animation using something like `chalk-animation` or raw ANSI cursor movement. The serpent could undulate across the terminal. Keep it to 1-2 seconds max — cool but not annoying.*
+### 6.4 ASCII Art
 
-### 6.3 Status Messages
+The ANSI art logo lives in `src/display/quetz.ts`. It is displayed on startup and on TUI exit (when restoring the main screen buffer).
 
-Quetz's personality comes through in its status messages. These should be varied and fun. Examples:
+### 6.5 Non-TUI Fallback
 
-**Issue pickup:**
-```
-🐉 Picking up bd-a1b2: "Add authentication middleware" [P1 task]
-   ──── Summoning agent ────
-```
-
-**Agent handoff (between sessions):**
-```
-   ──── Agent session complete ────
-🔍 Searching for PR...
-✓  Found PR #42: "feat: add auth middleware (bd-a1b2)"
-   Watching for merge...
-```
-
-**Polling (animated spinner or dots):**
-```
-⏳ Waiting for merge... ◐ (2m 30s elapsed)
-```
-
-**Merge success:**
-```
-✅ PR #42 merged! The serpent devours bd-a1b2.
-   ────────────────────────────────────────
-   Issues remaining: 7
-   ────────────────────────────────────────
-```
-
-**All issues complete (victory screen):**
-```
-   ╔══════════════════════════════════════╗
-   ║                                      ║
-   ║    ALL ISSUES RESOLVED               ║
-   ║                                      ║
-   ║    Issues completed: 14              ║
-   ║    Total time: 3h 42m               ║
-   ║    PRs merged: 14                   ║
-   ║                                      ║
-   ║    The serpent rests. 🐉             ║
-   ║                                      ║
-   ╚══════════════════════════════════════╝
-```
-
-**Failure:**
-```
-💥 CI failed on PR #42
-   → https://github.com/dk/aegis/pull/42
-   
-   The serpent retreats. Fix the issue and run quetz again.
-```
-
-### 6.4 Live Counters
-
-During a run, maintain a persistent status line (using ANSI cursor positioning) that shows:
-
-```
-[quetz] Issue 3/14 | bd-c3d4 | Agent running... (4m 12s)
-```
-
-This sits above the agent's output and updates in place. When the agent finishes and Quetz is polling, it changes to:
-
-```
-[quetz] Issue 3/14 | bd-c3d4 | PR #42 — waiting for merge ◑ (1m 05s)
-```
-
-### 6.5 Animation Library
-
-Use a small set of terminal animation utilities (not a heavy dependency — hand-roll or use `ora` for spinners and `chalk` for colours):
-
-- **Spinner** for polling states (merge wait, PR detection)
-- **Progress counter** for issue completion (3/14)
-- **Wipe transition** between agent sessions (a horizontal line that sweeps across)
-- **Startup animation** for the ASCII serpent (1-2 seconds, skippable with `--no-animate` or `display.animations: false`)
+When stdout is not a TTY (piped output, CI), or during `--dry` runs, Quetz falls back to plain streaming output with no alternate screen buffer.
 
 ---
 
@@ -575,25 +529,35 @@ Use a small set of terminal animation utilities (not a heavy dependency — hand
 ```
 quetz/
 ├── src/
-│   ├── cli.ts                 # Entry point, command router, usage banner
+│   ├── cli.ts                 # Entry point, command router, help text
 │   ├── config.ts              # .quetzrc.yml loader/writer, schema validation
 │   ├── init.ts                # quetz init flow — preflight, config gen, actions
-│   ├── loop.ts                # Main run loop — orchestrates everything
-│   ├── agent.ts               # Claude Code spawn with stdin-piped prompt
+│   ├── loop.ts                # Main run loop — orchestrates everything (~600 lines)
+│   ├── agent.ts               # Claude Agent SDK — spawn, stream, timeout
 │   ├── beads.ts               # bd CLI wrapper — ready, show, prime + mock mode
 │   ├── mock-data.ts           # Built-in fake issues for --mock and --simulate
+│   ├── events.ts              # Typed event bus (QuetzBus) for loop→TUI communication
 │   ├── github.ts              # Octokit — PR detection, merge polling
-│   ├── prompt.ts              # Prompt template assembly + variable injection
+│   ├── prompt.ts              # Handlebars template assembly + variable injection
 │   ├── git.ts                 # Git operations — checkout, pull (minimal)
 │   ├── preflight.ts           # CLI availability checks (claude, gh, bd, git)
 │   ├── verbose.ts             # Global verbose flag, log() helper (stderr)
 │   ├── display/
-│   │   ├── tui.ts             # Full-screen TUI — alt buffer, scroll regions
-│   │   ├── terminal.ts        # Colour helpers, ANSI codes, terminal size
-│   │   ├── spinner.ts         # Animated spinner for polling states
-│   │   ├── banner.ts          # ASCII art, startup animation, usage banner
-│   │   ├── messages.ts        # All user-facing strings, fun status messages
-│   │   └── status.ts          # Persistent status line management
+│   │   ├── terminal.ts        # Colour helpers (chalk), named colour functions
+│   │   └── quetz.ts           # ANSI art logo, printLogo() startup banner
+│   ├── ui/
+│   │   ├── App.tsx            # Main TUI root — layout, panels, keyboard navigation
+│   │   ├── AgentPanel.tsx     # Live agent output with scrolling + tool icons
+│   │   ├── QuetzPanel.tsx     # Loop event log (pickup, phase, merge, etc.)
+│   │   ├── StatusBar.tsx      # Header — phase, issue, iteration, mode, elapsed
+│   │   ├── HistoryPanel.tsx   # Completed session list with outcome badges
+│   │   ├── SessionDetailPanel.tsx # Session transcript viewer
+│   │   ├── Logo.tsx           # Branded logo component
+│   │   ├── hooks.ts           # React hooks (useProgress, usePhase, etc.)
+│   │   ├── theme.ts           # Colour constants, phase icons, tool styles
+│   │   ├── viewport.ts        # Terminal size detection + resize hook
+│   │   ├── session-history.ts # Session state machine (active/completed tracking)
+│   │   └── ink-imports.ts     # ESM bridge for Ink (CJS compatibility)
 │   └── templates/
 │       └── quetz-automerge.yml  # GitHub Actions template
 ├── package.json
@@ -604,52 +568,39 @@ quetz/
 
 ### 7.2 Dependencies
 
-Kept minimal. Quetz is a thin wrapper — it should install fast and break rarely.
+Kept minimal — seven production dependencies.
 
 | Dependency | Purpose |
 |---|---|
+| `@anthropic-ai/claude-agent-sdk` | Agent spawning and streaming via SDK |
 | `@octokit/rest` | GitHub API client (PR polling, detection) |
 | `chalk` | Terminal colours |
-| `ora` | Spinner animations |
+| `handlebars` | Prompt template rendering |
+| `ink` | React-based terminal UI (full-screen TUI) |
+| `react` | Component model for Ink TUI |
 | `yaml` | Parse/write `.quetzrc.yml` |
-| `mustache` or `handlebars` | Prompt template rendering |
-
-**No heavy frameworks.** No Express, no React, no Ink. This is a Node script that spawns processes and polls an API.
 
 ### 7.3 Key Implementation Details
 
 **Agent spawning (agent.ts):**
 ```typescript
-import { spawn } from 'child_process';
+import { query } from '@anthropic-ai/claude-agent-sdk';
+import type { QuetzBus } from './events.js';
 
-export function spawnAgent(prompt: string, cwd: string, timeout: number, model = 'sonnet'): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const args = ['--model', model, '--dangerously-skip-permissions', '-p'];
-    const proc = spawn('claude', args, {
-      stdio: ['pipe', 'inherit', 'inherit'],
-      cwd,
-      shell: process.platform === 'win32',
-    });
+export function spawnAgent(
+  prompt: string,
+  cwd: string,
+  timeoutMinutes: number = 30,
+  model: string = 'sonnet',
+  bus?: QuetzBus,
+): Promise<number> {
+  const abortController = new AbortController();
+  const timer = setTimeout(() => abortController.abort(), timeoutMinutes * 60 * 1000);
 
-    // Pipe prompt via stdin to avoid OS arg-length limits
-    proc.stdin!.write(prompt);
-    proc.stdin!.end();
-
-    const timer = setTimeout(() => {
-      proc.kill('SIGTERM');
-      reject(new Error(`Agent timed out after ${timeout} minutes`));
-    }, timeout * 60 * 1000);
-
-    proc.on('exit', (code) => {
-      clearTimeout(timer);
-      resolve(code ?? 1);
-    });
-
-    proc.on('error', (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-  });
+  // query() returns an async iterable of SDKMessage events.
+  // Quetz forwards tool_start, tool_done, text, and stderr events
+  // to the QuetzBus for TUI display.
+  // ...
 }
 ```
 
@@ -725,8 +676,7 @@ Drawing the boundary clearly:
 - **Does not manage CI configuration.** The user owns their test/review pipeline.
 - **Does not retry failed issues.** Notify and exit.
 - **Does not run multiple agents in parallel.** One loop, one agent, sequential.
-- **Does not parse or interpret agent output.** It's a black box.
-- **Does not interact with the Claude API directly.** It shells out to the CLI.
+- **Does not make decisions based on agent output.** The TUI displays agent activity in real time, but Quetz does not alter control flow based on what the agent does.
 - **Does not manage GitHub labels.** It reminds the user to create them.
 - **Does not handle merge conflicts.** If `git pull` fails, it exits.
 
