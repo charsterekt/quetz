@@ -15,7 +15,7 @@
     ████░                                                                                                              
 ```
 
-> Quetz is _currently_designed to work with **[Beads (`bd`)](https://github.com/steveyegge/beads)** — a local-first CLI issue tracker built around prioritized dependency graphs. Beads is the source of truth for what to work on next.
+> Quetz is _currently_ designed to work with **[Beads (`bd`)](https://github.com/steveyegge/beads)** — a local-first CLI issue tracker built around prioritized dependency graphs. Beads is the source of truth for what to work on next.
 
 **Quetz is a wrapper.** It does not claim issues, run tests, commit code, or push branches. The spawned agent does all of that. Quetz manages lifecycle only: what issue to work on next, when to start, when to stop.
 
