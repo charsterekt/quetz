@@ -135,6 +135,8 @@ Phases shown in the header:
 
 The TUI disables itself automatically when stdout is not a TTY (CI, piped output).
 
+**Major TUI overhaul planned for the next release**
+
 ---
 
 ## Simulate Mode
