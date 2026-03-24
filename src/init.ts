@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
 import { execSync } from 'child_process';
+import chalk from 'chalk';
 import { runPreflight } from './preflight.js';
 import { writeConfig, DEFAULTS } from './config.js';
 import { printLogo } from './display/quetz.js';
@@ -42,6 +43,11 @@ jobs:
           UPDATE_METHOD: "rebase"
 `;
 
+function section(title: string): void {
+  process.stdout.write('\n' + chalk.bold(title) + '\n');
+  process.stdout.write(chalk.gray('─'.repeat(title.length)) + '\n\n');
+}
+
 function ask(rl: readline.Interface, question: string): Promise<string> {
   return new Promise(resolve => rl.question(question, resolve));
 }
@@ -51,7 +57,8 @@ async function promptConfirm(
   label: string,
   defaultVal: string
 ): Promise<string> {
-  const answer = await ask(rl, `  ${label} [${defaultVal}]: `);
+  const prompt = `  ${chalk.cyan(label)}  ${chalk.gray('[' + defaultVal + ']')}: `;
+  const answer = await ask(rl, prompt);
   return answer.trim() || defaultVal;
 }
 
@@ -65,7 +72,7 @@ async function gatherConfig(rl: readline.Interface): Promise<QuetzConfig> {
     }
   })();
 
-  process.stdout.write('\nConfig Setup\n════════════\n\n');
+  section('Config Setup');
 
   owner = await promptConfirm(rl, 'GitHub owner/org', owner || 'owner');
   repo = await promptConfirm(rl, 'GitHub repo', repo || 'repo');
@@ -89,22 +96,22 @@ async function setupGitHubActions(
 ): Promise<void> {
   const yaml = getAutomergeYaml(config.github.automergeLabel);
 
-  process.stdout.write('\nGitHub Actions Setup\n════════════════════\n\n');
+  section('GitHub Actions Setup');
   process.stdout.write(
-    'Quetz needs one GitHub Action: an automerge workflow that merges PRs\n' +
-    'when all checks pass and the "' + config.github.automergeLabel + '" label is present.\n\n' +
-    '  [1] Write automerge workflow to .github/workflows/quetz-automerge.yml\n' +
-    '  [2] Have Claude Code raise a PR to add it\n' +
-    '  [3] I\'ll handle it myself (show me what\'s needed)\n\n'
+    '  Quetz needs one GitHub Action: an automerge workflow that merges PRs\n' +
+    '  when all checks pass and the ' + chalk.cyan('"' + config.github.automergeLabel + '"') + ' label is present.\n\n' +
+    '  ' + chalk.bold('[1]') + '  Write workflow to ' + chalk.gray('.github/workflows/quetz-automerge.yml') + '\n' +
+    '  ' + chalk.bold('[2]') + '  Have Claude Code raise a PR to add it\n' +
+    '  ' + chalk.bold('[3]') + '  I\'ll handle it myself ' + chalk.gray('(show me the YAML)') + '\n\n'
   );
 
-  const choice = await ask(rl, 'Select [1/2/3]: ');
+  const choice = await ask(rl, '  Select [1/2/3]: ');
 
   if (choice.trim() === '1') {
     const workflowDir = path.join(projectRoot, '.github', 'workflows');
     fs.mkdirSync(workflowDir, { recursive: true });
     fs.writeFileSync(path.join(workflowDir, 'quetz-automerge.yml'), yaml, 'utf-8');
-    process.stdout.write('\n  Wrote .github/workflows/quetz-automerge.yml\n');
+    process.stdout.write('\n  ' + chalk.green('✓') + '  Wrote .github/workflows/quetz-automerge.yml\n');
   } else if (choice.trim() === '2') {
     const prompt =
       'Create the file .github/workflows/quetz-automerge.yml with the following content:\n\n' +
@@ -119,24 +126,26 @@ async function setupGitHubActions(
       process.stderr.write('\nClaude Code session ended.\n');
     }
   } else {
-    process.stdout.write('\nPaste this into .github/workflows/quetz-automerge.yml:\n\n');
+    process.stdout.write('\n  Paste this into .github/workflows/quetz-automerge.yml:\n\n');
     process.stdout.write(yaml + '\n');
   }
 }
 
 function printLabelReminder(config: QuetzConfig): void {
   process.stdout.write(
-    `\n⚠  Reminder: Create the "${config.github.automergeLabel}" label on your GitHub repo.\n` +
-    `   → https://github.com/${config.github.owner}/${config.github.repo}/labels\n` +
-    '   Quetz agents will tag PRs with this label to trigger auto-merge.\n\n'
+    '\n  ' + chalk.yellow('!') + '  Create the ' + chalk.cyan('"' + config.github.automergeLabel + '"') +
+    ' label on your GitHub repo:\n' +
+    chalk.gray('     https://github.com/' + config.github.owner + '/' + config.github.repo + '/labels') + '\n' +
+    '     Quetz agents will tag PRs with this label to trigger auto-merge.\n'
   );
 }
 
 export async function runInit(projectRoot: string = process.cwd()): Promise<void> {
   printLogo();
-  process.stdout.write('Running preflight checks...\n');
+
+  section('Preflight Checks');
   runPreflight();
-  process.stdout.write('  All checks passed.\n');
+  process.stdout.write('  ' + chalk.green('✓') + '  All checks passed.\n');
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -146,12 +155,12 @@ export async function runInit(projectRoot: string = process.cwd()): Promise<void
   try {
     const config = await gatherConfig(rl);
     writeConfig(config, projectRoot);
-    process.stdout.write('\n  Wrote .quetzrc.yml\n');
+    process.stdout.write('\n  ' + chalk.green('✓') + '  Wrote .quetzrc.yml\n');
 
     await setupGitHubActions(rl, config, projectRoot);
     printLabelReminder(config);
 
-    process.stdout.write('quetz init complete. Run `quetz run` to start the loop.\n');
+    process.stdout.write('\n' + chalk.green.bold('Ready.') + '  Run ' + chalk.cyan('quetz run') + ' to start the loop.\n\n');
   } finally {
     rl.close();
   }
