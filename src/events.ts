@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 export type QuetzPhase =
   | 'idle' | 'fetching' | 'git_reset' | 'assembling'
   | 'agent_running' | 'pr_detecting' | 'pr_polling'
+  | 'commit_verifying' | 'amend_verifying'
   | 'completed' | 'error';
 
 export interface QuetzEvent {

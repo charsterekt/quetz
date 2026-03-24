@@ -24,6 +24,8 @@ export function formatQuetzEvent(event: QuetzEventName, payload: any): string {
         agent_running: 'AGENT running',
         pr_detecting: 'PR detecting',
         pr_polling: 'PR polling',
+        commit_verifying: 'COMMIT verifying',
+        amend_verifying: 'AMEND verifying',
         completed: 'DONE',
         error: 'ERROR',
       };

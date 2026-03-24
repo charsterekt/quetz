@@ -170,7 +170,7 @@ export async function main(): Promise<void> {
         // \x1b[?25l hides the cursor for the entire TUI session: the cursor
         // jumping to new positions on every Ink render is the primary cause of
         // visible flicker, especially in the bottom half of the screen.
-        process.stdout.write('\x1b[?1049h\x1b[48;2;26;26;46m\x1b[2J\x1b[H\x1b[?25l');
+        process.stdout.write('\x1b[?1049h\x1b[48;2;10;10;10m\x1b[2J\x1b[H\x1b[?25l');
 
         const app = inkModule.render(
           React.createElement(App, { bus, onQuit: resolveQuit, cwd, branch, version: pkg.version }),
