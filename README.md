@@ -1,5 +1,7 @@
 # Quetz — The Feathered Serpent Dev Loop
 
+[![npm](https://img.shields.io/npm/v/@dkchar/quetz)](https://www.npmjs.com/package/@dkchar/quetz)
+
 **Quetz** is a local npm package that wraps an agentic CLI (currently Claude Code) into a self-feeding development loop. It reads prioritized issues from an issue graph, spawns a fully autonomous agent for each one sequentially, monitors the resulting GitHub PR through to merge, and repeats until done.
 
 > *Quetzalcoatl, the feathered serpent — a winged reptile that bridges earth and sky.*
