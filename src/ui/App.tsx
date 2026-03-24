@@ -5,7 +5,6 @@ import { useEventLog, useProgress, useSessionHistory } from './hooks.js';
 import { AgentPanel } from './AgentPanel.js';
 import { QuetzPanel, QUETZ_EVENTS, formatQuetzEvent } from './QuetzPanel.js';
 import { StatusBar } from './StatusBar.js';
-import { Logo } from './Logo.js';
 import { HistoryPanel } from './HistoryPanel.js';
 import { SessionDetailPanel } from './SessionDetailPanel.js';
 import { getRenderableRows, getVisiblePanelRows, useTerminalViewport } from './viewport.js';
@@ -189,7 +188,10 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
   return (
     <Box flexDirection="column" height={rows}>
       <Box borderStyle="single" borderColor={colors.border} paddingX={1} justifyContent="space-between">
-        <Logo />
+        <Box>
+          <Text bold color={colors.brandBold}>QUETZ</Text>
+          <Text dimColor> The Feathered Serpent Dev Loop</Text>
+        </Box>
         <Box>
           <ProgressBar current={progress.iteration > 0 ? progress.iteration - 1 : 0} total={progress.total} />
         </Box>
