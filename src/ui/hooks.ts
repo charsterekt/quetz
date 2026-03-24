@@ -83,7 +83,6 @@ export interface PhaseState {
   agentThinkingLevel: string;
   iteration: number;
   total: number;
-  elapsed: string;
   mode: 'pr' | 'commit' | 'amend';
   prNumber?: number;
   prUrl?: string;
@@ -105,14 +104,11 @@ export function usePhase(bus: QuetzBus): PhaseState {
     agentThinkingLevel: '',
     iteration: 0,
     total: 0,
-    elapsed: '0m 00s',
     mode: 'pr',
   });
-  const startRef = useRef<number>(Date.now());
 
   useEffect(() => {
     const onPickup = (p: QuetzEvent['loop:issue_pickup']) => {
-      startRef.current = Date.now();
       setState(prev => ({
         ...prev,
         issueId: p.id,
@@ -120,7 +116,6 @@ export function usePhase(bus: QuetzBus): PhaseState {
         iteration: p.iteration,
         total: p.total,
         agentThinkingLevel: '',
-        elapsed: '0m 00s',
         prNumber: undefined,
         prUrl: undefined,
       }));
@@ -129,7 +124,6 @@ export function usePhase(bus: QuetzBus): PhaseState {
       setState(prev => ({
         ...prev,
         phase: p.phase,
-        elapsed: formatElapsed(Date.now() - startRef.current),
         ...(p.phase === 'agent_running'
           ? {
             agentModel: p.agentModel ?? p.detail ?? prev.agentModel,
@@ -142,12 +136,7 @@ export function usePhase(bus: QuetzBus): PhaseState {
       setState(prev => ({ ...prev, phase: 'error' }));
     };
     const onPR = (p: QuetzEvent['loop:pr_found']) => {
-      setState(prev => ({
-        ...prev,
-        elapsed: formatElapsed(Date.now() - startRef.current),
-        prNumber: p.number,
-        prUrl: p.url,
-      }));
+      setState(prev => ({ ...prev, prNumber: p.number, prUrl: p.url }));
     };
     const onStart = (p: QuetzEvent['loop:start']) => {
       setState(prev => ({ ...prev, total: p.total }));
@@ -163,14 +152,6 @@ export function usePhase(bus: QuetzBus): PhaseState {
     bus.on('loop:start', onStart);
     bus.on('loop:mode', onMode);
 
-    const timer = setInterval(() => {
-      setState(prev => {
-        if (!prev.issueId) return prev;
-        const nextElapsed = formatElapsed(Date.now() - startRef.current);
-        return prev.elapsed === nextElapsed ? prev : { ...prev, elapsed: nextElapsed };
-      });
-    }, ELAPSED_UPDATE_MS);
-
     return () => {
       bus.off('loop:issue_pickup', onPickup);
       bus.off('loop:phase', onPhase);
@@ -178,7 +159,6 @@ export function usePhase(bus: QuetzBus): PhaseState {
       bus.off('loop:pr_found', onPR);
       bus.off('loop:start', onStart);
       bus.off('loop:mode', onMode);
-      clearInterval(timer);
     };
   }, [bus]);
 
