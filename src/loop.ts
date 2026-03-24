@@ -447,6 +447,7 @@ export async function runLoop(
 
     } else if (amend) {
       // ── Amend path: verify commit count, update isFirstIssue, then continue ─
+      if (bus) bus.emit('loop:phase', { phase: 'amend_verifying' });
       const commitCount = getCommitCountAhead(config.github.defaultBranch, projectRoot);
       log('GIT', `Commits ahead of ${config.github.defaultBranch}: ${commitCount}`);
 
@@ -472,6 +473,7 @@ export async function runLoop(
 
     } else if (localCommits) {
       // ── Local-commits path: verify a commit landed, then continue ──────────
+      if (bus) bus.emit('loop:phase', { phase: 'commit_verifying' });
       const newCommits = countNewCommits(config.github.defaultBranch, projectRoot);
       log('GIT', `New commits since ${config.github.defaultBranch}: ${newCommits}`);
 
