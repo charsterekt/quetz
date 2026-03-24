@@ -190,25 +190,36 @@ export async function main(): Promise<void> {
         // listeners before runLoop starts emitting loop:start / loop:issue_pickup.
         await new Promise<void>(resolve => setImmediate(resolve));
 
-        let loopExitCode = 0;
+        let loopResult: import('./loop.js').LoopResult = { exitCode: 0, reason: 'victory' };
+
+        const exitMessage = (result: import('./loop.js').LoopResult, interrupted: boolean): string => {
+          if (interrupted) return 'The serpent withdraws — interrupted by user.\n';
+          switch (result.reason) {
+            case 'victory':   return 'The serpent rests — all issues resolved. 🐉\n';
+            case 'no_issues': return 'The serpent sleeps — no ready issues found.\n';
+            case 'dry_run':   return 'The serpent scouts — dry run complete.\n';
+            case 'error':     return `The serpent retreats (exit code ${result.exitCode} — runtime failure).\n`;
+            default:          return `Quetz stopped (exit code ${result.exitCode}).\n`;
+          }
+        };
 
         // cleanupTui: unmount Ink (stops renderer, flushes final sequences to alt
         // screen), then clear the alt screen and restore the main screen.
         // Calling unmount() before \x1b[?1049l ensures Ink's own cursor-movement
         // cleanup lands on the alt screen buffer (discarded on restore) rather
         // than bleeding onto the main screen.
-        const cleanupTui = (exitCode: number) => {
+        const cleanupTui = (interrupted: boolean) => {
           app.unmount();
           process.stdout.write('\x1b[2J\x1b[H\x1b[0m\x1b[?1049l\x1b[?25h');
           printLogo();
-          process.stdout.write('\nQuetz stopped.\n');
-          process.exit(exitCode);
+          process.stdout.write('\n' + exitMessage(loopResult, interrupted));
+          process.exit(loopResult.exitCode);
         };
 
         // Ctrl+C: in raw mode the terminal sends \x03 (ETX) instead of SIGINT,
         // so a SIGINT handler alone is not enough on MINGW64. We handle SIGINT
         // here as a belt-and-suspenders measure for non-raw-mode terminals.
-        const onSigint = () => cleanupTui(loopExitCode);
+        const onSigint = () => cleanupTui(true);
         process.once('SIGINT', onSigint);
 
         // Run the loop. On success, auto-exit. On error, stay alive so the user
@@ -216,18 +227,18 @@ export async function main(): Promise<void> {
         const exitSignal = new Promise<void>(resolve => {
           runLoop({ dry, model, thinkingLevel, timeout, localCommits, amend, simulate }, bus)
             .then(r => {
-              loopExitCode = r.exitCode;
+              loopResult = r;
               if (r.exitCode === 0) resolve(); // success → auto-exit
               // error → stay alive; quitPromise drives the exit
             })
-            .catch(() => { loopExitCode = 1; resolve(); });
+            .catch(() => { loopResult = { exitCode: 1, reason: 'error' }; resolve(); });
           quitPromise.then(resolve);
         });
 
         await exitSignal;
 
         process.off('SIGINT', onSigint);
-        cleanupTui(loopExitCode);
+        cleanupTui(false);
       } else {
         // Non-TUI fallback (piped, dry-run, no TTY)
         const result = await runLoop({ dry, model, thinkingLevel, timeout, localCommits, amend, simulate }, bus);
