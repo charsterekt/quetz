@@ -12,7 +12,6 @@ vi.mock('../beads.js', () => ({
   listAllIssues: vi.fn(() => []),
   enableMockMode: vi.fn(),
   disableMockMode: vi.fn(),
-  isMockMode: vi.fn(() => false),
 }));
 vi.mock('../git.js', () => ({
   checkoutDefault: vi.fn(),
@@ -35,14 +34,6 @@ vi.mock('../github.js', () => ({
 }));
 vi.mock('child_process', () => ({
   execSync: vi.fn(),
-}));
-vi.mock('../display/status.js', () => ({
-  formatElapsed: (ms: number) => {
-    const s = Math.floor(ms / 1000);
-    return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
-  },
-  updateStatusLine: vi.fn(),
-  clearStatusLine: vi.fn(),
 }));
 
 import { loadConfig } from '../config.js';

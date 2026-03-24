@@ -35,10 +35,6 @@ export function disableMockMode(): void {
   mockMode = false;
 }
 
-export function isMockMode(): boolean {
-  return mockMode;
-}
-
 // ── bd wrappers ───────────────────────────────────────────────────────────────
 
 function exec(cmd: string): string {

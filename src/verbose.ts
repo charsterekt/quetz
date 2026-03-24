@@ -6,10 +6,6 @@ export function setVerbose(enabled: boolean): void {
   verboseMode = enabled;
 }
 
-export function isVerbose(): boolean {
-  return verboseMode;
-}
-
 export function log(category: string, message: string): void {
   if (verboseMode) {
     process.stderr.write(`[${category}] ${message}\n`);
