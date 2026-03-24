@@ -8,7 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.3] - 2026-03-24
 
 ### Fixed
-- StatusBar elapsed timer now ticks every second reliably. Timer moved from shared `usePhase` hook into local component state — Ink wasn't reliably flushing re-renders from shared hook `setState` calls during heavy agent streaming.
+- `q` and Ctrl+C now both show the same interrupted message: "The serpent withdraws — interrupted by user." Previously `q` mid-run would incorrectly show the victory message because `loopResult` hadn't been set yet (#67)
+- StatusBar elapsed timer now ticks every second reliably. Timer moved from shared `usePhase` hook into local component `useState`/`useEffect` — the ink-spinner pattern. Ink wasn't reliably flushing re-renders from shared hook `setState` calls during agent streaming (#68)
+
+### Removed
+- `--dry` / `--dry-run` flag removed — it was dead code that provided no preview safety and actively misled users into thinking they were running safely (#65)
+
+### Security
+- `--simulate` mode now restricts agent tools to read-only operations. Previously the agent ran with full permissions and made real git commits, pushed real branches, and merged real PRs into user repos (#64)
 
 ## [0.5.2] - 2026-03-24
 
