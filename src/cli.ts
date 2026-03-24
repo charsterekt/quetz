@@ -221,6 +221,7 @@ export async function main(): Promise<void> {
 
         // Run the loop. On success, auto-exit. On error, stay alive so the user
         // can read the highlighted failure before pressing q to quit.
+        let userQuit = false;
         const exitSignal = new Promise<void>(resolve => {
           runLoop({ model, thinkingLevel, timeout, localCommits, amend, simulate }, bus)
             .then(r => {
@@ -229,13 +230,13 @@ export async function main(): Promise<void> {
               // error → stay alive; quitPromise drives the exit
             })
             .catch(() => { loopResult = { exitCode: 1, reason: 'error' }; resolve(); });
-          quitPromise.then(resolve);
+          quitPromise.then(() => { userQuit = true; resolve(); });
         });
 
         await exitSignal;
 
         process.off('SIGINT', onSigint);
-        cleanupTui(false);
+        cleanupTui(userQuit);
       } else {
         // Non-TUI fallback (piped, no TTY)
         const result = await runLoop({ model, thinkingLevel, timeout, localCommits, amend, simulate }, bus);
