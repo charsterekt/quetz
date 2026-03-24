@@ -89,6 +89,8 @@ First-time setup. Runs preflight checks, generates `.quetzrc.yml`, and optionall
 
 Start the dev loop. Runs until all issues are resolved or a failure occurs.
 
+<img width="1755" height="876" alt="image" src="https://github.com/user-attachments/assets/bc12ad57-ba28-401b-93b5-5102ebb1bcd3" />
+
 | Flag | Default | Description |
 |---|---|---|
 | `--dry` | — | Preview mode: list issues, print first prompt, exit without spawning |
