@@ -77,41 +77,24 @@ function getStatusDisplay(
   );
 }
 
-export async function showStatus(watch: boolean = false, mock: boolean = false): Promise<void> {
-  if (mock) enableMockMode();
+export async function showStatus(): Promise<void> {
   const config = loadConfig();
 
-  function fetchStatusData() {
-    let readyIssues: { id: string; title: string; priority: number }[] = [];
-    try {
-      readyIssues = getReadyIssues();
-    } catch {
-      process.stderr.write(error('Failed to query bd ready.\n'));
-      process.exit(1);
-    }
-    const allIssues = listAllIssues();
-    const total = allIssues.length;
-    const inProgress = allIssues.filter(i => i.status === 'in_progress').length;
-    const completed = allIssues.filter(i => i.status === 'closed' || i.status === 'done').length;
-    const ready = readyIssues.length;
-    const nextIssue = readyIssues[0];
-    return { ready, inProgress, completed, total, nextIssue };
+  let readyIssues: { id: string; title: string; priority: number }[] = [];
+  try {
+    readyIssues = getReadyIssues();
+  } catch {
+    process.stderr.write(error('Failed to query bd ready.\n'));
+    process.exit(1);
   }
+  const allIssues = listAllIssues();
+  const total = allIssues.length;
+  const inProgress = allIssues.filter(i => i.status === 'in_progress').length;
+  const completed = allIssues.filter(i => i.status === 'closed' || i.status === 'done').length;
+  const ready = readyIssues.length;
+  const nextIssue = readyIssues[0];
 
-  if (watch) {
-    process.stdout.write(brand('\nQuetz Status') + (mock ? dim(' [mock]') : '') + '\n');
-    process.stdout.write('Press Ctrl+C to exit\n\n');
-
-    while (true) {
-      const data = fetchStatusData();
-      process.stdout.write('\x1b[2J\x1b[H');
-      process.stdout.write(getStatusDisplay(data.ready, data.inProgress, data.completed, data.total, data.nextIssue, config));
-      await sleep(5000);
-    }
-  } else {
-    const data = fetchStatusData();
-    process.stdout.write('\n' + getStatusDisplay(data.ready, data.inProgress, data.completed, data.total, data.nextIssue, config));
-  }
+  process.stdout.write('\n' + getStatusDisplay(ready, inProgress, completed, total, nextIssue, config));
 }
 
 // ── Run loop ─────────────────────────────────────────────────────────────────
@@ -124,7 +107,6 @@ export async function runLoop(
     timeout?: number;
     localCommits?: boolean;
     amend?: boolean;
-    mock?: boolean;
     simulate?: boolean;
   },
   bus?: QuetzBus
@@ -137,7 +119,7 @@ export async function runLoop(
     log('QUETZ', 'Verbose mode enabled');
   }
   const simulate = opts.simulate ?? false;
-  if (opts.mock || simulate) enableMockMode();
+  if (simulate) enableMockMode();
 
   const projectRoot = process.cwd();
   const config = loadConfig(projectRoot);

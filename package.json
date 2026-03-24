@@ -1,7 +1,7 @@
 {
   "name": "quetz",
-  "version": "0.1.0",
-  "description": "The Feathered Serpent Dev Loop — wraps Claude Code into a self-feeding development loop",
+  "version": "0.5.0",
+  "description": "The Feathered Serpent Dev Loop — a self-feeding issue resolution agentic loop.",
   "main": "dist/cli.js",
   "bin": {
     "quetz": "dist/cli.js"
@@ -29,7 +29,7 @@
     "developer-tools",
     "beads"
   ],
-  "author": "DK + Claude",
+  "author": "Dhruv Krishnamachari",
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.81",

@@ -21,7 +21,6 @@ npx vitest run src/test/config.test.ts   # run a single test file
 npx quetz init           # first-time project setup
 npx quetz run            # start the dev loop
 npx quetz run --dry      # preview without executing
-npx quetz run --mock     # run with fake issues (no real bd/git needed)
 npx quetz run --simulate # mock issues + real agent + fake PR lifecycle
 npx quetz status         # show loop progress
 ```

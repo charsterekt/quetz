@@ -112,7 +112,6 @@ describe('main', () => {
         timeout: undefined,
         localCommits: false,
         amend: false,
-        mock: false,
         simulate: false,
       },
       bus,
