@@ -33,8 +33,11 @@ export async function main(): Promise<void> {
     process.stdout.write('  run --simulate --amend  Simulate with fake amend commits\n');
     process.stdout.write('  run --model <m>   Override agent model\n');
     process.stdout.write(`  run --thinking-level <l> Override Claude effort (${CLAUDE_THINKING_LEVELS.join('|')})\n`);
+    process.stdout.write('  run --mock        Use built-in fake issues (no bd required)\n');
     process.stdout.write('  run --timeout <m> Override agent timeout (minutes)\n');
     process.stdout.write('  status            Show loop progress\n');
+    process.stdout.write('  status --watch    Live-refreshing status (5s interval)\n');
+    process.stdout.write('  status --mock     Status with fake issues (no bd required)\n');
     process.stdout.write('  validate          Validate .quetzrc.yml\n');
     process.stdout.write('  config show       Show resolved config\n');
     process.stdout.write('\n');

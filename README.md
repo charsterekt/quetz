@@ -157,8 +157,6 @@ Start the dev loop. Runs until all issues are resolved or a failure occurs.
 | `--model <model>` | `sonnet` | Override agent model (e.g. `haiku`, `sonnet`, `opus`) |
 | `--thinking-level <level>` | config | Override Claude effort level (`low`, `medium`, `high`, `max`) |
 | `--timeout <minutes>` | `30` | Kill agent if it runs longer than this |
-| `--verbose` | — | Enable debug logging to stderr (`[category] message` format) |
-| `--no-animate` | — | Disable TUI and animations; plain scrolling output |
 | `--local-commits` | — | Skip PR lifecycle; verify local commits only |
 | `--amend` | — | Accumulate all issue work into a single rolling commit (no PR) |
 | `--mock` | — | Use built-in fake issues instead of calling `bd` |
@@ -183,15 +181,6 @@ quetz status           # Snapshot
 quetz status --watch   # Refresh every 5 seconds
 quetz status -w        # Same
 quetz status --mock    # Use fake issues (no bd required)
-```
-
-### `quetz watch`
-
-Alias for `quetz status --watch`. Live-refreshing status display (5-second interval).
-
-```bash
-quetz watch            # Live status
-quetz watch --mock     # Live status with fake issues
 ```
 
 ### `quetz help`
@@ -224,7 +213,7 @@ Quetz calls `bd ready --json` and takes the first unblocked, highest-priority is
 
 ### Agent spawning
 
-The agent runs as a child process with stdout/stderr inherited — you see everything it does, streamed into the TUI's content region. The prompt is piped via stdin (not as a command-line argument) to avoid OS argument-length limits on Windows. Quetz never parses agent output. It spawns, waits for exit, then looks for the PR.
+The agent runs via the `@anthropic-ai/claude-agent-sdk`, which streams `SDKMessage` events back to Quetz in real time. These events (tool starts, tool completions, text output) are forwarded through a typed event bus (`QuetzBus`) to the Ink TUI — you see everything the agent does in the TUI's agent panel. Quetz displays agent activity but does not make control-flow decisions based on it. It spawns, waits for completion, then looks for the PR.
 
 If the agent runs past `agent.timeout` minutes, Quetz kills it and exits with code 1.
 
@@ -370,25 +359,35 @@ Create the `automerge` label on your GitHub repo before running the loop.
 
 ```
 src/
-├── cli.ts              Entry point, command router, exit codes
+├── cli.ts              Entry point, command router, help text
 ├── config.ts           .quetzrc.yml loader/validator/defaults
 ├── init.ts             quetz init — preflight, config gen, Actions scaffold
-├── loop.ts             Main run loop orchestration
-├── agent.ts            Spawn claude with prompt via stdin, stdout/stderr inherited
+├── loop.ts             Main run loop orchestration (~600 lines)
+├── agent.ts            Spawns agent via @anthropic-ai/claude-agent-sdk with streaming
 ├── beads.ts            Typed wrappers around bd ready/show/prime + mock mode
 ├── mock-data.ts        Built-in fake issues for --mock and --simulate
+├── events.ts           Typed event bus (QuetzBus) for loop→TUI communication
 ├── github.ts           Octokit-based PR detection and merge polling
 ├── prompt.ts           Handlebars template assembly
 ├── git.ts              git checkout and git pull only
 ├── preflight.ts        CLI availability and auth checks
 ├── verbose.ts          Global verbose flag, log() helper (stderr output)
 ├── display/
-│   ├── tui.ts          Full-screen TUI — alternate buffer, scroll regions, layout
 │   ├── terminal.ts     ANSI color helpers wrapping chalk
-│   ├── banner.ts       ASCII art, startup animation, help text
-│   ├── spinner.ts      ora-based spinner for polling states
-│   ├── messages.ts     User-facing status messages
-│   └── status.ts       Persistent status line, elapsed timer
+│   └── quetz.ts        ANSI art logo, printLogo() startup banner
+├── ui/
+│   ├── App.tsx         Main TUI root — layout, panels, keyboard navigation
+│   ├── AgentPanel.tsx  Live agent output with scrolling + tool icons
+│   ├── QuetzPanel.tsx  Loop event log (pickup, phase, merge, etc.)
+│   ├── StatusBar.tsx   Header — phase, issue, iteration, mode, elapsed
+│   ├── HistoryPanel.tsx  Completed session list with outcome badges
+│   ├── SessionDetailPanel.tsx  Session transcript viewer
+│   ├── Logo.tsx        Branded logo component
+│   ├── hooks.ts        React hooks (useProgress, usePhase, etc.)
+│   ├── theme.ts        Color constants, phase icons, tool styles
+│   ├── viewport.ts     Terminal size detection + resize hook
+│   ├── session-history.ts  Session state machine (active/completed tracking)
+│   └── ink-imports.ts  ESM bridge for Ink (CJS compatibility)
 └── templates/
     └── quetz-automerge.yml   GitHub Actions template (copied by quetz init)
 ```
@@ -397,16 +396,18 @@ src/
 
 | Package | Used for |
 |---|---|
+| `@anthropic-ai/claude-agent-sdk` | Agent spawning and streaming via SDK |
 | `@octokit/rest` | GitHub API — PR detection, merge polling |
 | `chalk` | Terminal colors (via `display/terminal.ts` named helpers) |
-| `ora` | Spinner animations (`display/spinner.ts`) |
-| `yaml` | Parse and write `.quetzrc.yml` |
 | `handlebars` | Prompt template rendering |
+| `ink` | React-based terminal UI (full-screen TUI) |
+| `react` | Component model for Ink TUI |
+| `yaml` | Parse and write `.quetzrc.yml` |
 
 ### Key design constraints
 
 - **No retries.** Every failure mode: notify and exit. The user fixes and reruns.
-- **Agent is a black box.** Quetz never parses agent output or sends signals.
+- **Agent is autonomous.** Quetz displays agent activity in real time but makes no control-flow decisions based on agent output.
 - **Sequential only.** One loop, one agent at a time. No parallelism in v0.1.
 - **PR detection is loose.** Discover what the agent did; don't dictate branch names.
 - **Under 2000 lines of TypeScript** total for v0.1.0.
