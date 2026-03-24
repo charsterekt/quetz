@@ -1,5 +1,5 @@
 {
-  "name": "quetz",
+  "name": "@dkchar/quetz",
   "version": "0.5.0",
   "description": "The Feathered Serpent Dev Loop — a self-feeding issue resolution agentic loop.",
   "main": "dist/cli.js",

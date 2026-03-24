@@ -8,9 +8,7 @@ name: Release
 #   https://docs.github.com/en/actions/use-cases-and-examples/publishing-packages/publishing-nodejs-packages
 #
 # One-time setup (do this before the first release):
-#   1. Go to https://www.npmjs.com/package/quetz/access  (or Settings > Trusted Publishing for a new package)
-#      For a new package not yet on npm, use: https://www.npmjs.com/settings/dkchar/packages
-#      and configure Trusted Publishing before publishing.
+#   1. Go to https://www.npmjs.com/package/@dkchar/quetz/access
 #   2. Under "Trusted Publishers" add a GitHub Actions publisher:
 #        Repository owner: dkchar
 #        Repository name:  quetz
