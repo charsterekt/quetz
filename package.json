@@ -21,9 +21,17 @@
     "test:watch": "vitest",
     "prepublishOnly": "npm run build"
   },
+  "homepage": "https://github.com/dkchar/quetz#readme",
+  "bugs": {
+    "url": "https://github.com/dkchar/quetz/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/dkchar/quetz.git"
+    "url": "git+https://github.com/dkchar/quetz.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "engines": {
     "node": ">=18.0.0"
