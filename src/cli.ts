@@ -61,6 +61,7 @@ export async function main(): Promise<void> {
         process.stderr.write(`✗ Config error: ${e.message ?? String(err)}\n`);
         process.exit(EXIT_CONFIG_ERROR);
       }
+      break;
     }
     case 'config': {
       const subcommand = args[1];
@@ -72,6 +73,7 @@ export async function main(): Promise<void> {
         process.stderr.write('Unknown subcommand. Try: quetz config show\n');
         process.exit(EXIT_FAILURE);
       }
+      break;
     }
     case 'run': {
       const dry = args.includes('--dry');
