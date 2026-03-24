@@ -369,12 +369,6 @@ export async function runLoop(
       return { exitCode: 1, reason: 'error' };
     }
 
-    if (bus) bus.emit('loop:phase', { phase: 'pr_detecting' });
-    else process.stdout.write(
-      `\n   ${dim('──── Agent session complete ────')}\n` +
-      `${waiting('🔍 Searching for PR…')}\n`
-    );
-
     if (simulate) {
       // ── Simulate path: fake the post-agent lifecycle ─────────────────────
 
@@ -497,6 +491,11 @@ export async function runLoop(
 
     } else {
       // ── PR path: detect PR and poll for merge ──────────────────────────────
+      if (bus) bus.emit('loop:phase', { phase: 'pr_detecting' });
+      else process.stdout.write(
+        `\n   ${dim('──── Agent session complete ────')}\n` +
+        `${waiting('🔍 Searching for PR…')}\n`
+      );
       // 6. Detect PR
       log('GITHUB', `Searching for PR referencing ${issue.id}`);
       const spawnTime = new Date(agentStart);
