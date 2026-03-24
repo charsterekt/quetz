@@ -4,7 +4,7 @@
 
 > *Quetzalcoatl, the feathered serpent — a winged reptile that bridges earth and sky.*
 
-
+```
 ████████████████████████░░
 ████████████████████████░░
 ████████░░      ████████░░                                                              ████████░░
@@ -21,7 +21,7 @@
 ████████████████████████░░  ████████████████████████░░  ████████████████████████░░      ████████████████░░  ████████████████████████░░
         ████████░░
         ████████░░
-
+```
 
 > Quetz is _currently_designed to work with **[Beads (`bd`)](https://github.com/steveyegge/beads)** — a local-first CLI issue tracker built around prioritized dependency graphs. Beads is the source of truth for what to work on next.
 
