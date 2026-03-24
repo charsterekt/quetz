@@ -23,28 +23,33 @@ export async function main(): Promise<void> {
   if (!command || command === 'help' || command === '--help' || command === '-h') {
     process.stdout.write('Usage: quetz <command> [options]\n\n');
     process.stdout.write('Commands:\n');
-    process.stdout.write('  init              Initialize quetz in this project\n');
-    process.stdout.write('  run               Start the dev loop\n');
-    process.stdout.write('  run --dry         Preview without executing\n');
-    process.stdout.write('  run --local-commits  Commit locally instead of PR\n');
-    process.stdout.write('  run --amend       Amend all work into one commit\n');
-    process.stdout.write('  run --simulate    Simulate the full loop (mock + fake PR lifecycle)\n');
+    process.stdout.write('  init                         Initialize quetz in this project\n');
+    process.stdout.write('  run                          Start the dev loop\n');
+    process.stdout.write('  run --dry                    Preview without executing\n');
+    process.stdout.write('  run --local-commits          Commit locally instead of opening a PR\n');
+    process.stdout.write('  run --amend                  Accumulate all work into one rolling commit\n');
+    process.stdout.write('  run --simulate               Full visual test (mock issues + fake PR lifecycle)\n');
     process.stdout.write('  run --simulate --local-commits  Simulate with fake commits (no PRs)\n');
-    process.stdout.write('  run --simulate --amend  Simulate with fake amend commits\n');
-    process.stdout.write('  run --model <m>   Override agent model\n');
-    process.stdout.write(`  run --thinking-level <l> Override Claude effort (${CLAUDE_THINKING_LEVELS.join('|')})\n`);
-    process.stdout.write('  run --mock        Use built-in fake issues (no bd required)\n');
-    process.stdout.write('  run --timeout <m> Override agent timeout (minutes)\n');
-    process.stdout.write('  status            Show loop progress\n');
-    process.stdout.write('  status --watch    Live-refreshing status (5s interval)\n');
-    process.stdout.write('  status --mock     Status with fake issues (no bd required)\n');
-    process.stdout.write('  validate          Validate .quetzrc.yml\n');
-    process.stdout.write('  config show       Show resolved config\n');
+    process.stdout.write('  run --simulate --amend       Simulate with fake amend commits\n');
+    process.stdout.write('  run --model <model>          Override agent model (e.g. haiku, sonnet, opus)\n');
+    process.stdout.write(`  run --thinking-level <level> Override Claude effort (${CLAUDE_THINKING_LEVELS.join('|')})\n`);
+    process.stdout.write('  run --timeout <minutes>      Kill agent after this many minutes (default: 30)\n');
+    process.stdout.write('  status                       Show loop progress (issues ready/in-progress/done)\n');
+    process.stdout.write('  validate                     Validate .quetzrc.yml\n');
+    process.stdout.write('  config show                  Show resolved config with applied defaults\n');
+    process.stdout.write('  version                      Show quetz version\n');
     process.stdout.write('\n');
     process.exit(EXIT_SUCCESS);
   }
 
   switch (command) {
+    case 'version': {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const pkg = require('../package.json');
+      process.stdout.write(`quetz v${pkg.version}\n`);
+      process.exit(EXIT_SUCCESS);
+      break;
+    }
     case 'init': {
       const { runInit } = await import('./init.js');
       await runInit();
@@ -79,7 +84,6 @@ export async function main(): Promise<void> {
       const dry = args.includes('--dry');
       const localCommits = args.includes('--local-commits');
       const amend = args.includes('--amend');
-      const mock = args.includes('--mock');
       const simulate = args.includes('--simulate');
 
       // Validate mutual exclusion: --amend and --local-commits cannot be used together
@@ -210,7 +214,7 @@ export async function main(): Promise<void> {
         // Run the loop. On success, auto-exit. On error, stay alive so the user
         // can read the highlighted failure before pressing q to quit.
         const exitSignal = new Promise<void>(resolve => {
-          runLoop({ dry, model, thinkingLevel, timeout, localCommits, amend, mock, simulate }, bus)
+          runLoop({ dry, model, thinkingLevel, timeout, localCommits, amend, simulate }, bus)
             .then(r => {
               loopExitCode = r.exitCode;
               if (r.exitCode === 0) resolve(); // success → auto-exit
@@ -226,16 +230,14 @@ export async function main(): Promise<void> {
         cleanupTui(loopExitCode);
       } else {
         // Non-TUI fallback (piped, dry-run, no TTY)
-        const result = await runLoop({ dry, model, thinkingLevel, timeout, localCommits, amend, mock, simulate }, bus);
+        const result = await runLoop({ dry, model, thinkingLevel, timeout, localCommits, amend, simulate }, bus);
         process.exit(result.exitCode);
       }
       break;
     }
     case 'status': {
-      const watch = args.includes('--watch') || args.includes('-w');
-      const mock = args.includes('--mock');
       const { showStatus } = await import('./loop.js');
-      await showStatus(watch, mock);
+      await showStatus();
       break;
     }
     default: {
