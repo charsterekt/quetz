@@ -20,5 +20,7 @@ export const ansiArtLines: string[] = [
 ];
 
 export function printLogo(): void {
+  process.stdout.write('\n');
   ansiArtLines.forEach(line => process.stdout.write(line.trimEnd() + '\n'));
+  process.stdout.write('\n');
 }
