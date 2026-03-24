@@ -40,7 +40,7 @@ Quetz requires three CLI tools installed and authenticated:
 ## Installation
 
 ```bash
-npm install -g quetz
+npm install -g @dkchar/quetz
 ```
 
 Then verify the install:
