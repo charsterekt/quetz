@@ -49,6 +49,5 @@ jobs:
         run: npm test
 
       - name: Publish
-        run: npm publish --access public
+        run: npm publish --provenance --access public
         # NODE_AUTH_TOKEN not needed — OIDC handles auth
-        # Provenance is automatic via publishConfig.provenance in package.json
