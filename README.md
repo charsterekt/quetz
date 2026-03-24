@@ -57,7 +57,6 @@ quetz version
 quetz version     # Confirm installation
 quetz init        # First-time setup (run once per project)
 quetz run         # Start the loop
-quetz run --dry   # Preview without executing
 quetz run --simulate # Full visual test with actual agents and mock issues
 quetz run --local-commits # The full Quetz loop but commit-only (no PRs)
 quetz run --amend # The full Quetz loop but with a single rolling commit (no PRs)
@@ -96,7 +95,6 @@ Start the dev loop. Runs until all issues are resolved or a failure occurs. Comp
 
 | Flag | Default | Description |
 |---|---|---|
-| `--dry` | — | Preview mode: list issues, print first prompt, exit without spawning |
 | `--model <model>` | `sonnet` | Override agent model (e.g. `haiku`, `sonnet`, `opus`) |
 | `--thinking-level <level>` | config | Override Claude effort level (`low`, `medium`, `high`, `max`) |
 | `--timeout <minutes>` | `30` | Kill agent if it runs longer than this |
@@ -122,7 +120,7 @@ Display the parsed configuration, including applied defaults.
 
 ## The TUI
 
-When `stdout` is a TTY and you're not in `--dry` mode, `quetz run` activates a full-screen terminal UI using an alternate screen buffer. Your existing terminal content is preserved and restored on exit.
+When `stdout` is a TTY, `quetz run` activates a full-screen terminal UI using an alternate screen buffer. Your existing terminal content is preserved and restored on exit.
 
 Phases shown in the header:
 

@@ -120,128 +120,13 @@ describe('showStatus', () => {
   });
 });
 
-// ── runLoop (dry-run) with bus ───────────────────────────────────────────────
-
-describe('runLoop dry-run', () => {
-  it('returns exitCode 0 with no_issues when no issues', async () => {
-    mockGetReadyIssues.mockReturnValue([]);
-    const bus = createBus();
-    const result = await runLoop({ dry: true }, bus);
-    expect(result.exitCode).toBe(0);
-    expect(result.reason).toBe('no_issues');
-  });
-
-  it('emits loop:warning when no issues', async () => {
-    mockGetReadyIssues.mockReturnValue([]);
-    const bus = createBus();
-    const handler = vi.fn();
-    bus.on('loop:warning', handler);
-    await runLoop({ dry: true }, bus);
-    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('serpent sleeps') }));
-  });
-
-  it('returns dry_run with exitCode 0 and emits loop:dry_issues', async () => {
-    const issues = [
-      { ...baseIssue, id: 'quetz-1', priority: 0, issue_type: 'bug', title: 'Fix crash' },
-      { ...baseIssue, id: 'quetz-2', priority: 2, issue_type: 'feature', title: 'Add logging' },
-    ];
-    mockGetReadyIssues.mockReturnValue(issues);
-    mockGetIssueDetails.mockReturnValue(issues[0] as never);
-    const bus = createBus();
-    const handler = vi.fn();
-    bus.on('loop:dry_issues', handler);
-    const result = await runLoop({ dry: true }, bus);
-    expect(result.exitCode).toBe(0);
-    expect(result.reason).toBe('dry_run');
-    expect(handler).toHaveBeenCalledWith(expect.objectContaining({
-      issues: expect.arrayContaining([
-        expect.objectContaining({ id: 'quetz-1' }),
-        expect.objectContaining({ id: 'quetz-2' }),
-      ]),
-      prompt: 'assembled prompt',
-    }));
-  });
-
-  it('assembles prompt for the first issue using getIssueDetails', async () => {
-    const issues = [baseIssue];
-    mockGetReadyIssues.mockReturnValue(issues);
-    mockGetIssueDetails.mockReturnValue({ ...baseIssue, description: 'detailed' } as never);
-    const bus = createBus();
-    const result = await runLoop({ dry: true }, bus);
-    expect(result.exitCode).toBe(0);
-    expect(mockGetIssueDetails).toHaveBeenCalledWith('quetz-abc');
-    expect(mockAssemblePrompt).toHaveBeenCalledWith(
-      expect.objectContaining({ description: 'detailed' }),
-      expect.any(String),
-      baseConfig,
-      false,
-      false,
-      true
-    );
-  });
-
-  it('falls back to ready data if getIssueDetails fails', async () => {
-    mockGetReadyIssues.mockReturnValue([baseIssue]);
-    mockGetIssueDetails.mockImplementation(() => { throw new Error('bd show failed'); });
-    const bus = createBus();
-    await runLoop({ dry: true }, bus);
-    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, expect.any(String), baseConfig, false, false, true);
-  });
-
-  it('does not spawn agent, touch git, or call github in dry-run', async () => {
-    mockGetReadyIssues.mockReturnValue([baseIssue]);
-    mockGetIssueDetails.mockReturnValue(baseIssue as never);
-    const bus = createBus();
-    await runLoop({ dry: true }, bus);
-    expect(mockSpawnAgent).not.toHaveBeenCalled();
-    expect(mockCheckoutDefault).not.toHaveBeenCalled();
-    expect(mockPullDefault).not.toHaveBeenCalled();
-    expect(mockFindPR).not.toHaveBeenCalled();
-    expect(mockPollForMerge).not.toHaveBeenCalled();
-  });
-
-  it('returns exitCode 1 if bd ready fails in dry-run', async () => {
-    mockGetReadyIssues.mockImplementation(() => { throw new Error('bd not found'); });
-    const bus = createBus();
-    const failHandler = vi.fn();
-    bus.on('loop:failure', failHandler);
-    const result = await runLoop({ dry: true }, bus);
-    expect(result.exitCode).toBe(1);
-    expect(result.reason).toBe('error');
-    expect(failHandler).toHaveBeenCalledWith(expect.objectContaining({ reason: expect.stringContaining('bd ready failed') }));
-  });
-
-  // Non-bus fallback tests (plain text output)
-  it('writes "serpent sleeps" to stdout when no bus and no issues', async () => {
-    mockGetReadyIssues.mockReturnValue([]);
-    const result = await runLoop({ dry: true });
-    expect(result.exitCode).toBe(0);
-    const output = stdoutSpy.mock.calls.map((c: Parameters<typeof process.stdout.write>) => String(c[0])).join('');
-    expect(output).toContain('serpent sleeps');
-  });
-
-  it('writes issue list to stdout when no bus', async () => {
-    const issues = [
-      { ...baseIssue, id: 'quetz-1', priority: 0, issue_type: 'bug', title: 'Fix crash' },
-    ];
-    mockGetReadyIssues.mockReturnValue(issues);
-    mockGetIssueDetails.mockReturnValue(issues[0] as never);
-    const result = await runLoop({ dry: true });
-    expect(result.exitCode).toBe(0);
-    expect(result.reason).toBe('dry_run');
-    const output = stdoutSpy.mock.calls.map((c: Parameters<typeof process.stdout.write>) => String(c[0])).join('');
-    expect(output).toContain('quetz-1');
-    expect(output).toContain('assembled prompt');
-  });
-});
-
 // ── runLoop (normal) ─────────────────────────────────────────────────────────
 
 describe('runLoop normal', () => {
   it('returns exitCode 0 with no_issues when no issues on first iteration', async () => {
     mockGetReadyIssues.mockReturnValue([]);
     const bus = createBus();
-    const result = await runLoop({ dry: false }, bus);
+    const result = await runLoop({}, bus);
     expect(result.exitCode).toBe(0);
     expect(result.reason).toBe('no_issues');
   });
@@ -257,7 +142,7 @@ describe('runLoop normal', () => {
     mockPollForMerge.mockResolvedValue({ status: 'merged', pr: { html_url: 'https://gh/pr/42' } } as never);
 
     const bus = createBus();
-    const result = await runLoop({ dry: false }, bus);
+    const result = await runLoop({}, bus);
     expect(result.exitCode).toBe(0);
     expect(result.reason).toBe('victory');
     expect(mockGetIssueDetails).toHaveBeenCalledWith('quetz-abc');
@@ -274,7 +159,7 @@ describe('runLoop normal', () => {
     mockPollForMerge.mockResolvedValue({ status: 'merged', pr: { html_url: 'https://gh/pr/42' } } as never);
 
     const bus = createBus();
-    const result = await runLoop({ dry: false }, bus);
+    const result = await runLoop({}, bus);
     expect(result.exitCode).toBe(0);
     expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, false, false, true);
   });
@@ -288,7 +173,7 @@ describe('runLoop normal', () => {
     const bus = createBus();
     const failHandler = vi.fn();
     bus.on('loop:failure', failHandler);
-    const result = await runLoop({ dry: false }, bus);
+    const result = await runLoop({}, bus);
     expect(result.exitCode).toBe(1);
     expect(failHandler).toHaveBeenCalledWith(expect.objectContaining({ reason: expect.stringContaining('merge conflict') }));
   });
@@ -302,7 +187,7 @@ describe('runLoop normal', () => {
     const bus = createBus();
     const failHandler = vi.fn();
     bus.on('loop:failure', failHandler);
-    const result = await runLoop({ dry: false }, bus);
+    const result = await runLoop({}, bus);
     expect(result.exitCode).toBe(1);
     expect(failHandler).toHaveBeenCalledWith(expect.objectContaining({ reason: expect.stringContaining('No PR found') }));
   });
@@ -317,7 +202,7 @@ describe('runLoop normal', () => {
     const bus = createBus();
     const failHandler = vi.fn();
     bus.on('loop:failure', failHandler);
-    const result = await runLoop({ dry: false }, bus);
+    const result = await runLoop({}, bus);
     expect(result.exitCode).toBe(1);
     expect(failHandler).toHaveBeenCalledWith(expect.objectContaining({ reason: 'CI failed', prNumber: 42 }));
   });
@@ -332,7 +217,7 @@ describe('runLoop normal', () => {
     const bus = createBus();
     const failHandler = vi.fn();
     bus.on('loop:failure', failHandler);
-    const result = await runLoop({ dry: false }, bus);
+    const result = await runLoop({}, bus);
     expect(result.exitCode).toBe(1);
     expect(failHandler).toHaveBeenCalledWith(expect.objectContaining({ reason: expect.stringContaining('closed') }));
   });
@@ -347,7 +232,7 @@ describe('runLoop normal', () => {
     const bus = createBus();
     const failHandler = vi.fn();
     bus.on('loop:failure', failHandler);
-    const result = await runLoop({ dry: false }, bus);
+    const result = await runLoop({}, bus);
     expect(result.exitCode).toBe(1);
     expect(failHandler).toHaveBeenCalledWith(expect.objectContaining({ reason: expect.stringContaining('timeout') }));
   });
@@ -364,7 +249,7 @@ describe('runLoop normal', () => {
     const bus = createBus();
     const victoryHandler = vi.fn();
     bus.on('loop:victory', victoryHandler);
-    const result = await runLoop({ dry: false }, bus);
+    const result = await runLoop({}, bus);
     expect(result.exitCode).toBe(0);
     expect(result.reason).toBe('victory');
     expect(victoryHandler).toHaveBeenCalledWith(expect.objectContaining({
@@ -382,7 +267,7 @@ describe('runLoop normal', () => {
     const bus = createBus();
     const failHandler = vi.fn();
     bus.on('loop:failure', failHandler);
-    const result = await runLoop({ dry: false }, bus);
+    const result = await runLoop({}, bus);
     expect(result.exitCode).toBe(1);
     expect(result.reason).toBe('error');
     expect(mockFindPR).not.toHaveBeenCalled();
@@ -403,7 +288,7 @@ describe('runLoop normal', () => {
     const phaseHandler = vi.fn();
     bus.on('loop:issue_pickup', pickupHandler);
     bus.on('loop:phase', phaseHandler);
-    await runLoop({ dry: false }, bus);
+    await runLoop({}, bus);
     expect(pickupHandler).toHaveBeenCalledWith(expect.objectContaining({ id: 'quetz-abc', title: 'Add auth middleware' }));
     expect(phaseHandler).toHaveBeenCalledWith(expect.objectContaining({ phase: 'agent_running' }));
     expect(phaseHandler).toHaveBeenCalledWith(expect.objectContaining({ phase: 'pr_detecting' }));
@@ -422,7 +307,7 @@ describe('runLoop normal', () => {
     const phaseHandler = vi.fn();
     bus.on('loop:phase', phaseHandler);
 
-    await runLoop({ dry: false, thinkingLevel: 'medium' }, bus);
+    await runLoop({thinkingLevel: 'medium' }, bus);
 
     expect(mockSpawnAgent).toHaveBeenCalledWith(
       'assembled prompt',
@@ -453,7 +338,7 @@ describe('runLoop local-commits', () => {
     mockCountNewCommits.mockReturnValue(1);
 
     const bus = createBus();
-    const result = await runLoop({ dry: false, localCommits: true }, bus);
+    const result = await runLoop({localCommits: true }, bus);
     expect(result.exitCode).toBe(0);
     expect(mockFindPR).not.toHaveBeenCalled();
     expect(mockPollForMerge).not.toHaveBeenCalled();
@@ -462,7 +347,7 @@ describe('runLoop local-commits', () => {
   it('does not call createOctokit when localCommits=true', async () => {
     mockGetReadyIssues.mockReturnValue([]);
     const bus = createBus();
-    await runLoop({ dry: false, localCommits: true }, bus);
+    await runLoop({localCommits: true }, bus);
     expect(mockCreateOctokit).not.toHaveBeenCalled();
   });
 
@@ -475,7 +360,7 @@ describe('runLoop local-commits', () => {
     mockCountNewCommits.mockReturnValue(1);
 
     const bus = createBus();
-    await runLoop({ dry: false, localCommits: true }, bus);
+    await runLoop({localCommits: true }, bus);
     expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, true, false, true);
   });
 
@@ -490,7 +375,7 @@ describe('runLoop local-commits', () => {
     const bus = createBus();
     const commitHandler = vi.fn();
     bus.on('loop:commit_landed', commitHandler);
-    const result = await runLoop({ dry: false, localCommits: true }, bus);
+    const result = await runLoop({localCommits: true }, bus);
     expect(result.exitCode).toBe(0);
     expect(result.reason).toBe('victory');
     expect(commitHandler).toHaveBeenCalledWith(expect.objectContaining({ issueId: 'quetz-abc' }));
@@ -507,7 +392,7 @@ describe('runLoop local-commits', () => {
     const bus = createBus();
     const warningHandler = vi.fn();
     bus.on('loop:warning', warningHandler);
-    const result = await runLoop({ dry: false, localCommits: true }, bus);
+    const result = await runLoop({localCommits: true }, bus);
     expect(result.exitCode).toBe(0);
     expect(warningHandler).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('No new commit found') }));
   });
@@ -519,7 +404,7 @@ describe('runLoop amend', () => {
   it('does not call findPR, pollForMerge, or createOctokit when amend=true', async () => {
     mockGetReadyIssues.mockReturnValue([]);
     const bus = createBus();
-    await runLoop({ dry: false, amend: true }, bus);
+    await runLoop({amend: true }, bus);
     expect(mockCreateOctokit).not.toHaveBeenCalled();
     expect(mockFindPR).not.toHaveBeenCalled();
     expect(mockPollForMerge).not.toHaveBeenCalled();
@@ -534,7 +419,7 @@ describe('runLoop amend', () => {
     mockGetCommitCountAhead.mockReturnValue(1);
 
     const bus = createBus();
-    await runLoop({ dry: false, amend: true }, bus);
+    await runLoop({amend: true }, bus);
     expect(mockCheckoutDefault).not.toHaveBeenCalled();
     expect(mockPullDefault).not.toHaveBeenCalled();
   });
@@ -548,7 +433,7 @@ describe('runLoop amend', () => {
     mockGetCommitCountAhead.mockReturnValue(1);
 
     const bus = createBus();
-    await runLoop({ dry: false, amend: true }, bus);
+    await runLoop({amend: true }, bus);
     expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, false, true, true);
   });
 
@@ -565,7 +450,7 @@ describe('runLoop amend', () => {
     mockGetCommitCountAhead.mockReturnValue(1); // commit found each time
 
     const bus = createBus();
-    await runLoop({ dry: false, amend: true }, bus);
+    await runLoop({amend: true }, bus);
     expect(mockAssemblePrompt).toHaveBeenNthCalledWith(1, baseIssue, '', baseConfig, false, true, true);
     expect(mockAssemblePrompt).toHaveBeenNthCalledWith(2, issue2, '', baseConfig, false, true, false);
   });
@@ -585,7 +470,7 @@ describe('runLoop amend', () => {
       .mockReturnValueOnce(1); // second issue: commit found
 
     const bus = createBus();
-    await runLoop({ dry: false, amend: true }, bus);
+    await runLoop({amend: true }, bus);
     // Second call should still have isFirstIssue=true since first had no commit
     expect(mockAssemblePrompt).toHaveBeenNthCalledWith(2, issue2, '', baseConfig, false, true, true);
   });
@@ -601,7 +486,7 @@ describe('runLoop amend', () => {
     const bus = createBus();
     const warningHandler = vi.fn();
     bus.on('loop:warning', warningHandler);
-    const result = await runLoop({ dry: false, amend: true }, bus);
+    const result = await runLoop({amend: true }, bus);
     expect(result.exitCode).toBe(0);
     expect(warningHandler).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('3 commits found') }));
   });
@@ -617,7 +502,7 @@ describe('runLoop amend', () => {
     const bus = createBus();
     const amendHandler = vi.fn();
     bus.on('loop:amend_complete', amendHandler);
-    const result = await runLoop({ dry: false, amend: true }, bus);
+    const result = await runLoop({amend: true }, bus);
     expect(result.exitCode).toBe(0);
     expect(amendHandler).toHaveBeenCalledWith(expect.objectContaining({ issueId: 'quetz-abc' }));
   });
@@ -633,7 +518,7 @@ describe('runLoop amend', () => {
     const bus = createBus();
     const victoryHandler = vi.fn();
     bus.on('loop:victory', victoryHandler);
-    const result = await runLoop({ dry: false, amend: true }, bus);
+    const result = await runLoop({amend: true }, bus);
     expect(result.exitCode).toBe(0);
     expect(victoryHandler).toHaveBeenCalledWith(expect.objectContaining({ mode: 'amend' }));
   });
@@ -657,7 +542,7 @@ describe('runLoop loop:start event (quetz-qmq)', () => {
     bus.on('loop:start', startHandler);
     bus.on('loop:issue_pickup', pickupHandler);
 
-    await runLoop({ dry: false }, bus);
+    await runLoop({}, bus);
 
     expect(startHandler).toHaveBeenCalledTimes(1);
     expect(startHandler).toHaveBeenCalledWith({ total: 1 });
@@ -682,7 +567,7 @@ describe('runLoop loop:start event (quetz-qmq)', () => {
     const startHandler = vi.fn();
     bus.on('loop:start', startHandler);
 
-    await runLoop({ dry: false }, bus);
+    await runLoop({}, bus);
 
     expect(startHandler).toHaveBeenCalledTimes(1);
     expect(startHandler).toHaveBeenCalledWith({ total: 2 });
@@ -694,7 +579,7 @@ describe('runLoop loop:start event (quetz-qmq)', () => {
     const startHandler = vi.fn();
     bus.on('loop:start', startHandler);
 
-    await runLoop({ dry: false }, bus);
+    await runLoop({}, bus);
 
     expect(startHandler).not.toHaveBeenCalled();
   });
@@ -713,7 +598,7 @@ describe('runLoop no stdout corruption in TUI mode (quetz-3nd)', () => {
     mockPollForMerge.mockResolvedValue({ status: 'merged', pr: { html_url: 'https://gh/pr/42' } } as never);
 
     const bus = createBus();
-    await runLoop({ dry: false }, bus);
+    await runLoop({}, bus);
 
     // stdout should not be written when bus is provided (Ink handles output)
     expect(stdoutSpy).not.toHaveBeenCalled();
@@ -728,7 +613,7 @@ describe('runLoop no stdout corruption in TUI mode (quetz-3nd)', () => {
     mockCountNewCommits.mockReturnValue(1);
 
     const bus = createBus();
-    await runLoop({ dry: false, localCommits: true }, bus);
+    await runLoop({localCommits: true }, bus);
 
     expect(stdoutSpy).not.toHaveBeenCalled();
   });
@@ -742,7 +627,7 @@ describe('runLoop loop:mode event', () => {
     const bus = createBus();
     const modeHandler = vi.fn();
     bus.on('loop:mode', modeHandler);
-    await runLoop({ dry: false }, bus);
+    await runLoop({}, bus);
     expect(modeHandler).toHaveBeenCalledWith({ mode: 'pr' });
   });
 
@@ -751,7 +636,7 @@ describe('runLoop loop:mode event', () => {
     const bus = createBus();
     const modeHandler = vi.fn();
     bus.on('loop:mode', modeHandler);
-    await runLoop({ dry: false, localCommits: true }, bus);
+    await runLoop({localCommits: true }, bus);
     expect(modeHandler).toHaveBeenCalledWith({ mode: 'commit' });
   });
 
@@ -760,18 +645,10 @@ describe('runLoop loop:mode event', () => {
     const bus = createBus();
     const modeHandler = vi.fn();
     bus.on('loop:mode', modeHandler);
-    await runLoop({ dry: false, amend: true }, bus);
+    await runLoop({amend: true }, bus);
     expect(modeHandler).toHaveBeenCalledWith({ mode: 'amend' });
   });
 
-  it('does not emit loop:mode in dry-run', async () => {
-    mockGetReadyIssues.mockReturnValue([]);
-    const bus = createBus();
-    const modeHandler = vi.fn();
-    bus.on('loop:mode', modeHandler);
-    await runLoop({ dry: true }, bus);
-    expect(modeHandler).not.toHaveBeenCalled();
-  });
 });
 
 // ── runLoop (simulate) ────────────────────────────────────────────────────────
@@ -791,7 +668,7 @@ describe('runLoop simulate', () => {
     bus.on('loop:commit_landed', commitHandler);
     bus.on('loop:pr_found', prFoundHandler);
 
-    const result = await runLoop({ dry: false, simulate: true, localCommits: true }, bus);
+    const result = await runLoop({simulate: true, localCommits: true }, bus);
     expect(result.exitCode).toBe(0);
     expect(result.reason).toBe('victory');
     expect(commitHandler).toHaveBeenCalledWith(expect.objectContaining({ issueId: 'quetz-abc' }));
@@ -807,7 +684,7 @@ describe('runLoop simulate', () => {
     const modeHandler = vi.fn();
     bus.on('loop:mode', modeHandler);
 
-    await runLoop({ dry: false, simulate: true, localCommits: true }, bus);
+    await runLoop({simulate: true, localCommits: true }, bus);
     expect(modeHandler).toHaveBeenCalledWith({ mode: 'commit' });
   });
 
@@ -825,7 +702,7 @@ describe('runLoop simulate', () => {
     bus.on('loop:amend_complete', amendHandler);
     bus.on('loop:pr_found', prFoundHandler);
 
-    const result = await runLoop({ dry: false, simulate: true, amend: true }, bus);
+    const result = await runLoop({simulate: true, amend: true }, bus);
     expect(result.exitCode).toBe(0);
     expect(result.reason).toBe('victory');
     expect(amendHandler).toHaveBeenCalledWith(expect.objectContaining({ issueId: 'quetz-abc' }));
@@ -841,7 +718,7 @@ describe('runLoop simulate', () => {
     const modeHandler = vi.fn();
     bus.on('loop:mode', modeHandler);
 
-    await runLoop({ dry: false, simulate: true, amend: true }, bus);
+    await runLoop({simulate: true, amend: true }, bus);
     expect(modeHandler).toHaveBeenCalledWith({ mode: 'amend' });
   });
 
@@ -859,7 +736,7 @@ describe('runLoop simulate', () => {
     bus.on('loop:pr_found', prFoundHandler);
     bus.on('loop:merged', mergedHandler);
 
-    const result = await runLoop({ dry: false, simulate: true }, bus);
+    const result = await runLoop({simulate: true }, bus);
     expect(result.exitCode).toBe(0);
     expect(result.reason).toBe('victory');
     expect(prFoundHandler).toHaveBeenCalled();
@@ -871,7 +748,7 @@ describe('runLoop simulate', () => {
     mockGetCurrentBranch.mockReturnValue('main');
 
     const bus = createBus();
-    await runLoop({ dry: false, simulate: true, localCommits: true }, bus);
+    await runLoop({simulate: true, localCommits: true }, bus);
     expect(mockCreateOctokit).not.toHaveBeenCalled();
   });
 
@@ -880,7 +757,7 @@ describe('runLoop simulate', () => {
     mockGetCurrentBranch.mockReturnValue('main');
 
     const bus = createBus();
-    await runLoop({ dry: false, simulate: true, amend: true }, bus);
+    await runLoop({simulate: true, amend: true }, bus);
     expect(mockCreateOctokit).not.toHaveBeenCalled();
   });
 
@@ -896,7 +773,7 @@ describe('runLoop simulate', () => {
     const victoryHandler = vi.fn();
     bus.on('loop:victory', victoryHandler);
 
-    await runLoop({ dry: false, simulate: true, localCommits: true }, bus);
+    await runLoop({simulate: true, localCommits: true }, bus);
     expect(victoryHandler).toHaveBeenCalledWith(expect.objectContaining({ mode: 'commit' }));
   });
 
@@ -912,7 +789,7 @@ describe('runLoop simulate', () => {
     const victoryHandler = vi.fn();
     bus.on('loop:victory', victoryHandler);
 
-    await runLoop({ dry: false, simulate: true, amend: true }, bus);
+    await runLoop({simulate: true, amend: true }, bus);
     expect(victoryHandler).toHaveBeenCalledWith(expect.objectContaining({ mode: 'amend' }));
   });
 });

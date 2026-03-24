@@ -106,7 +106,6 @@ describe('main', () => {
     expect(render).toHaveBeenCalledTimes(1);
     expect(mockRunLoop).toHaveBeenCalledWith(
       {
-        dry: false,
         model: undefined,
         thinkingLevel: undefined,
         timeout: undefined,
@@ -130,14 +129,13 @@ describe('main', () => {
     mockCreateBus.mockReturnValue(bus as never);
     mockRunLoop.mockResolvedValue({ exitCode: 0 } as never);
 
-    process.argv = ['node', 'quetz', 'run', '--dry', '--thinking-level', 'medium'];
+    process.argv = ['node', 'quetz', 'run', '--thinking-level', 'medium'];
     setStdoutSize(false, 120, 40);
 
     await expect(main()).rejects.toMatchObject({ code: 0 });
 
     expect(mockRunLoop).toHaveBeenCalledWith(
       expect.objectContaining({
-        dry: true,
         thinkingLevel: 'medium',
       }),
       bus,

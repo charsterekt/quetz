@@ -21,7 +21,7 @@ import type { QuetzBus } from './events.js';
 
 export interface LoopResult {
   exitCode: number;
-  reason: 'victory' | 'no_issues' | 'error' | 'dry_run';
+  reason: 'victory' | 'no_issues' | 'error';
 }
 
 // ── Elapsed timer ────────────────────────────────────────────────────────────
@@ -101,7 +101,6 @@ export async function showStatus(): Promise<void> {
 
 export async function runLoop(
   opts: {
-    dry: boolean;
     model?: string;
     thinkingLevel?: ClaudeThinkingLevel;
     timeout?: number;
@@ -124,58 +123,6 @@ export async function runLoop(
   const projectRoot = process.cwd();
   const config = loadConfig(projectRoot);
   log('CONFIG', `Loaded: ${config.github.owner}/${config.github.repo} (${config.github.defaultBranch})`);
-
-  // ── Dry-run ──────────────────────────────────────────────────────────────
-  if (opts.dry) {
-    let issues: ReturnType<typeof getReadyIssues>;
-    try {
-      issues = getReadyIssues();
-    } catch (err) {
-      if (bus) bus.emit('loop:failure', { reason: `bd ready failed: ${(err as Error).message}` });
-      else process.stderr.write(error(`bd ready failed: ${(err as Error).message}\n`));
-      return { exitCode: 1, reason: 'error' };
-    }
-
-    if (issues.length === 0) {
-      if (bus) bus.emit('loop:warning', { message: 'No ready issues found. The serpent sleeps.' });
-      else process.stdout.write(waiting('\nNo ready issues found. The serpent sleeps.\n'));
-      return { exitCode: 0, reason: 'no_issues' };
-    }
-
-    const firstIssue = issues[0];
-    let issueDetails = firstIssue;
-    try {
-      issueDetails = getIssueDetails(firstIssue.id);
-    } catch {
-      // fall back to ready data
-    }
-    const bdPrime = getPrimeContext();
-    const prompt = assemblePrompt(issueDetails, bdPrime, config, opts.localCommits ?? false, opts.amend ?? false, true);
-
-    if (bus) {
-      bus.emit('loop:dry_issues', {
-        issues: issues.map(i => ({ id: i.id, title: i.title, priority: i.priority, type: i.issue_type })),
-        prompt,
-      });
-    } else {
-      process.stdout.write(brand('\nIssue Queue (priority order):\n'));
-      process.stdout.write('─'.repeat(50) + '\n');
-      for (const [i, issue] of issues.entries()) {
-        process.stdout.write(
-          `${i + 1}. ` +
-          brand(issue.id) +
-          ` ${dim(`[P${issue.priority}] [${issue.issue_type}]`)} ${issue.title}\n`
-        );
-      }
-      process.stdout.write('─'.repeat(50) + '\n\n');
-      process.stdout.write(brand('Prompt for first issue:\n'));
-      process.stdout.write('─'.repeat(50) + '\n');
-      process.stdout.write(prompt + '\n');
-      process.stdout.write('─'.repeat(50) + '\n');
-      process.stdout.write(brand('\n--- Dry run complete (no agent spawned) ---\n'));
-    }
-    return { exitCode: 0, reason: 'dry_run' };
-  }
 
   // ── Normal run loop ───────────────────────────────────────────────────────
   const localCommits = opts.localCommits ?? false;
