@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-03-24
+
+### Fixed
+- StatusBar elapsed timer now ticks every second reliably. Timer moved from shared `usePhase` hook into local component state — Ink wasn't reliably flushing re-renders from shared hook `setState` calls during heavy agent streaming.
+
 ## [0.5.2] - 2026-03-24
 
 ### Fixed
@@ -42,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Built-in fake issues for `--mock` / `--simulate` modes (`mock-data.ts`)
 - Exit codes: 0 clean, 1 runtime failure, 2 config error, 3 preflight failure
 
+[0.5.3]: https://github.com/dkchar/quetz/releases/tag/v0.5.3
 [0.5.2]: https://github.com/dkchar/quetz/releases/tag/v0.5.2
 [0.5.1]: https://github.com/dkchar/quetz/releases/tag/v0.5.1
 [0.5.0]: https://github.com/dkchar/quetz/releases/tag/v0.5.0
