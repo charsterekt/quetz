@@ -196,10 +196,12 @@ export async function runLoop(
   }
 
   // ── Normal run loop ───────────────────────────────────────────────────────
-  const localCommits = simulate ? true : (opts.localCommits ?? false);
+  const localCommits = opts.localCommits ?? false;
   const amend = opts.amend ?? false;
   const localMode = localCommits || amend; // no GitHub API needed
   const octokit = (localMode || simulate) ? null : createOctokit();
+  const runMode: 'pr' | 'commit' | 'amend' = amend ? 'amend' : (localCommits ? 'commit' : 'pr');
+  if (bus) bus.emit('loop:mode', { mode: runMode });
   let iteration = 0;
   const loopStart = Date.now();
   let totalIssuesCompleted = 0;
@@ -257,7 +259,7 @@ export async function runLoop(
           issuesCompleted: totalIssuesCompleted,
           totalTime: formatElapsed(Date.now() - loopStart),
           prsMerged: totalPrsMerged,
-          mode: amend ? 'amend' : (localCommits ? 'local-commits' : 'pr'),
+          mode: runMode,
           commitsLanded: totalCommitsLanded,
           commitHash: finalCommitHash,
           commitMsg: finalCommitMsg,
@@ -267,7 +269,7 @@ export async function runLoop(
         } else {
           // Inline victory display for non-bus fallback
           const stats = victoryPayload;
-          const isLocalCommitsMode = stats.mode === 'local-commits';
+          const isLocalCommitsMode = stats.mode === 'commit';
           const isAmend = stats.mode === 'amend';
           const statLabel = isAmend ? 'Commit ready  ' : (isLocalCommitsMode ? 'Commits landed' : 'PRs merged    ');
           const statValue = isAmend
@@ -374,50 +376,78 @@ export async function runLoop(
     );
 
     if (simulate) {
-      // ── Simulate path: fake the post-agent lifecycle so you see every phase ─
-      const fakePrNum = 100 + iteration;
-      const fakePrTitle = `feat: ${issueDetails.title.toLowerCase()} (${issue.id})`;
-      const fakePrUrl = `https://github.com/${config.github.owner}/${config.github.repo}/pull/${fakePrNum}`;
+      // ── Simulate path: fake the post-agent lifecycle ─────────────────────
 
-      // Simulate PR detection delay
-      await sleep(1500);
-      if (bus) bus.emit('loop:pr_found', { number: fakePrNum, title: fakePrTitle, url: fakePrUrl });
-      else process.stdout.write(
-        `${success(`✓  Found PR #${fakePrNum}`)}: "${fakePrTitle}"\n` +
-        `   ${dim(fakePrUrl)}\n` +
-        `   ${waiting('Watching for merge…')}\n`
-      );
+      if (amend) {
+        // ── Simulate amend path ──────────────────────────────────────────────
+        await sleep(1500);
+        if (bus) bus.emit('loop:amend_complete', { issueId: issue.id, iteration: totalIssuesCompleted + 1 });
+        else process.stdout.write(
+          `\n${success(`✓ Amend simulated`)} ${brand(`The serpent folds ${issue.id} into the commit.`)}\n\n`
+        );
+        isFirstIssue = false;
+        totalIssuesCompleted++;
+        simulateCompleted.add(issue.id);
+        await sleep(1000);
 
-      // Simulate merge poll delay
-      if (bus) bus.emit('loop:phase', { phase: 'pr_polling' });
-      const pollTimer = !bus ? startElapsedTimer('polling', issue.id, iteration, issueTotal, fakePrNum) : null;
-      await sleep(3000);
-      pollTimer?.stop();
+      } else if (localCommits) {
+        // ── Simulate commit-only path ────────────────────────────────────────
+        await sleep(1500);
+        if (bus) bus.emit('loop:commit_landed', { issueId: issue.id });
+        else process.stdout.write(
+          `\n${success('✓ Commit simulated')} ${brand(`The serpent devours ${issue.id}.`)}\n\n`
+        );
+        totalCommitsLanded++;
+        totalIssuesCompleted++;
+        simulateCompleted.add(issue.id);
+        await sleep(1000);
 
-      // Celebrate
-      totalIssuesCompleted++;
-      totalPrsMerged++;
-      simulateCompleted.add(issue.id);
-      const remaining = issues.length - 1;
+      } else {
+        // ── Simulate PR path (default) ───────────────────────────────────────
+        const fakePrNum = 100 + iteration;
+        const fakePrTitle = `feat: ${issueDetails.title.toLowerCase()} (${issue.id})`;
+        const fakePrUrl = `https://github.com/${config.github.owner}/${config.github.repo}/pull/${fakePrNum}`;
 
-      if (bus) bus.emit('loop:merged', { prNumber: fakePrNum, issueId: issue.id, remaining });
-      else process.stdout.write(
-        `\n${success(`✅ PR #${fakePrNum} merged!`)} ${brand(`The serpent devours ${issue.id}.`)}\n` +
-        `   ${dim('─'.repeat(40))}\n` +
-        `   Issues remaining: ${remaining}\n` +
-        `   ${dim('─'.repeat(40))}\n\n`
-      );
-      await sleep(2000);
+        // Simulate PR detection delay
+        await sleep(1500);
+        if (bus) bus.emit('loop:pr_found', { number: fakePrNum, title: fakePrTitle, url: fakePrUrl });
+        else process.stdout.write(
+          `${success(`✓  Found PR #${fakePrNum}`)}: "${fakePrTitle}"\n` +
+          `   ${dim(fakePrUrl)}\n` +
+          `   ${waiting('Watching for merge…')}\n`
+        );
 
-      // Cleanup: return to default branch and delete agent's temp branch
-      const agentBranch = getCurrentBranch(projectRoot);
-      if (agentBranch && agentBranch !== config.github.defaultBranch) {
-        try {
-          checkoutDefault(config.github.defaultBranch, projectRoot);
-          deleteBranch(agentBranch, projectRoot);
-          log('SIMULATE', `Cleaned up branch: ${agentBranch}`);
-        } catch {
-          log('SIMULATE', `Warning: could not clean up branch ${agentBranch}`);
+        // Simulate merge poll delay
+        if (bus) bus.emit('loop:phase', { phase: 'pr_polling' });
+        const pollTimer = !bus ? startElapsedTimer('polling', issue.id, iteration, issueTotal, fakePrNum) : null;
+        await sleep(3000);
+        pollTimer?.stop();
+
+        // Celebrate
+        totalIssuesCompleted++;
+        totalPrsMerged++;
+        simulateCompleted.add(issue.id);
+        const remaining = issues.length - 1;
+
+        if (bus) bus.emit('loop:merged', { prNumber: fakePrNum, issueId: issue.id, remaining });
+        else process.stdout.write(
+          `\n${success(`✅ PR #${fakePrNum} merged!`)} ${brand(`The serpent devours ${issue.id}.`)}\n` +
+          `   ${dim('─'.repeat(40))}\n` +
+          `   Issues remaining: ${remaining}\n` +
+          `   ${dim('─'.repeat(40))}\n\n`
+        );
+        await sleep(2000);
+
+        // Cleanup: return to default branch and delete agent's temp branch
+        const agentBranch = getCurrentBranch(projectRoot);
+        if (agentBranch && agentBranch !== config.github.defaultBranch) {
+          try {
+            checkoutDefault(config.github.defaultBranch, projectRoot);
+            deleteBranch(agentBranch, projectRoot);
+            log('SIMULATE', `Cleaned up branch: ${agentBranch}`);
+          } catch {
+            log('SIMULATE', `Warning: could not clean up branch ${agentBranch}`);
+          }
         }
       }
 

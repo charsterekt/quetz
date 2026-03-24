@@ -19,6 +19,8 @@ vi.mock('../git.js', () => ({
   pullDefault: vi.fn(),
   countNewCommits: vi.fn(),
   getCommitCountAhead: vi.fn(),
+  getCurrentBranch: vi.fn(),
+  deleteBranch: vi.fn(),
 }));
 vi.mock('../prompt.js', () => ({
   assemblePrompt: vi.fn(),
@@ -45,7 +47,7 @@ vi.mock('../display/status.js', () => ({
 
 import { loadConfig } from '../config.js';
 import { getReadyIssues, getIssueDetails, getPrimeContext } from '../beads.js';
-import { checkoutDefault, pullDefault, countNewCommits, getCommitCountAhead } from '../git.js';
+import { checkoutDefault, pullDefault, countNewCommits, getCommitCountAhead, getCurrentBranch, deleteBranch } from '../git.js';
 import { assemblePrompt } from '../prompt.js';
 import { spawnAgent } from '../agent.js';
 import { createOctokit, findPR, pollForMerge } from '../github.js';
@@ -59,6 +61,8 @@ const mockCheckoutDefault = vi.mocked(checkoutDefault);
 const mockPullDefault = vi.mocked(pullDefault);
 const mockCountNewCommits = vi.mocked(countNewCommits);
 const mockGetCommitCountAhead = vi.mocked(getCommitCountAhead);
+const mockGetCurrentBranch = vi.mocked(getCurrentBranch);
+const mockDeleteBranch = vi.mocked(deleteBranch);
 const mockAssemblePrompt = vi.mocked(assemblePrompt);
 const mockSpawnAgent = vi.mocked(spawnAgent);
 const mockCreateOctokit = vi.mocked(createOctokit);
@@ -735,5 +739,188 @@ describe('runLoop no stdout corruption in TUI mode (quetz-3nd)', () => {
     await runLoop({ dry: false, localCommits: true }, bus);
 
     expect(stdoutSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ── loop:mode event ───────────────────────────────────────────────────────────
+
+describe('runLoop loop:mode event', () => {
+  it('emits loop:mode pr for default run', async () => {
+    mockGetReadyIssues.mockReturnValue([]);
+    const bus = createBus();
+    const modeHandler = vi.fn();
+    bus.on('loop:mode', modeHandler);
+    await runLoop({ dry: false }, bus);
+    expect(modeHandler).toHaveBeenCalledWith({ mode: 'pr' });
+  });
+
+  it('emits loop:mode commit for --local-commits', async () => {
+    mockGetReadyIssues.mockReturnValue([]);
+    const bus = createBus();
+    const modeHandler = vi.fn();
+    bus.on('loop:mode', modeHandler);
+    await runLoop({ dry: false, localCommits: true }, bus);
+    expect(modeHandler).toHaveBeenCalledWith({ mode: 'commit' });
+  });
+
+  it('emits loop:mode amend for --amend', async () => {
+    mockGetReadyIssues.mockReturnValue([]);
+    const bus = createBus();
+    const modeHandler = vi.fn();
+    bus.on('loop:mode', modeHandler);
+    await runLoop({ dry: false, amend: true }, bus);
+    expect(modeHandler).toHaveBeenCalledWith({ mode: 'amend' });
+  });
+
+  it('does not emit loop:mode in dry-run', async () => {
+    mockGetReadyIssues.mockReturnValue([]);
+    const bus = createBus();
+    const modeHandler = vi.fn();
+    bus.on('loop:mode', modeHandler);
+    await runLoop({ dry: true }, bus);
+    expect(modeHandler).not.toHaveBeenCalled();
+  });
+});
+
+// ── runLoop (simulate) ────────────────────────────────────────────────────────
+
+describe('runLoop simulate', () => {
+  it('simulate+localCommits: emits loop:commit_landed and advances without PR', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockGetCurrentBranch.mockReturnValue('main');
+
+    const bus = createBus();
+    const commitHandler = vi.fn();
+    const prFoundHandler = vi.fn();
+    bus.on('loop:commit_landed', commitHandler);
+    bus.on('loop:pr_found', prFoundHandler);
+
+    const result = await runLoop({ dry: false, simulate: true, localCommits: true }, bus);
+    expect(result.exitCode).toBe(0);
+    expect(result.reason).toBe('victory');
+    expect(commitHandler).toHaveBeenCalledWith(expect.objectContaining({ issueId: 'quetz-abc' }));
+    expect(prFoundHandler).not.toHaveBeenCalled();
+    expect(mockFindPR).not.toHaveBeenCalled();
+  });
+
+  it('simulate+localCommits: emits loop:mode commit', async () => {
+    mockGetReadyIssues.mockReturnValue([]);
+    mockGetCurrentBranch.mockReturnValue('main');
+
+    const bus = createBus();
+    const modeHandler = vi.fn();
+    bus.on('loop:mode', modeHandler);
+
+    await runLoop({ dry: false, simulate: true, localCommits: true }, bus);
+    expect(modeHandler).toHaveBeenCalledWith({ mode: 'commit' });
+  });
+
+  it('simulate+amend: emits loop:amend_complete and advances without PR', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockGetCurrentBranch.mockReturnValue('main');
+
+    const bus = createBus();
+    const amendHandler = vi.fn();
+    const prFoundHandler = vi.fn();
+    bus.on('loop:amend_complete', amendHandler);
+    bus.on('loop:pr_found', prFoundHandler);
+
+    const result = await runLoop({ dry: false, simulate: true, amend: true }, bus);
+    expect(result.exitCode).toBe(0);
+    expect(result.reason).toBe('victory');
+    expect(amendHandler).toHaveBeenCalledWith(expect.objectContaining({ issueId: 'quetz-abc' }));
+    expect(prFoundHandler).not.toHaveBeenCalled();
+    expect(mockFindPR).not.toHaveBeenCalled();
+  });
+
+  it('simulate+amend: emits loop:mode amend', async () => {
+    mockGetReadyIssues.mockReturnValue([]);
+    mockGetCurrentBranch.mockReturnValue('main');
+
+    const bus = createBus();
+    const modeHandler = vi.fn();
+    bus.on('loop:mode', modeHandler);
+
+    await runLoop({ dry: false, simulate: true, amend: true }, bus);
+    expect(modeHandler).toHaveBeenCalledWith({ mode: 'amend' });
+  });
+
+  it('simulate alone (no --local-commits/--amend): emits loop:pr_found and loop:merged', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockGetCurrentBranch.mockReturnValue('main');
+
+    const bus = createBus();
+    const prFoundHandler = vi.fn();
+    const mergedHandler = vi.fn();
+    bus.on('loop:pr_found', prFoundHandler);
+    bus.on('loop:merged', mergedHandler);
+
+    const result = await runLoop({ dry: false, simulate: true }, bus);
+    expect(result.exitCode).toBe(0);
+    expect(result.reason).toBe('victory');
+    expect(prFoundHandler).toHaveBeenCalled();
+    expect(mergedHandler).toHaveBeenCalled();
+  }, 15000);
+
+  it('simulate+localCommits: does not call createOctokit', async () => {
+    mockGetReadyIssues.mockReturnValue([]);
+    mockGetCurrentBranch.mockReturnValue('main');
+
+    const bus = createBus();
+    await runLoop({ dry: false, simulate: true, localCommits: true }, bus);
+    expect(mockCreateOctokit).not.toHaveBeenCalled();
+  });
+
+  it('simulate+amend: does not call createOctokit', async () => {
+    mockGetReadyIssues.mockReturnValue([]);
+    mockGetCurrentBranch.mockReturnValue('main');
+
+    const bus = createBus();
+    await runLoop({ dry: false, simulate: true, amend: true }, bus);
+    expect(mockCreateOctokit).not.toHaveBeenCalled();
+  });
+
+  it('simulate+localCommits victory reports commit mode', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockGetCurrentBranch.mockReturnValue('main');
+
+    const bus = createBus();
+    const victoryHandler = vi.fn();
+    bus.on('loop:victory', victoryHandler);
+
+    await runLoop({ dry: false, simulate: true, localCommits: true }, bus);
+    expect(victoryHandler).toHaveBeenCalledWith(expect.objectContaining({ mode: 'commit' }));
+  });
+
+  it('simulate+amend victory reports amend mode', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockGetCurrentBranch.mockReturnValue('main');
+
+    const bus = createBus();
+    const victoryHandler = vi.fn();
+    bus.on('loop:victory', victoryHandler);
+
+    await runLoop({ dry: false, simulate: true, amend: true }, bus);
+    expect(victoryHandler).toHaveBeenCalledWith(expect.objectContaining({ mode: 'amend' }));
   });
 });

@@ -17,6 +17,7 @@ export interface QuetzEvent {
   'loop:failure':        { reason: string; detail?: string; prNumber?: number; prUrl?: string };
   'loop:warning':        { message: string };
   'loop:dry_issues':     { issues: Array<{ id: string; title: string; priority: number; type: string }>; prompt: string };
+  'loop:mode':           { mode: 'pr' | 'commit' | 'amend' };
 
   'agent:text':          { text: string };
   'agent:tool_start':    { index: number; name: string };
