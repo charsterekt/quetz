@@ -34,8 +34,5 @@ Thumbs.db
 # Quetz config (user-specific)
 .quetzrc.yml
 
-# CI
-.github/workflows/
-
 # Design files
 *.pen
