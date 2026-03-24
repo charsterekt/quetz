@@ -25,7 +25,6 @@ export async function main(): Promise<void> {
     process.stdout.write('Commands:\n');
     process.stdout.write('  init                         Initialize quetz in this project\n');
     process.stdout.write('  run                          Start the dev loop\n');
-    process.stdout.write('  run --dry                    Preview without executing\n');
     process.stdout.write('  run --local-commits          Commit locally instead of opening a PR\n');
     process.stdout.write('  run --amend                  Accumulate all work into one rolling commit\n');
     process.stdout.write('  run --simulate               Full visual test (mock issues + fake PR lifecycle)\n');
@@ -81,7 +80,6 @@ export async function main(): Promise<void> {
       break;
     }
     case 'run': {
-      const dry = args.includes('--dry');
       const localCommits = args.includes('--local-commits');
       const amend = args.includes('--amend');
       const simulate = args.includes('--simulate');
@@ -134,8 +132,8 @@ export async function main(): Promise<void> {
       const { printLogo } = await import('./display/quetz.js');
       const bus = createBus();
 
-      // TUI mode: render Ink dashboard if TTY and not dry-run
-      if (process.stdout.isTTY && !dry) {
+      // TUI mode: render Ink dashboard if TTY
+      if (process.stdout.isTTY) {
         const React = require('react');
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { execSync } = require('child_process');
@@ -197,7 +195,6 @@ export async function main(): Promise<void> {
           switch (result.reason) {
             case 'victory':   return 'The serpent rests — all issues resolved. 🐉\n';
             case 'no_issues': return 'The serpent sleeps — no ready issues found.\n';
-            case 'dry_run':   return 'The serpent scouts — dry run complete.\n';
             case 'error':     return `The serpent retreats (exit code ${result.exitCode} — runtime failure).\n`;
             default:          return `Quetz stopped (exit code ${result.exitCode}).\n`;
           }
@@ -225,7 +222,7 @@ export async function main(): Promise<void> {
         // Run the loop. On success, auto-exit. On error, stay alive so the user
         // can read the highlighted failure before pressing q to quit.
         const exitSignal = new Promise<void>(resolve => {
-          runLoop({ dry, model, thinkingLevel, timeout, localCommits, amend, simulate }, bus)
+          runLoop({ model, thinkingLevel, timeout, localCommits, amend, simulate }, bus)
             .then(r => {
               loopResult = r;
               if (r.exitCode === 0) resolve(); // success → auto-exit
@@ -240,8 +237,8 @@ export async function main(): Promise<void> {
         process.off('SIGINT', onSigint);
         cleanupTui(false);
       } else {
-        // Non-TUI fallback (piped, dry-run, no TTY)
-        const result = await runLoop({ dry, model, thinkingLevel, timeout, localCommits, amend, simulate }, bus);
+        // Non-TUI fallback (piped, no TTY)
+        const result = await runLoop({ model, thinkingLevel, timeout, localCommits, amend, simulate }, bus);
         process.exit(result.exitCode);
       }
       break;

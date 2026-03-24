@@ -17,7 +17,6 @@ export interface QuetzEvent {
   'loop:victory':        { issuesCompleted: number; totalTime: string; prsMerged: number; mode: string; commitsLanded?: number; commitHash?: string; commitMsg?: string };
   'loop:failure':        { reason: string; detail?: string; prNumber?: number; prUrl?: string };
   'loop:warning':        { message: string };
-  'loop:dry_issues':     { issues: Array<{ id: string; title: string; priority: number; type: string }>; prompt: string };
   'loop:mode':           { mode: 'pr' | 'commit' | 'amend' };
 
   'agent:text':          { text: string };
