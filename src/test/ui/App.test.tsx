@@ -51,8 +51,8 @@ describe('App', () => {
     const bus = createBus();
     const instance = render(React.createElement(App, { bus }));
     const output = instance.lastFrame();
-    // Header shows text-based logo
-    expect(output).toContain('quetz');
+    // Header shows QUETZ brand text
+    expect(output).toContain('QUETZ');
     instance.unmount();
   });
 
