@@ -87,9 +87,9 @@ First-time setup. Runs preflight checks, generates `.quetzrc.yml`, and optionall
 
 ### `quetz run`
 
-Start the dev loop. Runs until all issues are resolved or a failure occurs.
+Start the dev loop. Runs until all issues are resolved or a failure occurs. Completed agent runs can be viewed through the TUI to track what was done.
 
-<img width="1755" height="876" alt="image" src="https://github.com/user-attachments/assets/bc12ad57-ba28-401b-93b5-5102ebb1bcd3" />
+<img width="1755" height="876" alt="image" src="https://github.com/user-attachments/assets/bc12ad57-ba28-401b-93b5-5102ebb1bcd3" /> <br>
 
 
 | Flag | Default | Description |
