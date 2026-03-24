@@ -3,6 +3,19 @@ import type { SDKMessage, SDKResultMessage, SDKPartialAssistantMessage } from '@
 import type { QuetzBus } from './events.js';
 import type { ClaudeThinkingLevel } from './config.js';
 
+// Tools disallowed in --simulate mode: no file writes, no git mutations, no GitHub operations
+const SIMULATE_DISALLOWED_TOOLS = [
+  'Write',
+  'Edit',
+  'MultiEdit',
+  'Bash(git commit:*)',
+  'Bash(git push:*)',
+  'Bash(git checkout:*)',
+  'Bash(git branch:*)',
+  'Bash(gh pr:*)',
+  'Bash(gh repo:*)',
+];
+
 /**
  * Spawn a Claude Code agent via the SDK and wait for it to complete.
  *
@@ -12,6 +25,7 @@ import type { ClaudeThinkingLevel } from './config.js';
  * @param model          Claude model to use (default: sonnet)
  * @param bus            Optional event bus for streaming output
  * @param thinkingLevel  Optional Claude effort level override
+ * @param simulate       If true, restrict destructive tools (no file writes, git mutations, or GitHub ops)
  * @returns              Resolved exit code (0 = success)
  */
 export function spawnAgent(
@@ -20,13 +34,14 @@ export function spawnAgent(
   timeoutMinutes: number = 30,
   model: string = 'sonnet',
   bus?: QuetzBus,
-  thinkingLevel?: ClaudeThinkingLevel
+  thinkingLevel?: ClaudeThinkingLevel,
+  simulate: boolean = false
 ): Promise<number> {
   const abortController = new AbortController();
   const timeoutMs = timeoutMinutes * 60 * 1000;
   const timer = setTimeout(() => abortController.abort(), timeoutMs);
 
-  return runQuery(prompt, cwd, model, abortController, timer, timeoutMinutes, bus, thinkingLevel);
+  return runQuery(prompt, cwd, model, abortController, timer, timeoutMinutes, bus, thinkingLevel, simulate);
 }
 
 async function runQuery(
@@ -37,7 +52,8 @@ async function runQuery(
   timer: ReturnType<typeof setTimeout>,
   timeoutMinutes: number,
   bus?: QuetzBus,
-  thinkingLevel?: ClaudeThinkingLevel
+  thinkingLevel?: ClaudeThinkingLevel,
+  simulate: boolean = false
 ): Promise<number> {
   try {
     const q = query({
@@ -52,6 +68,7 @@ async function runQuery(
         settingSources: ['user', 'project', 'local'],
         includePartialMessages: true,
         ...(thinkingLevel ? { effort: thinkingLevel } : {}),
+        ...(simulate ? { disallowedTools: SIMULATE_DISALLOWED_TOOLS } : {}),
         stderr: (data: string) => {
           if (bus) bus.emit('agent:stderr', { data });
           else process.stderr.write(data);

@@ -338,7 +338,7 @@ export async function runLoop(
 
     let exitCode: number;
     try {
-      exitCode = await spawnAgent(prompt, projectRoot, agentTimeout, agentModel, bus, agentThinkingLevel);
+      exitCode = await spawnAgent(prompt, projectRoot, agentTimeout, agentModel, bus, agentThinkingLevel, simulate);
     } catch (err) {
       if (bus) bus.emit('loop:failure', { reason: `Agent error: ${(err as Error).message}` });
       else process.stderr.write(error(`\nAgent error: ${(err as Error).message}\n`));

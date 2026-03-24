@@ -431,6 +431,7 @@ describe('runLoop normal', () => {
       'sonnet',
       bus,
       'medium',
+      false,
     );
     expect(phaseHandler).toHaveBeenCalledWith(expect.objectContaining({
       phase: 'agent_running',
