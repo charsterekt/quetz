@@ -28,7 +28,9 @@ export async function main(): Promise<void> {
     process.stdout.write('  run --dry         Preview without executing\n');
     process.stdout.write('  run --local-commits  Commit locally instead of PR\n');
     process.stdout.write('  run --amend       Amend all work into one commit\n');
-    process.stdout.write('  run --simulate    Simulate the full loop (mock + fake lifecycle)\n');
+    process.stdout.write('  run --simulate    Simulate the full loop (mock + fake PR lifecycle)\n');
+    process.stdout.write('  run --simulate --local-commits  Simulate with fake commits (no PRs)\n');
+    process.stdout.write('  run --simulate --amend  Simulate with fake amend commits\n');
     process.stdout.write('  run --model <m>   Override agent model\n');
     process.stdout.write(`  run --thinking-level <l> Override Claude effort (${CLAUDE_THINKING_LEVELS.join('|')})\n`);
     process.stdout.write('  run --timeout <m> Override agent timeout (minutes)\n');

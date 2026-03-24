@@ -4,7 +4,7 @@ import { colors } from './theme.js';
 import type { QuetzBus, QuetzEventName } from '../events.js';
 
 export const QUETZ_EVENTS: QuetzEventName[] = [
-  'loop:start', 'loop:issue_pickup', 'loop:phase', 'loop:pr_found',
+  'loop:start', 'loop:mode', 'loop:issue_pickup', 'loop:phase', 'loop:pr_found',
   'loop:merged', 'loop:commit_landed', 'loop:amend_complete',
   'loop:victory', 'loop:failure', 'loop:warning', 'loop:dry_issues',
 ];
@@ -14,6 +14,8 @@ export function formatQuetzEvent(event: QuetzEventName, payload: any): string {
   switch (event) {
     case 'loop:start':
       return `START ${payload.total} issues`;
+    case 'loop:mode':
+      return `MODE ${payload.mode}`;
     case 'loop:issue_pickup':
       return `PICKUP ${payload.id} "${payload.title}" [P${payload.priority} ${payload.type}]`;
     case 'loop:phase': {
@@ -50,10 +52,10 @@ export function formatQuetzEvent(event: QuetzEventName, payload: any): string {
 
 function getLineStyle(text: string): { color?: string; icon: string } {
   if (text.startsWith('FAILURE') || text.startsWith('ERROR')) return { color: colors.error, icon: '✗' };
-  if (text.startsWith('MERGED') || text.startsWith('VICTORY') || text.startsWith('COMMIT')) return { color: colors.success, icon: '✓' };
+  if (text.startsWith('MERGED') || text.startsWith('VICTORY') || text.startsWith('COMMIT') || text.startsWith('AMEND')) return { color: colors.success, icon: '✓' };
   if (text.startsWith('WARN')) return { color: colors.warning, icon: '⚠' };
   if (text.startsWith('PICKUP') || text.startsWith('PR')) return { color: colors.issue, icon: '→' };
-  if (text.startsWith('START') || text.startsWith('DRY')) return { color: colors.brand, icon: '▶' };
+  if (text.startsWith('START') || text.startsWith('DRY') || text.startsWith('MODE')) return { color: colors.brand, icon: '▶' };
   return { icon: '·' };
 }
 

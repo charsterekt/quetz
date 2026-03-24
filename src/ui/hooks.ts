@@ -84,6 +84,7 @@ export interface PhaseState {
   iteration: number;
   total: number;
   elapsed: string;
+  mode: 'pr' | 'commit' | 'amend';
   prNumber?: number;
   prUrl?: string;
 }
@@ -105,6 +106,7 @@ export function usePhase(bus: QuetzBus): PhaseState {
     iteration: 0,
     total: 0,
     elapsed: '0m 00s',
+    mode: 'pr',
   });
   const startRef = useRef<number>(Date.now());
 
@@ -150,12 +152,16 @@ export function usePhase(bus: QuetzBus): PhaseState {
     const onStart = (p: QuetzEvent['loop:start']) => {
       setState(prev => ({ ...prev, total: p.total }));
     };
+    const onMode = (p: QuetzEvent['loop:mode']) => {
+      setState(prev => ({ ...prev, mode: p.mode }));
+    };
 
     bus.on('loop:issue_pickup', onPickup);
     bus.on('loop:phase', onPhase);
     bus.on('loop:failure', onFailure);
     bus.on('loop:pr_found', onPR);
     bus.on('loop:start', onStart);
+    bus.on('loop:mode', onMode);
 
     const timer = setInterval(() => {
       setState(prev => {
@@ -171,6 +177,7 @@ export function usePhase(bus: QuetzBus): PhaseState {
       bus.off('loop:failure', onFailure);
       bus.off('loop:pr_found', onPR);
       bus.off('loop:start', onStart);
+      bus.off('loop:mode', onMode);
       clearInterval(timer);
     };
   }, [bus]);

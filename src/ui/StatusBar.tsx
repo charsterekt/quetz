@@ -13,7 +13,8 @@ export const StatusBar: React.FC<StatusBarProps> = ({ bus }) => {
   const state = usePhase(bus);
 
   const icon = phaseIcons[state.phase] || ' ';
-  const prLabel = state.prNumber ? `PR #${state.prNumber}` : '---';
+  const prLabel = state.prNumber ? `#${state.prNumber}` : '---';
+  const modeLabel = state.mode === 'amend' ? 'AMEND' : state.mode === 'commit' ? 'COMMIT' : 'PR';
 
   return (
     <Box borderStyle="single" borderColor={colors.dim} paddingX={1}>
@@ -26,7 +27,10 @@ export const StatusBar: React.FC<StatusBarProps> = ({ bus }) => {
         {state.phase.replace(/_/g, ' ')}
       </Text>
       <Text dimColor> | </Text>
-      <Text>PR: {prLabel}</Text>
+      {state.mode === 'pr'
+        ? <Text>{modeLabel}: {prLabel}</Text>
+        : <Text color={colors.brand}>{modeLabel}</Text>
+      }
       <Text dimColor> | </Text>
       <Text dimColor>{state.elapsed}</Text>
     </Box>

@@ -28,7 +28,8 @@ describe('StatusBar', () => {
     const output = instance.lastFrame();
     expect(output).toContain('Issue 0/0');
     expect(output).toContain('idle');
-    expect(output).toContain('PR: ---');
+    expect(output).toContain('PR');
+    expect(output).toContain('---');
     instance.unmount();
   });
 
@@ -62,7 +63,31 @@ describe('StatusBar', () => {
     bus.emit('loop:pr_found', { number: 42, title: 'Fix auth', url: 'https://github.com/test/pr/42' });
     await new Promise(r => setTimeout(r, 50));
     const output = instance.lastFrame();
-    expect(output).toContain('PR #42');
+    expect(output).toContain('#42');
+    instance.unmount();
+  });
+
+  it('shows COMMIT label in commit mode', async () => {
+    const bus = createBus();
+    const instance = render(React.createElement(StatusBar, { bus }));
+    await new Promise(r => setTimeout(r, 50));
+    bus.emit('loop:mode', { mode: 'commit' });
+    await new Promise(r => setTimeout(r, 50));
+    const output = instance.lastFrame();
+    expect(output).toContain('COMMIT');
+    expect(output).not.toContain('PR:');
+    instance.unmount();
+  });
+
+  it('shows AMEND label in amend mode', async () => {
+    const bus = createBus();
+    const instance = render(React.createElement(StatusBar, { bus }));
+    await new Promise(r => setTimeout(r, 50));
+    bus.emit('loop:mode', { mode: 'amend' });
+    await new Promise(r => setTimeout(r, 50));
+    const output = instance.lastFrame();
+    expect(output).toContain('AMEND');
+    expect(output).not.toContain('PR:');
     instance.unmount();
   });
 });
