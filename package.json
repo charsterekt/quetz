@@ -2,8 +2,8 @@
   "name": "quetz",
   "version": "0.5.0",
   "description": "The Feathered Serpent Dev Loop — a self-feeding issue resolution agentic loop.",
-  "type": "commonjs",
   "main": "dist/cli.js",
+  "type": "commonjs",
   "exports": "./dist/cli.js",
   "bin": {
     "quetz": "dist/cli.js"
