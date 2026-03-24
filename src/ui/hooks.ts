@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { QuetzBus, QuetzEventName, QuetzEvent, QuetzPhase } from '../events.js';
 import { createSessionHistoryState, reduceSessionHistory, type SessionHistoryState } from './session-history.js';
 
-const ELAPSED_UPDATE_MS = 60_000;
+const ELAPSED_UPDATE_MS = 1_000;
 
 function formatElapsed(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
