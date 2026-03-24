@@ -47,12 +47,12 @@ describe('App', () => {
     restoreStdoutDescriptors();
   });
 
-  it('renders title bar with ANSI logo', () => {
+  it('renders title bar with text logo', () => {
     const bus = createBus();
     const instance = render(React.createElement(App, { bus }));
     const output = instance.lastFrame();
-    // Header now shows the ANSI art logo (block characters) instead of text
-    expect(output).toContain('█');
+    // Header shows text-based logo
+    expect(output).toContain('quetz');
     instance.unmount();
   });
 

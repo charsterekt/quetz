@@ -189,7 +189,7 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
   return (
     <Box flexDirection="column" height={rows}>
       <Box borderStyle="single" borderColor={colors.border} paddingX={1} justifyContent="space-between">
-        <Logo maxLines={4} />
+        <Logo />
         <Box>
           <ProgressBar current={progress.iteration > 0 ? progress.iteration - 1 : 0} total={progress.total} />
         </Box>
