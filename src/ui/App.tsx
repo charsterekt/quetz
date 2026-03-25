@@ -8,6 +8,7 @@ import { StatusBar } from './StatusBar.js';
 import { HistoryPanel } from './HistoryPanel.js';
 import { SessionDetailPanel } from './SessionDetailPanel.js';
 import { FailureCard, type FailureData } from './components/FailureCard.js';
+import { VictoryCard, type VictoryData } from './components/VictoryCard.js';
 import { getRenderableRows, getVisiblePanelRows, useTerminalViewport } from './viewport.js';
 import type { QuetzBus } from '../events.js';
 
@@ -45,6 +46,7 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
   const quetzLines = useEventLog(bus, QUETZ_EVENTS, quetzLogFormatter, 200);
 
   const [failureData, setFailureData] = useState<FailureData | null>(null);
+  const [victoryData, setVictoryData] = useState<VictoryData | null>(null);
   const [rightView, setRightView] = useState<RightView>('dashboard');
   const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(undefined);
   const [detailScrollOffset, setDetailScrollOffset] = useState(0);
@@ -67,11 +69,21 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
         reason: payload.reason,
       });
     };
+    const onVictory = (payload: { issuesCompleted: number; totalTime: string; prsMerged: number }) => {
+      setVictoryData({
+        totalSessions: payload.issuesCompleted,
+        totalTime: payload.totalTime,
+        prsMerged: payload.prsMerged,
+        sessionDate: new Date().toISOString().slice(0, 10),
+      });
+    };
     bus.on('loop:issue_pickup', onPickup);
     bus.on('loop:failure', onFailure);
+    bus.on('loop:victory', onVictory);
     return () => {
       bus.off('loop:issue_pickup', onPickup);
       bus.off('loop:failure', onFailure);
+      bus.off('loop:victory', onVictory);
     };
   }, [bus, currentIssueId]);
 
@@ -197,6 +209,32 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
     : rightView === 'history'
       ? 'q quit  ctrl+c quit  esc dashboard  enter open  ↑↓ select'
       : 'q quit  ctrl+c quit  esc back  ↑↓ scroll';
+
+  if (victoryData) {
+    const snake = '~*~*~*~*~*~*~*~*~*~*~*~*~*~>';
+    const total = progress.total || victoryData.totalSessions;
+    const footerRight = version ? `q quit  ◆ v${version}` : 'q quit';
+    return (
+      <Box flexDirection="column" height={rows}>
+        <Box borderStyle="single" borderColor={colors.border} paddingX={1} justifyContent="space-between">
+          <Box>
+            <Text bold color={colors.brandBold}>QUETZ</Text>
+            <Text color={colors.brand}> {snake}</Text>
+          </Box>
+          <Box>
+            <Text color={colors.brand} bold>{total}/{total}  [done]</Text>
+          </Box>
+        </Box>
+
+        <VictoryCard data={victoryData} termCols={cols} termRows={rows} />
+
+        <Box paddingX={1} justifyContent="space-between">
+          <Text color={colors.brand}>◆ all done  |  exit code 0</Text>
+          <Text dimColor>{footerRight}</Text>
+        </Box>
+      </Box>
+    );
+  }
 
   if (failureData) {
     const prNum = failureData.prNumber;
