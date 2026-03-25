@@ -182,9 +182,9 @@ describe('App', () => {
     instance.unmount();
   });
 
-  it('keeps both panel headers visible when a failure banner is shown', async () => {
+  it('shows FailureCard overlay when loop:failure is emitted', async () => {
     const bus = createBus();
-    setStdoutSize(120, 24);
+    setStdoutSize(120, 40);
     const instance = render(React.createElement(App, { bus }));
     await waitForRender();
 
@@ -194,10 +194,11 @@ describe('App', () => {
     await waitForRender();
 
     const output = instance.lastFrame();
-    expect(output).toContain('Agent: mock-001');
-    expect(output).toContain('Quetz Log');
+    expect(output).toContain('the loop has stopped.');
+    expect(output).toContain('mock-001');
     expect(output).toContain('Agent exited with code 1');
-    expect(output).toContain('ctrl+c');
+    expect(output).toContain('ci failed');
+    expect(output).toContain('exit code 1');
     instance.unmount();
   });
 

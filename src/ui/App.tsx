@@ -7,6 +7,7 @@ import { QuetzPanel, QUETZ_EVENTS, formatQuetzEvent } from './QuetzPanel.js';
 import { StatusBar } from './StatusBar.js';
 import { HistoryPanel } from './HistoryPanel.js';
 import { SessionDetailPanel } from './SessionDetailPanel.js';
+import { FailureCard, type FailureData } from './components/FailureCard.js';
 import { getRenderableRows, getVisiblePanelRows, useTerminalViewport } from './viewport.js';
 import type { QuetzBus } from '../events.js';
 
@@ -43,11 +44,12 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
   const quetzLogFormatter = useMemo(() => formatQuetzEvent, []);
   const quetzLines = useEventLog(bus, QUETZ_EVENTS, quetzLogFormatter, 200);
 
-  const [failureReason, setFailureReason] = useState<string | null>(null);
+  const [failureData, setFailureData] = useState<FailureData | null>(null);
   const [rightView, setRightView] = useState<RightView>('dashboard');
   const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(undefined);
   const [detailScrollOffset, setDetailScrollOffset] = useState(0);
-  const failureBannerRows = failureReason ? FAILURE_BANNER_ROWS : 0;
+  const [currentIssueId, setCurrentIssueId] = useState('');
+  const failureBannerRows = failureData ? FAILURE_BANNER_ROWS : 0;
   const panelOverhead = 14 + failureBannerRows;
   const detailPanelOverhead = 16 + failureBannerRows;
 
@@ -57,10 +59,21 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
   );
 
   useEffect(() => {
-    const onFailure = (payload: { reason: string }) => setFailureReason(payload.reason);
+    const onPickup = (p: { id: string }) => setCurrentIssueId(p.id);
+    const onFailure = (payload: { reason: string; prNumber?: number }) => {
+      setFailureData({
+        issueId: currentIssueId,
+        prNumber: payload.prNumber ?? null,
+        reason: payload.reason,
+      });
+    };
+    bus.on('loop:issue_pickup', onPickup);
     bus.on('loop:failure', onFailure);
-    return () => { bus.off('loop:failure', onFailure); };
-  }, [bus]);
+    return () => {
+      bus.off('loop:issue_pickup', onPickup);
+      bus.off('loop:failure', onFailure);
+    };
+  }, [bus, currentIssueId]);
 
   useEffect(() => {
     if (completedSessions.length === 0) {
@@ -185,6 +198,31 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
       ? 'q quit  ctrl+c quit  esc dashboard  enter open  ↑↓ select'
       : 'q quit  ctrl+c quit  esc back  ↑↓ scroll';
 
+  if (failureData) {
+    const prNum = failureData.prNumber;
+    const footerLine = `● ci failed  |  pr: ${prNum != null ? `#${prNum}` : '—'}  |  issue: ${failureData.issueId}  |  exit code 1`;
+    return (
+      <Box flexDirection="column" height={rows}>
+        <Box borderStyle="single" borderColor={colors.border} paddingX={1} justifyContent="space-between">
+          <Box>
+            <Text bold color={colors.brandBold}>QUETZ</Text>
+            <Text color={colors.error}> ✗</Text>
+            <Text color={colors.border}>{' ···················'}</Text>
+          </Box>
+          <Box>
+            <Text color={colors.error}>{progress.iteration}/{progress.total}</Text>
+          </Box>
+        </Box>
+
+        <FailureCard data={failureData} termCols={cols} termRows={rows} />
+
+        <Box paddingX={1}>
+          <Text color={colors.error}>{footerLine}</Text>
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column" height={rows}>
       <Box borderStyle="single" borderColor={colors.border} paddingX={1} justifyContent="space-between">
@@ -218,18 +256,6 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
       </Box>
 
       <StatusBar bus={bus} />
-
-      {failureReason && (
-        <Box paddingX={1} borderStyle="single" borderColor={colors.error}>
-          <Text color={colors.error} bold>× </Text>
-          <Text color={colors.error}>{failureReason}</Text>
-          <Text dimColor>  press </Text>
-          <Text bold>q</Text>
-          <Text dimColor> or </Text>
-          <Text bold>ctrl+c</Text>
-          <Text dimColor> to quit</Text>
-        </Box>
-      )}
 
       <Box paddingX={1} justifyContent="space-between">
         <Text dimColor>{cwdDisplay}<Text color={colors.brand}>{branchSuffix}</Text></Text>
