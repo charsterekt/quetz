@@ -1,5 +1,5 @@
-import React from 'react';
-import { ink } from '../ink-imports.js';
+import { Column, Text } from '@rezi-ui/jsx';
+import type { VNode } from '@rezi-ui/core';
 import chalk from 'chalk';
 
 const c = {
@@ -8,7 +8,6 @@ const c = {
   text:     chalk.hex('#FAFAFA'),
   failDark: chalk.hex('#3F1515'),
   border:   chalk.hex('#2a2a2a'),
-  surface:  chalk.hex('#0F0F0F'),
 };
 
 export interface FailureData {
@@ -30,77 +29,49 @@ const ASCII_TAIL = [
   '  \\/\\/\\/',
 ];
 
-function StatRow({ label, value, valueColor }: { label: string; value: string; valueColor: string }) {
-  const { Box, Text } = ink();
-  const labelWidth = 16;
-  const paddedLabel = label.padEnd(labelWidth);
-  return (
-    <Box>
-      <Text>{c.dim(paddedLabel)}</Text>
-      <Text>{chalk.hex(valueColor)(value)}</Text>
-    </Box>
-  );
-}
-
-export const FailureCard: React.FC<FailureCardProps> = ({ data, termCols, termRows }) => {
-  const { Box, Text } = ink();
+export function FailureCard(props: FailureCardProps): VNode {
+  const { data, termCols } = props;
 
   const cardWidth = Math.round(termCols * 0.49);
-  const cardPad = 4; // ~48px ≈ 4 chars of padding on each side
+  const cardPad = 4;
+  const innerWidth = Math.max(1, cardWidth - cardPad * 2 - 2);
+  const padding = ' '.repeat(cardPad);
+  const divider = c.failDark('─'.repeat(innerWidth));
 
-  const divider = c.failDark('─'.repeat(cardWidth - cardPad * 2 - 2));
+  const leftBorder = c.error('│');
+  const rightBorder = c.error('│');
+  const topLine = c.error('┌' + '─'.repeat(innerWidth) + '┐');
+  const bottomLine = c.error('└' + '─'.repeat(innerWidth) + '┘');
+
+  const prStr = data.prNumber != null ? `#${data.prNumber}` : '—';
+
+  const rows: string[] = [
+    `${padding}${divider}`,
+    `${padding}`,
+    `${padding}${c.error('the loop has stopped.')}`,
+    `${padding}`,
+    `${padding}${c.dim('issue'.padEnd(16))}${c.error(data.issueId)}`,
+    `${padding}${c.dim('pr'.padEnd(16))}${c.error(prStr)}`,
+    ...(data.failedChecks != null
+      ? [`${padding}${c.dim('failed checks'.padEnd(16))}${c.error(data.failedChecks)}`]
+      : []),
+    `${padding}${c.dim('reason'.padEnd(16))}${c.text(data.reason)}`,
+    `${padding}`,
+    ...ASCII_TAIL.map(l => `${padding}${c.failDark(l)}`),
+    `${padding}${divider}`,
+  ];
 
   return (
-    <Box flexDirection="column" alignItems="center" justifyContent="center" flexGrow={1}>
-      <Box
-        flexDirection="column"
-        width={cardWidth}
-        borderStyle="single"
-        borderColor="#EF4444"
-        paddingX={cardPad}
-        paddingY={1}
-      >
-        {/* Line 1: top divider */}
-        <Text>{divider}</Text>
-
-        {/* Line 2: empty spacer */}
-        <Text> </Text>
-
-        {/* Line 3: heading */}
-        <Text bold>{c.error('the loop has stopped.')}</Text>
-
-        {/* Line 4: spacer */}
-        <Text> </Text>
-
-        {/* Line 5: issue */}
-        <StatRow label="issue" value={data.issueId} valueColor="#EF4444" />
-
-        {/* Line 6: pr */}
-        <StatRow
-          label="pr"
-          value={data.prNumber != null ? `#${data.prNumber}` : '—'}
-          valueColor="#EF4444"
-        />
-
-        {/* Line 7: failedChecks (only when present) */}
-        {data.failedChecks != null && (
-          <StatRow label="failed checks" value={data.failedChecks} valueColor="#EF4444" />
-        )}
-
-        {/* Line 8: reason */}
-        <StatRow label="reason" value={data.reason} valueColor="#FAFAFA" />
-
-        {/* Line 9: spacer */}
-        <Text> </Text>
-
-        {/* ASCII tail art */}
-        {ASCII_TAIL.map((line, i) => (
-          <Text key={i}>{c.failDark(line)}</Text>
+    <Column flex={1} items="center" justify="center">
+      <Column width={cardWidth}>
+        <Text>{topLine}</Text>
+        {rows.map((row, i) => (
+          <Text key={String(i)} textOverflow="ellipsis">
+            {leftBorder + row.padEnd(innerWidth).slice(0, innerWidth) + rightBorder}
+          </Text>
         ))}
-
-        {/* Bottom divider */}
-        <Text>{divider}</Text>
-      </Box>
-    </Box>
+        <Text>{bottomLine}</Text>
+      </Column>
+    </Column>
   );
-};
+}

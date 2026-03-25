@@ -1,21 +1,18 @@
-import React from 'react';
-import { ink } from '../ink-imports.js';
+import { Column, Text } from '@rezi-ui/jsx';
+import type { VNode } from '@rezi-ui/core';
 import chalk from 'chalk';
 
 const sbTrack = chalk.hex('#141414');
 const sbThumb = chalk.hex('#3F3F3F');
 
 export interface ScrollbarProps {
-  /** Visible height of the scrollbar in rows */
   height: number;
-  /** Total number of content lines */
   totalLines: number;
-  /** First visible line index (0 = top) */
   scrollTop: number;
 }
 
-export const Scrollbar: React.FC<ScrollbarProps> = ({ height, totalLines, scrollTop }) => {
-  const { Box, Text } = ink();
+export function Scrollbar(props: ScrollbarProps): VNode {
+  const { height, totalLines, scrollTop } = props;
 
   const chars = (() => {
     if (totalLines <= height) {
@@ -31,10 +28,10 @@ export const Scrollbar: React.FC<ScrollbarProps> = ({ height, totalLines, scroll
   })();
 
   return (
-    <Box flexDirection="column" width={1}>
+    <Column width={1}>
       {chars.map((char, i) => (
-        <Text key={i}>{char}</Text>
+        <Text key={String(i)}>{char}</Text>
       ))}
-    </Box>
+    </Column>
   );
-};
+}

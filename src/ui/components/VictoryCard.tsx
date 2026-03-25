@@ -1,5 +1,5 @@
-import React from 'react';
-import { ink } from '../ink-imports.js';
+import { Column, Row, Text } from '@rezi-ui/jsx';
+import type { VNode } from '@rezi-ui/core';
 import chalk from 'chalk';
 
 const c = {
@@ -23,63 +23,46 @@ interface VictoryCardProps {
   termRows: number;
 }
 
-function StatRow({ label, value, valueColor }: { label: string; value: string; valueColor: string }) {
-  const { Box, Text } = ink();
-  const labelWidth = 20;
-  const paddedLabel = label.padEnd(labelWidth);
-  return (
-    <Box>
-      <Text>{c.dim(paddedLabel)}</Text>
-      <Text>{chalk.hex(valueColor)(value)}</Text>
-    </Box>
-  );
-}
-
-export const VictoryCard: React.FC<VictoryCardProps> = ({ data, termCols }) => {
-  const { Box, Text } = ink();
+export function VictoryCard(props: VictoryCardProps): VNode {
+  const { data, termCols } = props;
 
   const cardWidth = Math.round(termCols * 0.49);
-  const cardPad = 4; // ~48px ≈ 4 chars of padding on each side
+  const cardPad = 4;
   const innerWidth = Math.max(1, cardWidth - cardPad * 2 - 2);
   const divider = c.border('─'.repeat(innerWidth));
 
+  const padding = ' '.repeat(cardPad);
+  const border = c.accent('─'.repeat(innerWidth));
+
+  const rows = [
+    `${padding}${' '}`,
+    `${padding}${c.brand('the serpent rests.')}`,
+    `${padding}`,
+    `${padding}${c.dim('sessions completed'.padEnd(20))}${c.text(String(data.totalSessions))}`,
+    `${padding}${c.dim('total time'.padEnd(20))}${c.accent(data.totalTime)}`,
+    `${padding}${c.dim('prs merged'.padEnd(20))}${c.brand(String(data.prsMerged))}`,
+    `${padding}${c.dim('session date'.padEnd(20))}${c.dim(data.sessionDate)}`,
+    `${padding}`,
+    `${padding}${divider}`,
+  ];
+
+  const borderLine = c.accent('─'.repeat(innerWidth));
+  const leftBorder = c.accent('│');
+  const rightBorder = c.accent('│');
+  const topLine = c.accent('┌' + '─'.repeat(innerWidth) + '┐');
+  const bottomLine = c.accent('└' + '─'.repeat(innerWidth) + '┘');
+
   return (
-    <Box flexDirection="column" alignItems="center" justifyContent="center" flexGrow={1}>
-      <Box
-        flexDirection="column"
-        width={cardWidth}
-        borderStyle="single"
-        borderColor="#F59E0B"
-        paddingX={cardPad}
-        paddingY={1}
-      >
-        {/* Line 1: top spacer */}
-        <Text> </Text>
-
-        {/* Line 2: heading */}
-        <Text bold>{c.brand('the serpent rests.')}</Text>
-
-        {/* Line 3: spacer */}
-        <Text> </Text>
-
-        {/* Line 4: sessions completed */}
-        <StatRow label="sessions completed" value={String(data.totalSessions)} valueColor="#FAFAFA" />
-
-        {/* Line 5: total time */}
-        <StatRow label="total time" value={data.totalTime} valueColor="#F59E0B" />
-
-        {/* Line 6: prs merged */}
-        <StatRow label="prs merged" value={String(data.prsMerged)} valueColor="#10B981" />
-
-        {/* Line 7: session date */}
-        <StatRow label="session date" value={data.sessionDate} valueColor="#6B7280" />
-
-        {/* Line 8: spacer */}
-        <Text> </Text>
-
-        {/* Divider */}
-        <Text>{divider}</Text>
-      </Box>
-    </Box>
+    <Column flex={1} items="center" justify="center">
+      <Column width={cardWidth}>
+        <Text>{topLine}</Text>
+        {rows.map((row, i) => (
+          <Text key={String(i)} textOverflow="ellipsis">
+            {leftBorder + row.padEnd(innerWidth).slice(0, innerWidth) + rightBorder}
+          </Text>
+        ))}
+        <Text>{bottomLine}</Text>
+      </Column>
+    </Column>
   );
-};
+}

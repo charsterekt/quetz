@@ -1,25 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ink } from '../ink-imports.js';
+import { Column, Row, Text } from '@rezi-ui/jsx';
+import type { VNode } from '@rezi-ui/core';
 import chalk from 'chalk';
-import type { QuetzBus } from '../../events.js';
 
 const c = {
-  brand:  chalk.hex('#10B981'),
-  cyan:   chalk.hex('#06B6D4'),
-  agent:  chalk.hex('#A855F7'),
-  accent: chalk.hex('#F59E0B'),
-  error:  chalk.hex('#EF4444'),
-  dim:    chalk.hex('#6B7280'),
+  brand:   chalk.hex('#10B981'),
+  cyan:    chalk.hex('#06B6D4'),
+  agent:   chalk.hex('#A855F7'),
+  accent:  chalk.hex('#F59E0B'),
+  error:   chalk.hex('#EF4444'),
+  dim:     chalk.hex('#6B7280'),
   sbTrack: chalk.hex('#141414'),
   sbThumb: chalk.hex('#3F3F3F'),
 };
 
-interface LogEntryStyle {
-  icon: string;
-  colorFn: (s: string) => string;
-}
-
-function getEntryStyle(text: string): LogEntryStyle {
+function getEntryStyle(text: string): { icon: string; colorFn: (s: string) => string } {
   if (text.startsWith('VICTORY'))                             return { icon: '◆', colorFn: c.brand };
   if (text.startsWith('START') || text.startsWith('MODE'))   return { icon: '◆', colorFn: c.brand };
   if (text.startsWith('PICKUP'))                             return { icon: '→', colorFn: c.cyan };
@@ -40,92 +34,58 @@ function renderScrollbar(total: number, visible: number, offset: number): string
     ? Math.round((offset / maxOffset) * (visible - thumbSize))
     : 0;
   return Array.from({ length: visible }, (_, i) =>
-    (i >= thumbPos && i < thumbPos + thumbSize)
-      ? c.sbThumb('█')
-      : c.sbTrack('░')
+    (i >= thumbPos && i < thumbPos + thumbSize) ? c.sbThumb('█') : c.sbTrack('░')
   );
 }
 
 export interface LogPanelProps {
-  bus: QuetzBus;
   lines: string[];
+  scrollOffset: number;
   width: number;
   height: number;
 }
 
-export const LogPanel: React.FC<LogPanelProps> = ({ bus, lines, width, height }) => {
-  const { Box, Text } = ink();
-  const [scrollOffset, setScrollOffset] = useState(0);
-  const autoScrollRef = useRef(true);
+export function LogPanel(props: LogPanelProps): VNode {
+  const { lines, scrollOffset, width, height } = props;
 
-  // Title bar occupies 1 row; remaining rows for content
   const contentHeight = Math.max(0, height - 1);
   const maxScroll = Math.max(0, lines.length - contentHeight);
 
-  // Auto-scroll to bottom on new entries
-  useEffect(() => {
-    if (autoScrollRef.current) setScrollOffset(0);
-  }, [lines.length]);
+  // scrollOffset=0 means bottom, higher = further up
+  const start = scrollOffset > 0
+    ? Math.max(0, lines.length - scrollOffset - contentHeight)
+    : Math.max(0, lines.length - contentHeight);
+  const end = scrollOffset > 0 ? lines.length - scrollOffset : lines.length;
+  const visibleLines = lines.slice(start, end);
 
-  // Expose [ ] scroll callbacks via bus
-  useEffect(() => {
-    const onScroll = (dir: 'up' | 'down') => {
-      if (dir === 'up') {
-        autoScrollRef.current = false;
-        setScrollOffset(prev => Math.min(prev + 3, maxScroll));
-      } else {
-        setScrollOffset(prev => {
-          const next = Math.max(0, prev - 3);
-          if (next === 0) autoScrollRef.current = true;
-          return next;
-        });
-      }
-    };
-    (bus as any)._quetzScroll = onScroll;
-    return () => { delete (bus as any)._quetzScroll; };
-  }, [bus, maxScroll]);
-
-  // Visible slice (scrollOffset=0 means bottom, higher = further up)
-  const visibleLines = (() => {
-    const start = scrollOffset > 0
-      ? Math.max(0, lines.length - scrollOffset - contentHeight)
-      : Math.max(0, lines.length - contentHeight);
-    const end = scrollOffset > 0 ? lines.length - scrollOffset : lines.length;
-    return lines.slice(start, end);
-  })();
-
-  // Pad to exactly contentHeight rows so panel height stays fixed
   const paddedLines = [...visibleLines];
   while (paddedLines.length < contentHeight) paddedLines.push('');
 
-  const scrollbar = renderScrollbar(lines.length, contentHeight, scrollOffset);
+  const scrollbar = renderScrollbar(lines.length, contentHeight, maxScroll - scrollOffset);
 
   return (
-    <Box flexDirection="column" width={width} height={height}>
-      {/* Title bar */}
-      <Box paddingX={2}>
+    <Column width={width} height={height}>
+      <Row px={2}>
         <Text>{c.cyan('quetz log')}</Text>
-      </Box>
-
-      {/* Content: entries column + scrollbar */}
-      <Box flexDirection="row" flexGrow={1}>
-        <Box flexDirection="column" flexGrow={1} paddingX={2} minWidth={0}>
+      </Row>
+      <Row flex={1}>
+        <Column flex={1} px={2}>
           {paddedLines.map((line, i) => {
-            if (!line) return <Text key={i}> </Text>;
+            if (!line) return <Text key={String(i)}>{' '}</Text>;
             const { icon, colorFn } = getEntryStyle(line);
             return (
-              <Text key={i} wrap="truncate">
+              <Text key={String(i)} textOverflow="ellipsis">
                 {colorFn(`${icon} ${line}`)}
               </Text>
             );
           })}
-        </Box>
-        <Box flexDirection="column" width={1}>
+        </Column>
+        <Column width={1}>
           {scrollbar.map((char, i) => (
-            <Text key={i}>{char}</Text>
+            <Text key={String(i)}>{char}</Text>
           ))}
-        </Box>
-      </Box>
-    </Box>
+        </Column>
+      </Row>
+    </Column>
   );
-};
+}

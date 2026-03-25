@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { ink } from '../ink-imports.js';
+import { Column, Row, Text, Spacer } from '@rezi-ui/jsx';
+import type { VNode } from '@rezi-ui/core';
 import chalk from 'chalk';
 import { LOGO_LINES, LOGO_SUBTITLE } from '../logo.js';
-import { SNAKE_FRAMES, buildDots, snakeForState, type ScreenMode } from '../snake.js';
+import { buildDots, snakeForState, type ScreenMode } from '../snake.js';
 
 const c = {
   logo:   chalk.hex('#0DBC79'),
@@ -18,98 +18,67 @@ export interface HeaderProps {
   mode: ScreenMode;
   done: number;
   total: number;
+  snakeFrame: string;
   /** session_detail: the issue id being browsed */
   sessionId?: string;
   /** session_detail: elapsed time of background loop */
   elapsed?: string;
 }
 
-export const Header: React.FC<HeaderProps> = ({
-  mode,
-  done,
-  total,
-  sessionId = '',
-  elapsed = '0m 00s',
-}) => {
-  const { Box, Text } = ink();
+export function Header(props: HeaderProps): VNode {
+  const { mode, done, total, snakeFrame, sessionId = '', elapsed = '0m 00s' } = props;
 
-  const [frameIdx, setFrameIdx] = useState(0);
+  const snake = snakeForState(mode, snakeFrame);
 
-  // Animate snake every 150ms (only needed for running/polling modes)
-  useEffect(() => {
-    if (mode === 'session_detail') return;
-    const id = setInterval(() => {
-      setFrameIdx(i => (i + 1) % SNAKE_FRAMES.length);
-    }, 150);
-    return () => clearInterval(id);
-  }, [mode]);
-
-  const currentFrame = SNAKE_FRAMES[frameIdx];
-  const snake = snakeForState(mode, currentFrame);
-
-  // Right column content
-  let rightColumn: React.ReactNode;
+  let rightNode: VNode;
 
   if (mode === 'session_detail') {
-    rightColumn = (
-      <Box flexDirection="column" alignItems="flex-end">
+    rightNode = (
+      <Column items="end">
         <Text>{c.cyan('[ viewing session ]')}</Text>
         <Text>{c.accent(`bg: ${sessionId}  |  agent running  |  ${elapsed}`)}</Text>
-      </Box>
+      </Column>
     );
   } else {
-    // Snake bar
-    let snakeNode: React.ReactNode;
+    let snakeLine: string;
     if (mode === 'failure') {
       const dots = buildDots(Math.max(0, total - done));
-      snakeNode = (
-        <Text>
-          {c.brand(snake)}{c.error(' ✗')}{c.border(dots ? `  ${dots}` : '')}
-        </Text>
-      );
+      snakeLine = c.brand(snake) + c.error(' ✗') + (dots ? c.border(`  ${dots}`) : '');
     } else if (mode === 'victory') {
-      snakeNode = <Text>{c.brand(snake)}</Text>;
+      snakeLine = c.brand(snake);
     } else {
       const dots = buildDots(Math.max(0, total - done));
-      snakeNode = (
-        <Text>
-          {c.brand(snake)}{dots ? c.muted(`  ${dots}`) : ''}
-        </Text>
-      );
+      snakeLine = c.brand(snake) + (dots ? c.muted(`  ${dots}`) : '');
     }
 
-    // Counter
-    let counterNode: React.ReactNode;
+    let counterLine: string;
     if (mode === 'victory') {
-      counterNode = <Text>{c.brand(`${total}/${total}  [done]`)}</Text>;
+      counterLine = c.brand(`${total}/${total}  [done]`);
     } else if (mode === 'failure') {
-      counterNode = <Text>{c.error(`${done}/${total}  [failed]`)}</Text>;
+      counterLine = c.error(`${done}/${total}  [failed]`);
     } else {
-      counterNode = <Text bold>{c.accent(`${done}/${total}`)}</Text>;
+      counterLine = c.accent(`${done}/${total}`);
     }
 
-    rightColumn = (
-      <Box flexDirection="column" alignItems="flex-end">
-        {snakeNode}
-        {counterNode}
-      </Box>
+    rightNode = (
+      <Column items="end">
+        <Text>{snakeLine}</Text>
+        <Text>{counterLine}</Text>
+      </Column>
     );
   }
 
   return (
-    <Box justifyContent="space-between" paddingX={3} paddingY={1}>
-      {/* Left: logo + subtitle */}
-      <Box flexDirection="column">
+    <Row justify="between" px={3} py={1}>
+      <Column>
         {LOGO_LINES.map((line, i) => (
-          <Text key={i}>{c.logo(line)}</Text>
+          <Text key={String(i)}>{c.logo(line)}</Text>
         ))}
         <Text>{c.brand(LOGO_SUBTITLE)}</Text>
-      </Box>
-
-      {/* Right: snake/counter or session detail info */}
-      <Box alignItems="flex-end">
-        {rightColumn}
-      </Box>
-    </Box>
+      </Column>
+      <Row items="end">
+        {rightNode}
+      </Row>
+    </Row>
   );
-};
+}

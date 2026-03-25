@@ -7,11 +7,8 @@ vi.mock('../loop.js', () => ({
   runLoop: vi.fn(),
   showStatus: vi.fn(),
 }));
-vi.mock('../ui/ink-imports.js', () => ({
-  initInk: vi.fn(),
-}));
 vi.mock('../ui/App.js', () => ({
-  App: () => null,
+  mount: vi.fn(),
 }));
 vi.mock('child_process', () => ({
   execSync: vi.fn(),
@@ -20,13 +17,13 @@ vi.mock('child_process', () => ({
 import { execSync } from 'child_process';
 import { createBus } from '../events.js';
 import { runLoop } from '../loop.js';
-import { initInk } from '../ui/ink-imports.js';
+import { mount } from '../ui/App.js';
 import { EXIT_SUCCESS, EXIT_FAILURE, EXIT_CONFIG_ERROR, EXIT_PREFLIGHT_FAILURE, main } from '../cli.js';
 
 const mockExecSync = vi.mocked(execSync);
 const mockCreateBus = vi.mocked(createBus);
 const mockRunLoop = vi.mocked(runLoop);
-const mockInitInk = vi.mocked(initInk);
+const mockMount = vi.mocked(mount);
 
 class ExitError extends Error {
   constructor(readonly code: number | undefined) {
@@ -91,11 +88,10 @@ describe('main', () => {
   it('launches the TUI on small terminals without warning or blocking', async () => {
     const bus = { emit: vi.fn(), on: vi.fn() };
     const unmount = vi.fn();
-    const render = vi.fn(() => ({ unmount }));
 
     mockCreateBus.mockReturnValue(bus as never);
     mockRunLoop.mockResolvedValue({ exitCode: 0 } as never);
-    mockInitInk.mockResolvedValue({ render } as never);
+    mockMount.mockReturnValue({ unmount } as never);
     mockExecSync.mockReturnValue('fix/remove-terminal-size-gate\n' as never);
 
     process.argv = ['node', 'quetz', 'run'];
@@ -103,7 +99,7 @@ describe('main', () => {
 
     await expect(main()).rejects.toMatchObject({ code: 0 });
 
-    expect(render).toHaveBeenCalledTimes(1);
+    expect(mockMount).toHaveBeenCalledTimes(1);
     expect(mockRunLoop).toHaveBeenCalledWith(
       {
         model: undefined,

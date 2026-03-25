@@ -1,5 +1,5 @@
-import React from 'react';
-import { ink } from '../ink-imports.js';
+import { Column, Row, Text } from '@rezi-ui/jsx';
+import type { VNode } from '@rezi-ui/core';
 import chalk from 'chalk';
 import type { CompletedSession } from '../session-history.js';
 import { formatDuration } from './SessionDetail.js';
@@ -14,55 +14,48 @@ const c = {
 export interface SessionsPanelProps {
   sessions: CompletedSession[];
   selectedIdx: number;
-  onMove: (delta: number) => void;
-  onEnter: (sessionId: string) => void;
   width: number;
   height: number;
 }
 
-export const SessionsPanel: React.FC<SessionsPanelProps> = ({
-  sessions, selectedIdx, width, height,
-}) => {
-  const { Box, Text } = ink();
+export function SessionsPanel(props: SessionsPanelProps): VNode {
+  const { sessions, selectedIdx, width, height } = props;
 
-  // Title bar occupies 1 row; remaining rows for the list
   const listHeight = Math.max(0, height - 1);
 
   return (
-    <Box flexDirection="column" width={width} height={height}>
-      {/* Title bar: space-between layout */}
-      <Box justifyContent="space-between" paddingX={2}>
+    <Column width={width} height={height}>
+      <Row justify="between" px={2}>
         <Text>{c.cyan('completed sessions')}</Text>
         <Text>{c.dim('↑↓ enter esc')}</Text>
-      </Box>
+      </Row>
 
-      {/* List area */}
       {sessions.length === 0 ? (
-        <Box flexGrow={1} justifyContent="center" alignItems="center">
+        <Column flex={1} items="center" justify="center">
           <Text>{c.dim('no completed sessions yet')}</Text>
-        </Box>
+        </Column>
       ) : (
-        <Box flexDirection="column" paddingX={2} flexGrow={1}>
+        <Column px={2} flex={1}>
           {sessions.slice(0, listHeight).map((session, i) => {
             const selected = i === selectedIdx;
             const cursor = selected ? '▶' : ' ';
             const outcomeIcon = session.outcome === 'failed' ? '✗' : '✓';
-            const outcomeIconColored = session.outcome === 'failed' ? c.error(outcomeIcon) : c.brand(outcomeIcon);
+            const outcomeColored = session.outcome === 'failed' ? c.error(outcomeIcon) : c.brand(outcomeIcon);
             const duration = formatDuration(session.finishedAt - session.startedAt);
             const labelText = ` ${session.issueId}  ${duration}`;
 
+            const line = selected
+              ? `${c.brand(cursor)} ${outcomeColored}${c.brand(labelText)}`
+              : `${c.dim(cursor)} ${outcomeColored}${c.dim(labelText)}`;
+
             return (
-              <Box key={session.issueId + session.startedAt} height={1}>
-                <Text wrap="truncate">
-                  {selected
-                    ? `${c.brand(cursor)} ${outcomeIconColored}${c.brand(labelText)}`
-                    : `${c.dim(cursor)} ${outcomeIconColored}${c.dim(labelText)}`}
-                </Text>
-              </Box>
+              <Text key={session.issueId + String(session.startedAt)} textOverflow="ellipsis">
+                {line}
+              </Text>
             );
           })}
-        </Box>
+        </Column>
       )}
-    </Box>
+    </Column>
   );
-};
+}

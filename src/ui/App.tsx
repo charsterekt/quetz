@@ -1,342 +1,265 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ink } from './ink-imports.js';
-import { colors } from './theme.js';
-import { useEventLog, useProgress, useSessionHistory } from './hooks.js';
-import { AgentPanel } from './AgentPanel.js';
-import { QuetzPanel, QUETZ_EVENTS, formatQuetzEvent } from './QuetzPanel.js';
-import { StatusBar } from './StatusBar.js';
-import { HistoryPanel } from './HistoryPanel.js';
-import { FailureCard, type FailureData } from './components/FailureCard.js';
-import { VictoryCard, type VictoryData } from './components/VictoryCard.js';
-import { SessionDetailContent, SessionDetail, formatDuration, sessionDetailMaxOffset } from './components/SessionDetail.js';
-import { getRenderableRows, getVisiblePanelRows, useTerminalViewport } from './viewport.js';
+import { Column, Row, Text, Spacer } from '@rezi-ui/jsx';
+import type { VNode } from '@rezi-ui/core';
+import { createNodeApp } from '@rezi-ui/node';
 import type { QuetzBus } from '../events.js';
+import { createInitialState, wireAppState, type AppState } from './state.js';
+import { Header } from './components/Header.js';
+import { Footer } from './components/Footer.js';
+import { AgentPanel } from './components/AgentPanel.js';
+import { SessionsPanel } from './components/SessionsPanel.js';
+import { LogPanel } from './components/LogPanel.js';
+import { SessionDetail } from './components/SessionDetail.js';
+import { VictoryCard } from './components/VictoryCard.js';
+import { FailureCard } from './components/FailureCard.js';
+import { formatDuration, sessionDetailMaxOffset } from './components/SessionDetail.js';
+import { SNAKE_FRAMES } from './snake.js';
 
 interface AppProps {
-  bus: QuetzBus;
-  onQuit?: () => void;
-  cwd?: string;
-  branch?: string;
-  version?: string;
+  state: AppState;
+  version: string;
+  cwd: string;
+  branch: string;
 }
 
-type RightView = 'dashboard' | 'history' | 'detail';
-
-const FAILURE_BANNER_ROWS = 3;
-
-function ProgressBar({ current, total }: { current: number; total: number }) {
-  const { Text } = ink();
-  const width = 20;
-  const filled = total > 0 ? Math.round((current / total) * width) : 0;
-  const empty = width - filled;
-  const bar = '■'.repeat(filled) + '□'.repeat(empty);
-  return <Text dimColor>{bar} {current}/{total}</Text>;
+// Right column width: 26% of terminal, min 36
+function rightCols(termCols: number): number {
+  return Math.max(36, Math.round(termCols * 0.26));
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(value, max));
-}
+export function App(props: AppProps): VNode {
+  const { state, version, cwd, branch } = props;
+  const termCols = process.stdout.columns ?? 120;
+  const termRows = process.stdout.rows ?? 40;
 
-export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', version = '' }) => {
-  const { Box, Text, useInput } = ink();
-  const viewport = useTerminalViewport();
-  const progress = useProgress(bus);
-  const { completedSessions } = useSessionHistory(bus);
-  const quetzLogFormatter = useMemo(() => formatQuetzEvent, []);
-  const quetzLines = useEventLog(bus, QUETZ_EVENTS, quetzLogFormatter, 200);
+  const rCols = rightCols(termCols);
+  const agentCols = termCols - rCols - 1;
 
-  const [failureData, setFailureData] = useState<FailureData | null>(null);
-  const [victoryData, setVictoryData] = useState<VictoryData | null>(null);
-  const [rightView, setRightView] = useState<RightView>('dashboard');
-  const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(undefined);
-  const [detailScrollOffset, setDetailScrollOffset] = useState(0);
-  const [currentIssueId, setCurrentIssueId] = useState('');
-  const failureBannerRows = failureData ? FAILURE_BANNER_ROWS : 0;
-  const panelOverhead = 14 + failureBannerRows;
+  const headerDone = state.issueCount > 0 ? state.issueCount - 1 : 0;
+  const snakeFrame = SNAKE_FRAMES[state.snakeFrame % SNAKE_FRAMES.length] ?? SNAKE_FRAMES[0];
 
-  const selectedSession = useMemo(
-    () => completedSessions.find(session => session.issueId === selectedSessionId),
-    [completedSessions, selectedSessionId]
-  );
-
-  useEffect(() => {
-    const onPickup = (p: { id: string }) => setCurrentIssueId(p.id);
-    const onFailure = (payload: { reason: string; prNumber?: number }) => {
-      setFailureData({
-        issueId: currentIssueId,
-        prNumber: payload.prNumber ?? null,
-        reason: payload.reason,
-      });
-    };
-    const onVictory = (payload: { issuesCompleted: number; totalTime: string; prsMerged: number }) => {
-      setVictoryData({
-        totalSessions: payload.issuesCompleted,
-        totalTime: payload.totalTime,
-        prsMerged: payload.prsMerged,
-        sessionDate: new Date().toISOString().slice(0, 10),
-      });
-    };
-    bus.on('loop:issue_pickup', onPickup);
-    bus.on('loop:failure', onFailure);
-    bus.on('loop:victory', onVictory);
-    return () => {
-      bus.off('loop:issue_pickup', onPickup);
-      bus.off('loop:failure', onFailure);
-      bus.off('loop:victory', onVictory);
-    };
-  }, [bus, currentIssueId]);
-
-  useEffect(() => {
-    if (completedSessions.length === 0) {
-      setSelectedSessionId(undefined);
-      if (rightView !== 'dashboard') setRightView('history');
-      return;
-    }
-
-    if (!selectedSessionId || !completedSessions.some(session => session.issueId === selectedSessionId)) {
-      setSelectedSessionId(completedSessions[0].issueId);
-    }
-  }, [completedSessions, selectedSessionId, rightView]);
-
-  useEffect(() => {
-    if (rightView === 'detail' && !selectedSession) {
-      setRightView('history');
-      setDetailScrollOffset(0);
-    }
-  }, [rightView, selectedSession]);
-
-  const handleQuit = useCallback(() => {
-    if (onQuit) onQuit();
-  }, [onQuit]);
-
-  const moveSelection = useCallback((delta: number) => {
-    if (completedSessions.length === 0) return;
-    const currentIndex = Math.max(
-      0,
-      completedSessions.findIndex(session => session.issueId === selectedSessionId)
-    );
-    const nextIndex = clamp(currentIndex + delta, 0, completedSessions.length - 1);
-    setSelectedSessionId(completedSessions[nextIndex].issueId);
-  }, [completedSessions, selectedSessionId]);
-
-  const rows = getRenderableRows(viewport.rows);
-  const cols = viewport.columns;
-  const quetzWidth = Math.max(36, Math.round(cols * 0.33));
-  const agentWidth = cols - quetzWidth;
-  const panelVisibleHeight = getVisiblePanelRows(viewport.rows, panelOverhead);
-
-  useInput((input, key) => {
-    const isCtrlC = input === '\x03' || (key.ctrl && input.toLowerCase() === 'c');
-
-    if (input === 'q' || isCtrlC) {
-      handleQuit();
-      return;
-    }
-
-    if (input === 'h') {
-      setRightView(prev => {
-        if (prev === 'dashboard') return 'history';
-        return prev;
-      });
-      if (!selectedSessionId && completedSessions[0]) {
-        setSelectedSessionId(completedSessions[0].issueId);
-      }
-      return;
-    }
-
-    if (key.escape || input === 'b') {
-      if (rightView === 'detail') {
-        setRightView('history');
-        setDetailScrollOffset(0);
-        return;
-      }
-      if (rightView === 'history') {
-        setRightView('dashboard');
-        return;
-      }
-    }
-
-    if (key.return && rightView === 'history' && selectedSessionId) {
-      setRightView('detail');
-      setDetailScrollOffset(0);
-      return;
-    }
-
-    if (key.upArrow) {
-      if (rightView === 'history') {
-        moveSelection(-1);
-        return;
-      }
-      if (rightView === 'detail') {
-        setDetailScrollOffset(prev => Math.max(0, prev - 3));
-        return;
-      }
-      (bus as any)._agentScroll?.('up');
-      return;
-    }
-
-    if (key.downArrow) {
-      if (rightView === 'history') {
-        moveSelection(1);
-        return;
-      }
-      if (rightView === 'detail') {
-        const totalLines = (selectedSession?.lines.length ?? 0) + 1; // +1 for summary
-        const maxScroll = sessionDetailMaxOffset(totalLines, rows);
-        setDetailScrollOffset(prev => Math.min(prev + 3, maxScroll));
-        return;
-      }
-      (bus as any)._agentScroll?.('down');
-      return;
-    }
-
-    if (input === '[' && rightView === 'dashboard') {
-      (bus as any)._quetzScroll?.('up');
-      return;
-    }
-
-    if (input === ']' && rightView === 'dashboard') {
-      (bus as any)._quetzScroll?.('down');
-    }
-  });
-
-  const cwdDisplay = cwd.replace(/\\/g, '/');
-  const branchSuffix = branch ? `:${branch}` : '';
-  const versionLabel = version ? `◆ v${version}` : '';
-  const footerHints = rightView === 'dashboard'
-    ? 'q quit  ctrl+c quit  h runs  ↑↓ agent  [ ] log'
-    : rightView === 'history'
-      ? 'q quit  ctrl+c quit  esc dashboard  enter open  ↑↓ select'
-      : 'q quit  ctrl+c quit  esc back  ↑↓ scroll';
-
-  if (victoryData) {
-    const snake = '~*~*~*~*~*~*~*~*~*~*~*~*~*~>';
-    const total = progress.total || victoryData.totalSessions;
-    const footerRight = version ? `q quit  ◆ v${version}` : 'q quit';
+  // Victory screen
+  if (state.mode === 'victory' && state.victoryData) {
     return (
-      <Box flexDirection="column" height={rows}>
-        <Box borderStyle="single" borderColor={colors.border} paddingX={1} justifyContent="space-between">
-          <Box>
-            <Text bold color={colors.brandBold}>QUETZ</Text>
-            <Text color={colors.brand}> {snake}</Text>
-          </Box>
-          <Box>
-            <Text color={colors.brand} bold>{total}/{total}  [done]</Text>
-          </Box>
-        </Box>
-
-        <VictoryCard data={victoryData} termCols={cols} termRows={rows} />
-
-        <Box paddingX={1} justifyContent="space-between">
-          <Text color={colors.brand}>◆ all done  |  exit code 0</Text>
-          <Text dimColor>{footerRight}</Text>
-        </Box>
-      </Box>
+      <Column height="full">
+        <Header mode="victory" done={state.total} total={state.total} snakeFrame={snakeFrame} />
+        <VictoryCard data={state.victoryData} termCols={termCols} termRows={termRows} />
+        <Footer variant="victory" version={version} />
+      </Column>
     );
   }
 
-  if (failureData) {
-    const prNum = failureData.prNumber;
-    const footerLine = `● ci failed  |  pr: ${prNum != null ? `#${prNum}` : '—'}  |  issue: ${failureData.issueId}  |  exit code 1`;
+  // Failure screen
+  if (state.mode === 'failure' && state.failureData) {
     return (
-      <Box flexDirection="column" height={rows}>
-        <Box borderStyle="single" borderColor={colors.border} paddingX={1} justifyContent="space-between">
-          <Box>
-            <Text bold color={colors.brandBold}>QUETZ</Text>
-            <Text color={colors.error}> ✗</Text>
-            <Text color={colors.border}>{' ···················'}</Text>
-          </Box>
-          <Box>
-            <Text color={colors.error}>{progress.iteration}/{progress.total}</Text>
-          </Box>
-        </Box>
-
-        <FailureCard data={failureData} termCols={cols} termRows={rows} />
-
-        <Box paddingX={1}>
-          <Text color={colors.error}>{footerLine}</Text>
-        </Box>
-      </Box>
+      <Column height="full">
+        <Header mode="failure" done={headerDone} total={state.total} snakeFrame={snakeFrame} />
+        <FailureCard data={state.failureData} termCols={termCols} termRows={termRows} />
+        <Footer
+          variant="failure"
+          version={version}
+          failureIssueId={state.failureData.issueId}
+          failurePrNumber={state.failureData.prNumber}
+        />
+      </Column>
     );
   }
 
-  // Derive session detail display values (only relevant when rightView === 'detail')
-  const detailDuration = selectedSession
-    ? formatDuration(selectedSession.finishedAt - selectedSession.startedAt)
-    : '';
-  const detailPrNum = selectedSession ? (selectedSession as any).prNumber as number | undefined : undefined;
-  const detailPrStr = detailPrNum != null ? `pr #${detailPrNum}` : '—';
-  const isDetail = rightView === 'detail' && !!selectedSession;
+  // Session detail screen
+  if (state.mode === 'session_detail' && state.viewingSession) {
+    const session = state.viewingSession;
+    const duration = formatDuration(session.finishedAt - session.startedAt);
+    const prNum = (session as any).prNumber as number | undefined;
+    const prStr = prNum != null ? `pr #${prNum}` : '—';
+    return (
+      <Column height="full">
+        <Header
+          mode="session_detail"
+          done={headerDone}
+          total={state.total}
+          snakeFrame={snakeFrame}
+          sessionId={session.issueId}
+          elapsed={state.elapsed}
+        />
+        <SessionDetail
+          session={session}
+          scrollOffset={state.sessionLogScrollOffset}
+          termCols={termCols}
+          termRows={termRows}
+          version={version}
+        />
+        <Footer
+          variant="detail"
+          version={version}
+          detailSessionId={session.issueId}
+          detailPrStr={prStr}
+          detailDuration={duration}
+        />
+      </Column>
+    );
+  }
+
+  // Running / polling screen (default)
+  const sessionsRowCount = Math.max(4, Math.round(termRows * 0.24));
 
   return (
-    <Box flexDirection="column" height={rows}>
-      {/* Header: session_detail variant when viewing a session, normal otherwise */}
-      {isDetail ? (
-        <Box borderStyle="single" borderColor="#2a2a2a" paddingX={1} justifyContent="space-between">
-          <Box>
-            <Text bold color="#FAFAFA">QUETZ</Text>
-            <Text color="#6B7280"> The Feathered Serpent Dev Loop</Text>
-          </Box>
-          <Box>
-            <Text color="#06B6D4">{'[ viewing session ]'}</Text>
-            <Text color="#FAFAFA"> </Text>
-            <Text color="#F59E0B">{`bg: ${selectedSession!.issueId}  |  agent running  |  ${detailDuration}`}</Text>
-          </Box>
-        </Box>
-      ) : (
-        <Box borderStyle="single" borderColor={colors.border} paddingX={1} justifyContent="space-between">
-          <Box>
-            <Text bold color={colors.brandBold}>QUETZ</Text>
-            <Text dimColor> The Feathered Serpent Dev Loop</Text>
-          </Box>
-          <Box>
-            <ProgressBar current={progress.iteration > 0 ? progress.iteration - 1 : 0} total={progress.total} />
-          </Box>
-        </Box>
-      )}
-
-      {/* Body: AgentPanel ALWAYS at position 0 to preserve hook state across view changes.
-          In detail mode it is hidden (width=0) so SessionDetailContent fills the full width. */}
-      <Box flexDirection="row" flexGrow={1}>
+    <Column height="full">
+      <Header
+        mode={state.mode === 'polling' ? 'polling' : 'running'}
+        done={headerDone}
+        total={state.total}
+        snakeFrame={snakeFrame}
+      />
+      <Row flex={1}>
         <AgentPanel
-          bus={bus}
-          width={isDetail ? 0 : agentWidth}
-          visibleHeight={isDetail ? 0 : panelVisibleHeight}
+          agentLines={state.agentLines}
+          agentScrollTop={state.agentScrollTop}
+          agentAutoScroll={state.agentAutoScroll}
+          agentMode={state.agentMode}
+          issueId={state.issueId}
+          prNumber={state.agentPrNumber}
+          prBranch={state.agentPrBranch}
+          spinnerFrame={state.spinnerFrame}
+          width={agentCols}
+          height={termRows}
         />
-        {isDetail && selectedSession && (
-          <SessionDetailContent
-            session={selectedSession}
-            scrollOffset={detailScrollOffset}
-            termRows={rows}
+        <Text>{' '}</Text>
+        <Column width={rCols}>
+          <SessionsPanel
+            sessions={state.sessions}
+            selectedIdx={state.selectedSessionIdx}
+            width={rCols}
+            height={sessionsRowCount}
           />
-        )}
-        {!isDetail && rightView === 'dashboard' && (
-          <QuetzPanel bus={bus} lines={quetzLines} width={quetzWidth} visibleHeight={panelVisibleHeight} />
-        )}
-        {!isDetail && rightView === 'history' && (
-          <HistoryPanel
-            sessions={completedSessions}
-            selectedSessionId={selectedSessionId}
-            width={quetzWidth}
+          <LogPanel
+            lines={state.logLines}
+            scrollOffset={state.logScrollOffset}
+            width={rCols}
+            height={termRows - sessionsRowCount}
           />
-        )}
-      </Box>
-
-      {/* StatusBar: only in non-detail modes */}
-      {!isDetail && <StatusBar bus={bus} />}
-
-      {/* Footer: session_detail variant or normal */}
-      {isDetail ? (
-        <Box paddingX={3} justifyContent="space-between">
-          <Text color="#4B5563">{`${selectedSession!.issueId}  |  ${detailPrStr}  |  ${detailDuration}`}</Text>
-          <Text color="#F59E0B">{`esc back  ↑↓ scroll  ◆ v${version || '0.1.0'}`}</Text>
-        </Box>
-      ) : (
-        <Box paddingX={1} justifyContent="space-between">
-          <Text dimColor>{cwdDisplay}<Text color={colors.brand}>{branchSuffix}</Text></Text>
-          <Text dimColor>{footerHints}  {versionLabel}</Text>
-        </Box>
-      )}
-    </Box>
+        </Column>
+      </Row>
+      <Footer
+        variant="normal"
+        version={version}
+        issueId={state.issueId}
+        iteration={state.issueCount}
+        total={state.total}
+        phase={state.phase}
+        prNumber={state.prNumber}
+        elapsed={state.elapsed}
+        cwd={cwd}
+        branch={branch}
+      />
+    </Column>
   );
-};
+}
+
+export interface MountOptions {
+  onQuit: () => void;
+  version?: string;
+  cwd?: string;
+  branch?: string;
+}
+
+export interface MountHandle {
+  unmount(): void;
+}
+
+/**
+ * Mount the Quetz TUI using Rezi. Replaces Ink's render().
+ */
+export function mount(bus: QuetzBus, opts: MountOptions): MountHandle {
+  const { onQuit, version = '', cwd = '', branch = '' } = opts;
+
+  const app = createNodeApp<AppState>({ initialState: createInitialState() });
+
+  const destroyWire = wireAppState(bus, fn => app.update(fn));
+
+  app.view(state => (
+    <App state={state} version={version} cwd={cwd} branch={branch} />
+  ));
+
+  // Keyboard bindings
+  app.keys({
+    'q': () => { onQuit(); },
+    'ctrl+c': () => { onQuit(); },
+    'escape': ({ update, state }) => {
+      if (state.mode === 'session_detail') {
+        update(s => ({ ...s, mode: 'running' as const, viewingSession: null, sessionLogScrollOffset: 0 }));
+      }
+    },
+    'b': ({ update, state }) => {
+      if (state.mode === 'session_detail') {
+        update(s => ({ ...s, mode: 'running' as const, viewingSession: null, sessionLogScrollOffset: 0 }));
+      }
+    },
+    'h': ({ update, state }) => {
+      if ((state.mode === 'running' || state.mode === 'polling') && state.sessions.length > 0) {
+        const idx = state.selectedSessionIdx;
+        const session = state.sessions[idx] ?? state.sessions[0];
+        if (session) {
+          update(s => ({ ...s, viewingSession: session, mode: 'session_detail' as const, sessionLogScrollOffset: 0 }));
+        }
+      }
+    },
+    'enter': ({ update, state }) => {
+      if ((state.mode === 'running' || state.mode === 'polling') && state.sessions.length > 0) {
+        const session = state.sessions[state.selectedSessionIdx] ?? state.sessions[0];
+        if (session) {
+          update(s => ({ ...s, viewingSession: session, mode: 'session_detail' as const, sessionLogScrollOffset: 0 }));
+        }
+      }
+    },
+    'up': ({ update, state }) => {
+      if (state.mode === 'session_detail') {
+        update(s => ({ ...s, sessionLogScrollOffset: Math.max(0, s.sessionLogScrollOffset - 3) }));
+      } else if (state.mode === 'running' || state.mode === 'polling') {
+        update(s => ({
+          ...s,
+          agentAutoScroll: false,
+          agentScrollTop: Math.max(0, s.agentScrollTop - 1),
+        }));
+      }
+    },
+    'down': ({ update, state }) => {
+      if (state.mode === 'session_detail' && state.viewingSession) {
+        const totalLines = state.viewingSession.lines.length + 1;
+        const termRowsNow = process.stdout.rows ?? 40;
+        const maxOffset = sessionDetailMaxOffset(totalLines, termRowsNow);
+        update(s => ({
+          ...s,
+          sessionLogScrollOffset: Math.min(s.sessionLogScrollOffset + 3, maxOffset),
+        }));
+      } else if (state.mode === 'running' || state.mode === 'polling') {
+        update(s => {
+          const maxScroll = Math.max(0, s.agentLines.length - 1);
+          const next = Math.min(maxScroll, s.agentScrollTop + 1);
+          return { ...s, agentScrollTop: next, agentAutoScroll: next >= maxScroll };
+        });
+      }
+    },
+    '[': ({ update }) => {
+      update(s => ({
+        ...s,
+        logAutoScroll: false,
+        logScrollOffset: Math.min(s.logLines.length, s.logScrollOffset + 3),
+      }));
+    },
+    ']': ({ update }) => {
+      update(s => {
+        const next = Math.max(0, s.logScrollOffset - 3);
+        return { ...s, logScrollOffset: next, logAutoScroll: next === 0 };
+      });
+    },
+  });
+
+  // Start the Rezi event loop (non-blocking)
+  app.start().catch(() => { /* ignore stop errors */ });
+
+  return {
+    unmount(): void {
+      destroyWire();
+      app.stop().catch(() => { /* ignore */ });
+    },
+  };
+}
