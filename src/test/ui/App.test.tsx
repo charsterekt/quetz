@@ -245,7 +245,7 @@ describe('App', () => {
     await waitForRender();
 
     let output = instance.lastFrame();
-    expect(output).toContain('Run Detail');
+    expect(output).toContain('[ viewing session ]');
     expect(output).toContain('Investigating layout');
     expect(output).toContain('Read');
     expect(output).not.toContain('enter open');

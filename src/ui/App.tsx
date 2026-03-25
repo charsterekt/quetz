@@ -6,9 +6,9 @@ import { AgentPanel } from './AgentPanel.js';
 import { QuetzPanel, QUETZ_EVENTS, formatQuetzEvent } from './QuetzPanel.js';
 import { StatusBar } from './StatusBar.js';
 import { HistoryPanel } from './HistoryPanel.js';
-import { SessionDetailPanel } from './SessionDetailPanel.js';
 import { FailureCard, type FailureData } from './components/FailureCard.js';
 import { VictoryCard, type VictoryData } from './components/VictoryCard.js';
+import { SessionDetailContent, SessionDetail, formatDuration, sessionDetailMaxOffset } from './components/SessionDetail.js';
 import { getRenderableRows, getVisiblePanelRows, useTerminalViewport } from './viewport.js';
 import type { QuetzBus } from '../events.js';
 
@@ -53,7 +53,6 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
   const [currentIssueId, setCurrentIssueId] = useState('');
   const failureBannerRows = failureData ? FAILURE_BANNER_ROWS : 0;
   const panelOverhead = 14 + failureBannerRows;
-  const detailPanelOverhead = 16 + failureBannerRows;
 
   const selectedSession = useMemo(
     () => completedSessions.find(session => session.issueId === selectedSessionId),
@@ -120,6 +119,12 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
     setSelectedSessionId(completedSessions[nextIndex].issueId);
   }, [completedSessions, selectedSessionId]);
 
+  const rows = getRenderableRows(viewport.rows);
+  const cols = viewport.columns;
+  const quetzWidth = Math.max(36, Math.round(cols * 0.33));
+  const agentWidth = cols - quetzWidth;
+  const panelVisibleHeight = getVisiblePanelRows(viewport.rows, panelOverhead);
+
   useInput((input, key) => {
     const isCtrlC = input === '\x03' || (key.ctrl && input.toLowerCase() === 'c');
 
@@ -163,8 +168,7 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
         return;
       }
       if (rightView === 'detail') {
-        const maxScroll = Math.max(0, (selectedSession?.lines.length ?? 0) - getVisiblePanelRows(viewport.rows, detailPanelOverhead));
-        setDetailScrollOffset(prev => Math.min(prev + 3, maxScroll));
+        setDetailScrollOffset(prev => Math.max(0, prev - 3));
         return;
       }
       (bus as any)._agentScroll?.('up');
@@ -177,7 +181,9 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
         return;
       }
       if (rightView === 'detail') {
-        setDetailScrollOffset(prev => Math.max(0, prev - 3));
+        const totalLines = (selectedSession?.lines.length ?? 0) + 1; // +1 for summary
+        const maxScroll = sessionDetailMaxOffset(totalLines, rows);
+        setDetailScrollOffset(prev => Math.min(prev + 3, maxScroll));
         return;
       }
       (bus as any)._agentScroll?.('down');
@@ -193,13 +199,6 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
       (bus as any)._quetzScroll?.('down');
     }
   });
-
-  const rows = getRenderableRows(viewport.rows);
-  const cols = viewport.columns;
-  const quetzWidth = Math.max(36, Math.round(cols * 0.33));
-  const agentWidth = cols - quetzWidth;
-  const panelVisibleHeight = getVisiblePanelRows(viewport.rows, panelOverhead);
-  const detailVisibleHeight = getVisiblePanelRows(viewport.rows, detailPanelOverhead);
 
   const cwdDisplay = cwd.replace(/\\/g, '/');
   const branchSuffix = branch ? `:${branch}` : '';
@@ -261,44 +260,83 @@ export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', ve
     );
   }
 
+  // Derive session detail display values (only relevant when rightView === 'detail')
+  const detailDuration = selectedSession
+    ? formatDuration(selectedSession.finishedAt - selectedSession.startedAt)
+    : '';
+  const detailPrNum = selectedSession ? (selectedSession as any).prNumber as number | undefined : undefined;
+  const detailPrStr = detailPrNum != null ? `pr #${detailPrNum}` : '—';
+  const isDetail = rightView === 'detail' && !!selectedSession;
+
   return (
     <Box flexDirection="column" height={rows}>
-      <Box borderStyle="single" borderColor={colors.border} paddingX={1} justifyContent="space-between">
-        <Box>
-          <Text bold color={colors.brandBold}>QUETZ</Text>
-          <Text dimColor> The Feathered Serpent Dev Loop</Text>
+      {/* Header: session_detail variant when viewing a session, normal otherwise */}
+      {isDetail ? (
+        <Box borderStyle="single" borderColor="#2a2a2a" paddingX={1} justifyContent="space-between">
+          <Box>
+            <Text bold color="#FAFAFA">QUETZ</Text>
+            <Text color="#6B7280"> The Feathered Serpent Dev Loop</Text>
+          </Box>
+          <Box>
+            <Text color="#06B6D4">{'[ viewing session ]'}</Text>
+            <Text color="#FAFAFA"> </Text>
+            <Text color="#F59E0B">{`bg: ${selectedSession!.issueId}  |  agent running  |  ${detailDuration}`}</Text>
+          </Box>
         </Box>
-        <Box>
-          <ProgressBar current={progress.iteration > 0 ? progress.iteration - 1 : 0} total={progress.total} />
+      ) : (
+        <Box borderStyle="single" borderColor={colors.border} paddingX={1} justifyContent="space-between">
+          <Box>
+            <Text bold color={colors.brandBold}>QUETZ</Text>
+            <Text dimColor> The Feathered Serpent Dev Loop</Text>
+          </Box>
+          <Box>
+            <ProgressBar current={progress.iteration > 0 ? progress.iteration - 1 : 0} total={progress.total} />
+          </Box>
         </Box>
-      </Box>
+      )}
 
+      {/* Body: AgentPanel ALWAYS at position 0 to preserve hook state across view changes.
+          In detail mode it is hidden (width=0) so SessionDetailContent fills the full width. */}
       <Box flexDirection="row" flexGrow={1}>
-        <AgentPanel bus={bus} width={agentWidth} visibleHeight={panelVisibleHeight} />
-        {rightView === 'dashboard' && <QuetzPanel bus={bus} lines={quetzLines} width={quetzWidth} visibleHeight={panelVisibleHeight} />}
-        {rightView === 'history' && (
+        <AgentPanel
+          bus={bus}
+          width={isDetail ? 0 : agentWidth}
+          visibleHeight={isDetail ? 0 : panelVisibleHeight}
+        />
+        {isDetail && selectedSession && (
+          <SessionDetailContent
+            session={selectedSession}
+            scrollOffset={detailScrollOffset}
+            termRows={rows}
+          />
+        )}
+        {!isDetail && rightView === 'dashboard' && (
+          <QuetzPanel bus={bus} lines={quetzLines} width={quetzWidth} visibleHeight={panelVisibleHeight} />
+        )}
+        {!isDetail && rightView === 'history' && (
           <HistoryPanel
             sessions={completedSessions}
             selectedSessionId={selectedSessionId}
             width={quetzWidth}
           />
         )}
-        {rightView === 'detail' && selectedSession && (
-          <SessionDetailPanel
-            session={selectedSession}
-            width={quetzWidth}
-            visibleHeight={detailVisibleHeight}
-            scrollOffset={detailScrollOffset}
-          />
-        )}
       </Box>
 
-      <StatusBar bus={bus} />
+      {/* StatusBar: only in non-detail modes */}
+      {!isDetail && <StatusBar bus={bus} />}
 
-      <Box paddingX={1} justifyContent="space-between">
-        <Text dimColor>{cwdDisplay}<Text color={colors.brand}>{branchSuffix}</Text></Text>
-        <Text dimColor>{footerHints}  {versionLabel}</Text>
-      </Box>
+      {/* Footer: session_detail variant or normal */}
+      {isDetail ? (
+        <Box paddingX={3} justifyContent="space-between">
+          <Text color="#4B5563">{`${selectedSession!.issueId}  |  ${detailPrStr}  |  ${detailDuration}`}</Text>
+          <Text color="#F59E0B">{`esc back  ↑↓ scroll  ◆ v${version || '0.1.0'}`}</Text>
+        </Box>
+      ) : (
+        <Box paddingX={1} justifyContent="space-between">
+          <Text dimColor>{cwdDisplay}<Text color={colors.brand}>{branchSuffix}</Text></Text>
+          <Text dimColor>{footerHints}  {versionLabel}</Text>
+        </Box>
+      )}
     </Box>
   );
 };
