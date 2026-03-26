@@ -13,6 +13,7 @@ import { SessionsPanel } from './components/SessionsPanel.js';
 import { LogPanel } from './components/LogPanel.js';
 import { SessionDetail } from './components/SessionDetail.js';
 import { VictoryCard } from './components/VictoryCard.js';
+import { FailureCard } from './components/FailureCard.js';
 
 /** Parse a c.* hex color into an rgb() call */
 function fg(hex: string) { const [r, g, b] = hexToRgb(hex); return rgb(r, g, b); }
@@ -139,9 +140,8 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
 
     if (state.mode === 'failure') {
       return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
-        ui.text('  Failure', { style: { fg: fg(c.error), bold: true } }),
-        ui.text(`  ${state.failureData?.reason ?? 'unknown error'}`, { style: { fg: fg(c.text) } }),
-        ui.text('  Press q to exit', { style: { fg: fg(c.dim) } }),
+        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus }),
+        FailureCard({ data: state.failureData, version }),
       ]);
     }
 
