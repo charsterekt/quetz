@@ -8,6 +8,7 @@ import { c, hexToRgb } from './theme.js';
 import { wireState, INITIAL_STATE } from './state.js';
 import type { AppState } from './state.js';
 import { Header } from './components/Header.js';
+import { Footer } from './components/Footer.js';
 
 /** Parse a c.* hex color into an rgb() call */
 function fg(hex: string) { const [r, g, b] = hexToRgb(hex); return rgb(r, g, b); }
@@ -78,10 +79,8 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
         ui.column({ width: rightCols, height: 'full' }, []),
       ]),
 
-      // Footer placeholder
-      ui.row({ width: 'full', height: 1 }, [
-        ui.text(`  quetz v${version}`, { style: { fg: fg(c.dim) } }),
-      ]),
+      // Footer
+      Footer({ phase: state.phase, issueId: state.issueId, issueCount: state.issueCount, prNumber: state.prNumber, elapsed: state.elapsed, version }),
     ]);
   });
 
