@@ -2,6 +2,7 @@
 // Adapted from spec's createSignal pattern to Rezi's app.update() model.
 
 import type { QuetzBus, QuetzPhase, QuetzEvent } from '../events.js';
+import { c } from './theme.js';
 
 // ── Screen modes ──────────────────────────────────────────────────
 export type ScreenMode = 'running' | 'polling' | 'session_detail' | 'victory' | 'failure';
@@ -61,6 +62,7 @@ export interface AppState {
   // Quetz log panel
   logLines: LogLine[];
   logScrollOffset: number;
+  logAutoScroll: boolean;
 
   // Footer
   issueId: string;
@@ -90,10 +92,11 @@ export const INITIAL_STATE: AppState = {
   agentAutoScroll: true,
   sessionComplete: null,
   completedSessions: [],
-  selectedSessionIdx: 0,
+  selectedSessionIdx: -1,
   sessionsScrollOffset: 0,
   logLines: [],
   logScrollOffset: 0,
+  logAutoScroll: true,
   issueId: '',
   prNumber: null,
   elapsed: '0:00',
@@ -139,11 +142,17 @@ export function wireState(
     if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
   };
 
+  const addLogLine = (line: LogLine) => {
+    update(s => ({ ...s, logLines: [...s.logLines, line] }));
+  };
+
   const onStart = (p: QuetzEvent['loop:start']) => {
+    addLogLine({ icon: '▶', color: c.brand, text: `START ${p.total} issues` });
     update(s => ({ ...s, issueCount: { current: 0, total: p.total } }));
   };
 
   const onPickup = (p: QuetzEvent['loop:issue_pickup']) => {
+    addLogLine({ icon: '→', color: c.cyan, text: `PICKUP ${p.id}  ${p.title}  [P${p.priority} ${p.type}]` });
     startElapsedTimer();
     update(s => ({
       ...s,
@@ -160,6 +169,15 @@ export function wireState(
   };
 
   const onPhase = (p: QuetzEvent['loop:phase']) => {
+    if (p.phase === 'agent_running') {
+      addLogLine({ icon: '·', color: c.dim, text: 'AGENT running' });
+    } else if (p.phase === 'completed') {
+      addLogLine({ icon: '✓', color: c.brand, text: `AGENT done  (${formatElapsed(elapsedSeconds)})` });
+    } else if (p.phase === 'pr_detecting') {
+      addLogLine({ icon: '🔍', color: c.dim, text: 'PR search...' });
+    } else if (p.phase === 'pr_polling') {
+      addLogLine({ icon: '⏳', color: c.accent, text: 'MERGE polling...' });
+    }
     update(s => {
       const next: Partial<AppState> = { phase: p.phase };
       if (p.agentModel) next.agentModel = p.agentModel;
