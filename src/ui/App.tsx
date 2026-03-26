@@ -11,6 +11,7 @@ import { Footer } from './components/Footer.js';
 import { AgentPanel } from './components/AgentPanel.js';
 import { SessionsPanel } from './components/SessionsPanel.js';
 import { LogPanel } from './components/LogPanel.js';
+import { SessionDetail } from './components/SessionDetail.js';
 
 /** Parse a c.* hex color into an rgb() call */
 function fg(hex: string) { const [r, g, b] = hexToRgb(hex); return rgb(r, g, b); }
@@ -40,6 +41,9 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     'ctrl+c': () => onQuit(),
 
     up: () => app.update(s => {
+      if (s.mode === 'session_detail') {
+        return { ...s, sessionLogScrollOffset: Math.max(0, s.sessionLogScrollOffset - 3) };
+      }
       if (s.completedSessions.length > 0) {
         const newIdx = s.selectedSessionIdx <= 0
           ? s.completedSessions.length - 1
@@ -54,6 +58,9 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     }),
 
     down: () => app.update(s => {
+      if (s.mode === 'session_detail') {
+        return { ...s, sessionLogScrollOffset: s.sessionLogScrollOffset + 3 };
+      }
       if (s.completedSessions.length > 0) {
         const newIdx = s.selectedSessionIdx < 0
           ? 0
@@ -74,13 +81,20 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
         return {
           ...s,
           viewingSession: s.completedSessions[s.selectedSessionIdx],
+          priorMode: s.mode,
           mode: 'session_detail',
+          sessionLogScrollOffset: 0,
         };
       }
       return s;
     }),
 
-    escape: () => app.update(s => ({ ...s, selectedSessionIdx: -1 })),
+    escape: () => app.update(s => {
+      if (s.mode === 'session_detail') {
+        return { ...s, mode: s.priorMode, viewingSession: null };
+      }
+      return { ...s, selectedSessionIdx: -1 };
+    }),
 
     '[': () => app.update(s => {
       const rows = process.stdout.rows ?? 40;
@@ -131,10 +145,15 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
       ]);
     }
 
-    if (state.mode === 'session_detail') {
+    if (state.mode === 'session_detail' && state.viewingSession) {
       return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
-        ui.text('  Session Detail', { style: { fg: fg(c.cyan), bold: true } }),
-        ui.text('  Press q to exit', { style: { fg: fg(c.dim) } }),
+        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus }),
+        SessionDetail({
+          session: state.viewingSession,
+          scrollOffset: state.sessionLogScrollOffset,
+          bgStatus: state.bgStatus,
+          version,
+        }),
       ]);
     }
 

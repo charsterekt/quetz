@@ -72,6 +72,7 @@ export interface AppState {
   // Session detail
   viewingSession: CompletedSession | null;
   sessionLogScrollOffset: number;
+  priorMode: ScreenMode;
 
   // Overlays
   victoryData: VictoryData | null;
@@ -102,6 +103,7 @@ export const INITIAL_STATE: AppState = {
   elapsed: '0:00',
   viewingSession: null,
   sessionLogScrollOffset: 0,
+  priorMode: 'running',
   victoryData: null,
   failureData: null,
   bgStatus: '',
