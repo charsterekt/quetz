@@ -12,6 +12,7 @@ import { AgentPanel } from './components/AgentPanel.js';
 import { SessionsPanel } from './components/SessionsPanel.js';
 import { LogPanel } from './components/LogPanel.js';
 import { SessionDetail } from './components/SessionDetail.js';
+import { VictoryCard } from './components/VictoryCard.js';
 
 /** Parse a c.* hex color into an rgb() call */
 function fg(hex: string) { const [r, g, b] = hexToRgb(hex); return rgb(r, g, b); }
@@ -131,9 +132,8 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
 
     if (state.mode === 'victory') {
       return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
-        ui.text('  Victory — all issues resolved', { style: { fg: fg(c.brand), bold: true } }),
-        ui.text(`  quetz v${version}`, { style: { fg: fg(c.dim) } }),
-        ui.text('  Press q to exit', { style: { fg: fg(c.dim) } }),
+        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus }),
+        VictoryCard({ data: state.victoryData, version }),
       ]);
     }
 
