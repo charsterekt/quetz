@@ -1,4 +1,4 @@
-// SessionsPanel component — spec §7.5
+// SessionsPanel component - spec section 7.5
 // Right column top: completed sessions list with keyboard navigation
 
 import { ui, rgb } from '@rezi-ui/core';
@@ -16,12 +16,13 @@ const CONTENT_BG = rgb(10, 10, 10); // #0A0A0A
 interface SessionsPanelProps {
   sessions: CompletedSession[];
   selectedIdx: number;
+  isFocused: boolean;
   width: number;
   height: number;
   key?: string;
 }
 
-export function SessionsPanel({ sessions, selectedIdx, width, height }: SessionsPanelProps) {
+export function SessionsPanel({ sessions, selectedIdx, isFocused, width, height }: SessionsPanelProps) {
   let listContent: ReturnType<typeof ui.text | typeof ui.row>[];
 
   if (sessions.length === 0) {
@@ -29,9 +30,9 @@ export function SessionsPanel({ sessions, selectedIdx, width, height }: Sessions
   } else {
     listContent = sessions.map((session, i) => {
       const isSelected = i === selectedIdx;
-      const icon = isSelected ? '▶' : ' ';
+      const icon = isSelected ? '>' : ' ';
       const textColor = isSelected ? fg(c.brand) : fg(c.dim);
-      const outcomeIcon = session.outcome === 'merged' ? '✓' : '✗';
+      const outcomeIcon = session.outcome === 'merged' ? '+' : 'x';
       const outcomeColor = isSelected
         ? fg(c.brand)
         : session.outcome === 'merged' ? fg(c.brand) : fg(c.error);
@@ -46,7 +47,6 @@ export function SessionsPanel({ sessions, selectedIdx, width, height }: Sessions
   return ui.column(
     { width, height, style: { bg: CONTENT_BG } },
     [
-      // Title bar
       ui.box(
         {
           border: 'single',
@@ -61,13 +61,14 @@ export function SessionsPanel({ sessions, selectedIdx, width, height }: Sessions
         },
         [
           ui.row({ justify: 'between', width: 'full', items: 'center' }, [
-            ui.text('completed sessions', { style: { fg: fg(c.cyan) } }),
-            ui.text('↑↓ enter esc', { style: { fg: fg(c.dim) } }),
+            ui.text(
+              isFocused ? 'completed sessions [focused]' : 'completed sessions',
+              { style: { fg: isFocused ? fg(c.brand) : fg(c.cyan) } }
+            ),
+            ui.text('left/right up/down enter esc', { style: { fg: fg(c.dim) } }),
           ]),
         ]
       ),
-
-      // Session list
       ui.column(
         { flex: 1, overflow: 'hidden', py: 1, px: 2, gap: 0, style: { bg: CONTENT_BG } },
         listContent as ReturnType<typeof ui.text>[]

@@ -26,7 +26,7 @@ export interface MountOptions {
 }
 
 export interface AppHandle {
-  unmount: () => void;
+  unmount: () => Promise<void>;
 }
 
 export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
@@ -46,7 +46,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
       if (s.mode === 'session_detail') {
         return { ...s, sessionLogScrollOffset: Math.max(0, s.sessionLogScrollOffset - 3) };
       }
-      if (s.completedSessions.length > 0) {
+      if (s.focusedPane === 'sessions' && s.completedSessions.length > 0) {
         const newIdx = s.selectedSessionIdx <= 0
           ? s.completedSessions.length - 1
           : s.selectedSessionIdx - 1;
@@ -63,7 +63,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
       if (s.mode === 'session_detail') {
         return { ...s, sessionLogScrollOffset: s.sessionLogScrollOffset + 3 };
       }
-      if (s.completedSessions.length > 0) {
+      if (s.focusedPane === 'sessions' && s.completedSessions.length > 0) {
         const newIdx = s.selectedSessionIdx < 0
           ? 0
           : Math.min(s.selectedSessionIdx + 1, s.completedSessions.length - 1);
@@ -79,7 +79,11 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     }),
 
     enter: () => app.update(s => {
-      if (s.selectedSessionIdx >= 0 && s.selectedSessionIdx < s.completedSessions.length) {
+      if (
+        s.focusedPane === 'sessions' &&
+        s.selectedSessionIdx >= 0 &&
+        s.selectedSessionIdx < s.completedSessions.length
+      ) {
         return {
           ...s,
           viewingSession: s.completedSessions[s.selectedSessionIdx],
@@ -93,9 +97,25 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
 
     escape: () => app.update(s => {
       if (s.mode === 'session_detail') {
-        return { ...s, mode: s.priorMode, viewingSession: null };
+        return { ...s, mode: s.priorMode, viewingSession: null, focusedPane: 'sessions' };
       }
-      return { ...s, selectedSessionIdx: -1 };
+      return { ...s, focusedPane: 'agent', selectedSessionIdx: -1 };
+    }),
+
+    right: () => app.update(s => {
+      if (s.mode === 'session_detail' || s.completedSessions.length === 0) return s;
+      return {
+        ...s,
+        focusedPane: 'sessions',
+        selectedSessionIdx: s.selectedSessionIdx >= 0
+          ? s.selectedSessionIdx
+          : s.completedSessions.length - 1,
+      };
+    }),
+
+    left: () => app.update(s => {
+      if (s.mode === 'session_detail') return s;
+      return { ...s, focusedPane: 'agent' };
     }),
 
     '[': () => app.update(s => {
@@ -180,6 +200,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
           SessionsPanel({
             sessions: state.completedSessions,
             selectedIdx: state.selectedSessionIdx,
+            isFocused: state.focusedPane === 'sessions',
             width: rightCols,
             height: sessionsRows,
           }),
@@ -199,13 +220,21 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     ]);
   });
 
-  // Start the app
-  app.start();
+  // Start the app and keep the promise so teardown cannot race startup.
+  const startPromise = app.start();
+  let unmounted = false;
 
   return {
-    unmount: () => {
+    unmount: async () => {
+      if (unmounted) return;
+      unmounted = true;
       cleanupWire();
-      app.stop();
+      try {
+        await startPromise;
+      } catch {
+        return;
+      }
+      await app.stop();
     },
   };
 }

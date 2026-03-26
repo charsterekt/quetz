@@ -160,8 +160,11 @@ export async function main(): Promise<void> {
           }
         };
 
-        const cleanupTui = (interrupted: boolean) => {
-          app.unmount();
+        let cleaningUp = false;
+        const cleanupTui = async (interrupted: boolean) => {
+          if (cleaningUp) return;
+          cleaningUp = true;
+          await app.unmount();
           // Restore terminal: show cursor, exit alt screen
           process.stdout.write('\x1b[2J\x1b[H\x1b[0m\x1b[?1049l\x1b[?25h');
           printLogo();
@@ -169,7 +172,7 @@ export async function main(): Promise<void> {
           process.exit(loopResult.exitCode);
         };
 
-        const onSigint = () => cleanupTui(true);
+        const onSigint = () => { void cleanupTui(true); };
         process.once('SIGINT', onSigint);
 
         // Run the loop. On success, auto-exit. On error, stay alive so the user
@@ -188,7 +191,7 @@ export async function main(): Promise<void> {
         await exitSignal;
 
         process.off('SIGINT', onSigint);
-        cleanupTui(userQuit);
+        await cleanupTui(userQuit);
       } else {
         // Non-TUI fallback (piped, no TTY)
         const result = await runLoop({ model, thinkingLevel, timeout, localCommits, amend, simulate }, bus);

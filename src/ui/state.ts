@@ -6,6 +6,7 @@ import { c } from './theme.js';
 
 // ── Screen modes ──────────────────────────────────────────────────
 export type ScreenMode = 'running' | 'polling' | 'session_detail' | 'victory' | 'failure';
+export type FocusPane = 'agent' | 'sessions';
 
 // ── Data types ────────────────────────────────────────────────────
 export interface AgentLine {
@@ -41,6 +42,7 @@ export type FailureData = QuetzEvent['loop:failure'];
 // ── App state ─────────────────────────────────────────────────────
 export interface AppState {
   mode: ScreenMode;
+  focusedPane: FocusPane;
 
   // Header
   issueCount: { current: number; total: number };
@@ -48,6 +50,7 @@ export interface AppState {
 
   // Agent panel
   agentIssueId: string;
+  currentIssueTitle: string;
   agentModel: string;
   agentLines: AgentLine[];
   agentScrollOffset: number;
@@ -84,9 +87,11 @@ export interface AppState {
 
 export const INITIAL_STATE: AppState = {
   mode: 'running',
+  focusedPane: 'agent',
   issueCount: { current: 0, total: 0 },
   phase: 'idle',
   agentIssueId: '',
+  currentIssueTitle: '',
   agentModel: '',
   agentLines: [],
   agentScrollOffset: 0,
@@ -110,6 +115,55 @@ export const INITIAL_STATE: AppState = {
 };
 
 const MAX_AGENT_LINES = 500;
+
+function phaseStatusLabel(phase: QuetzPhase): string {
+  switch (phase) {
+    case 'agent_running':
+      return 'agent running';
+    case 'pr_detecting':
+      return 'finding pr';
+    case 'pr_polling':
+      return 'waiting for merge';
+    case 'commit_verifying':
+      return 'verifying commit';
+    case 'amend_verifying':
+      return 'verifying amend';
+    case 'completed':
+      return 'session complete';
+    case 'error':
+      return 'error';
+    case 'fetching':
+      return 'fetching issue';
+    case 'git_reset':
+      return 'resetting git';
+    case 'assembling':
+      return 'assembling context';
+    case 'idle':
+    default:
+      return 'preparing';
+  }
+}
+
+function buildBgStatus(issueId: string, phase: QuetzPhase, elapsed: string): string {
+  if (!issueId) return '';
+  return `${issueId}  |  ${phaseStatusLabel(phase)}  |  ${elapsed}`;
+}
+
+function buildCompletedSession(
+  state: AppState,
+  issueId: string,
+  duration: string,
+  extras: Partial<Pick<CompletedSession, 'prNumber'>>,
+): CompletedSession {
+  return {
+    id: issueId,
+    title: state.currentIssueTitle || issueId,
+    duration,
+    outcome: 'merged',
+    lines: [...state.agentLines],
+    ...extras,
+  };
+}
 
 /** Format elapsed seconds as "M:SS" */
 function formatElapsed(totalSeconds: number): string {
@@ -136,7 +190,14 @@ export function wireState(
     sessionStartTime = Date.now();
     elapsedTimer = setInterval(() => {
       elapsedSeconds++;
-      update(s => ({ ...s, elapsed: formatElapsed(elapsedSeconds) }));
+      update(s => {
+        const elapsed = formatElapsed(elapsedSeconds);
+        return {
+          ...s,
+          elapsed,
+          bgStatus: buildBgStatus(s.issueId, s.phase, elapsed),
+        };
+      });
     }, 1000);
   };
 
@@ -160,6 +221,7 @@ export function wireState(
       ...s,
       issueId: p.id,
       agentIssueId: p.id,
+      currentIssueTitle: p.title,
       issueCount: { current: p.iteration, total: p.total },
       agentLines: [],
       agentScrollOffset: 0,
@@ -167,6 +229,7 @@ export function wireState(
       sessionComplete: null,
       prNumber: null,
       phase: 'idle',
+      bgStatus: buildBgStatus(p.id, 'idle', '0:00'),
     }));
   };
 
@@ -181,10 +244,15 @@ export function wireState(
       addLogLine({ icon: '⏳', color: c.accent, text: 'MERGE polling...' });
     }
     update(s => {
-      const next: Partial<AppState> = { phase: p.phase };
+      const next: Partial<AppState> = {
+        phase: p.phase,
+        bgStatus: buildBgStatus(s.issueId, p.phase, s.elapsed),
+      };
       if (p.agentModel) next.agentModel = p.agentModel;
-      if (p.phase === 'pr_polling') next.mode = 'polling';
-      if (p.phase === 'agent_running' && s.mode !== 'session_detail') next.mode = 'running';
+      if (s.mode !== 'session_detail') {
+        if (p.phase === 'pr_polling') next.mode = 'polling';
+        if (p.phase === 'agent_running') next.mode = 'running';
+      }
       return { ...s, ...next };
     });
   };
@@ -209,30 +277,24 @@ export function wireState(
 
   const onVictory = (p: QuetzEvent['loop:victory']) => {
     stopElapsedTimer();
-    update(s => ({ ...s, mode: 'victory', victoryData: p }));
+    update(s => ({ ...s, mode: 'victory', victoryData: p, bgStatus: '' }));
   };
 
   const onFailure = (p: QuetzEvent['loop:failure']) => {
     stopElapsedTimer();
-    update(s => ({ ...s, mode: 'failure', failureData: p }));
+    update(s => ({ ...s, mode: 'failure', failureData: p, bgStatus: '' }));
   };
 
   const onMerged = (p: QuetzEvent['loop:merged']) => {
     stopElapsedTimer();
     const elapsed = formatElapsed(Math.floor((Date.now() - sessionStartTime) / 1000));
     update(s => {
-      const session: CompletedSession = {
-        id: p.issueId,
-        title: p.issueId,
-        prNumber: p.prNumber,
-        duration: elapsed,
-        outcome: 'merged',
-        lines: [...s.agentLines],
-      };
+      const session = buildCompletedSession(s, p.issueId, elapsed, { prNumber: p.prNumber });
       return {
         ...s,
         completedSessions: [...s.completedSessions, session],
         sessionComplete: { issueId: p.issueId, prNumber: p.prNumber, elapsed },
+        bgStatus: buildBgStatus(p.issueId, 'completed', elapsed),
       };
     });
   };
@@ -241,17 +303,26 @@ export function wireState(
     stopElapsedTimer();
     const elapsed = formatElapsed(Math.floor((Date.now() - sessionStartTime) / 1000));
     update(s => {
-      const session: CompletedSession = {
-        id: p.issueId,
-        title: p.issueId,
-        duration: elapsed,
-        outcome: 'merged',
-        lines: [...s.agentLines],
-      };
+      const session = buildCompletedSession(s, p.issueId, elapsed, {});
       return {
         ...s,
         completedSessions: [...s.completedSessions, session],
         sessionComplete: { issueId: p.issueId, elapsed },
+        bgStatus: buildBgStatus(p.issueId, 'completed', elapsed),
+      };
+    });
+  };
+
+  const onAmendComplete = (p: QuetzEvent['loop:amend_complete']) => {
+    stopElapsedTimer();
+    const elapsed = formatElapsed(Math.floor((Date.now() - sessionStartTime) / 1000));
+    update(s => {
+      const session = buildCompletedSession(s, p.issueId, elapsed, {});
+      return {
+        ...s,
+        completedSessions: [...s.completedSessions, session],
+        sessionComplete: { issueId: p.issueId, elapsed },
+        bgStatus: buildBgStatus(p.issueId, 'completed', elapsed),
       };
     });
   };
@@ -267,6 +338,7 @@ export function wireState(
   bus.on('loop:failure', onFailure);
   bus.on('loop:merged', onMerged);
   bus.on('loop:commit_landed', onCommitLanded);
+  bus.on('loop:amend_complete', onAmendComplete);
 
   // Return cleanup
   return () => {
@@ -281,5 +353,6 @@ export function wireState(
     bus.off('loop:failure', onFailure);
     bus.off('loop:merged', onMerged);
     bus.off('loop:commit_landed', onCommitLanded);
+    bus.off('loop:amend_complete', onAmendComplete);
   };
 }
