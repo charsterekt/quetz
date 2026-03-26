@@ -7,6 +7,7 @@ import type { QuetzBus } from '../events.js';
 import { c, hexToRgb } from './theme.js';
 import { wireState, INITIAL_STATE } from './state.js';
 import type { AppState } from './state.js';
+import { Header } from './components/Header.js';
 
 /** Parse a c.* hex color into an rgb() call */
 function fg(hex: string) { const [r, g, b] = hexToRgb(hex); return rgb(r, g, b); }
@@ -66,10 +67,8 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
 
     // Screens 1 & 2: running / polling
     return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
-      // Header placeholder
-      ui.row({ width: 'full', height: 3 }, [
-        ui.text('  QUETZ', { style: { fg: fg(c.logo), bold: true } }),
-      ]),
+      // Header
+      Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus }),
 
       // Body: agent panel (left) + right column
       ui.row({ width: 'full', flex: 1 }, [
