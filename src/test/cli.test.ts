@@ -7,26 +7,18 @@ vi.mock('../loop.js', () => ({
   runLoop: vi.fn(),
   showStatus: vi.fn(),
 }));
-vi.mock('../ui/ink-imports.js', () => ({
-  initInk: vi.fn(),
-}));
 vi.mock('../ui/App.js', () => ({
-  App: () => null,
-}));
-vi.mock('child_process', () => ({
-  execSync: vi.fn(),
+  mountApp: vi.fn(),
 }));
 
-import { execSync } from 'child_process';
 import { createBus } from '../events.js';
 import { runLoop } from '../loop.js';
-import { initInk } from '../ui/ink-imports.js';
+import { mountApp } from '../ui/App.js';
 import { EXIT_SUCCESS, EXIT_FAILURE, EXIT_CONFIG_ERROR, EXIT_PREFLIGHT_FAILURE, main } from '../cli.js';
 
-const mockExecSync = vi.mocked(execSync);
 const mockCreateBus = vi.mocked(createBus);
 const mockRunLoop = vi.mocked(runLoop);
-const mockInitInk = vi.mocked(initInk);
+const mockMountApp = vi.mocked(mountApp);
 
 class ExitError extends Error {
   constructor(readonly code: number | undefined) {
@@ -89,21 +81,19 @@ describe('exit codes', () => {
 
 describe('main', () => {
   it('launches the TUI on small terminals without warning or blocking', async () => {
-    const bus = { emit: vi.fn(), on: vi.fn() };
+    const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
     const unmount = vi.fn();
-    const render = vi.fn(() => ({ unmount }));
 
     mockCreateBus.mockReturnValue(bus as never);
     mockRunLoop.mockResolvedValue({ exitCode: 0 } as never);
-    mockInitInk.mockResolvedValue({ render } as never);
-    mockExecSync.mockReturnValue('fix/remove-terminal-size-gate\n' as never);
+    mockMountApp.mockReturnValue({ unmount } as never);
 
     process.argv = ['node', 'quetz', 'run'];
     setStdoutSize(true, 80, 24);
 
     await expect(main()).rejects.toMatchObject({ code: 0 });
 
-    expect(render).toHaveBeenCalledTimes(1);
+    expect(mockMountApp).toHaveBeenCalledTimes(1);
     expect(mockRunLoop).toHaveBeenCalledWith(
       {
         model: undefined,
@@ -125,7 +115,7 @@ describe('main', () => {
   });
 
   it('parses --thinking-level and forwards it to runLoop', async () => {
-    const bus = { emit: vi.fn(), on: vi.fn() };
+    const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
     mockCreateBus.mockReturnValue(bus as never);
     mockRunLoop.mockResolvedValue({ exitCode: 0 } as never);
 

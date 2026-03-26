@@ -14,7 +14,8 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "jsxImportSource": "@rezi-ui/jsx"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "src/test"]

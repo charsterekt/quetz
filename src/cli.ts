@@ -132,60 +132,20 @@ export async function main(): Promise<void> {
       const { printLogo } = await import('./display/quetz.js');
       const bus = createBus();
 
-      // TUI mode: render Ink dashboard if TTY
+      // TUI mode: render Rezi dashboard if TTY
       if (process.stdout.isTTY) {
-        const React = require('react');
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { execSync } = require('child_process');
-        const { initInk } = await import('./ui/ink-imports.js');
-        const inkModule = await initInk();
-        const { App } = await import('./ui/App.js');
+        const { mountApp } = await import('./ui/App.js');
 
-        // Gather footer metadata (best-effort — ignore errors)
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const pkg = require('../package.json');
-        const cwd = process.cwd().replace(/\\/g, '/');
-        let branch = '';
-        try {
-          branch = (execSync('git rev-parse --abbrev-ref HEAD', {
-            encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-          }) as string).trim();
-        } catch { /* not a git repo */ }
-
-        // MINGW64 / Git Bash: stdin.isTTY may be false even when the terminal is
-        // interactive. Ink skips setRawMode when isTTY is falsy, so useInput never
-        // fires. Override isTTY and set raw mode manually before render() so Ink
-        // treats stdin as a TTY and enables keypress handling.
-        if (typeof (process.stdin as any).setRawMode === 'function') {
-          if (!process.stdin.isTTY) {
-            Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
-          }
-          try {
-            (process.stdin as any).setRawMode(true);
-            process.stdin.resume();
-          } catch { /* keyboard shortcuts unavailable on this terminal */ }
-        }
 
         // Quit promise: resolves when the user asks to exit from the TUI.
         let resolveQuit!: () => void;
         const quitPromise = new Promise<void>(resolve => { resolveQuit = resolve; });
 
-        // Enter alternate screen BEFORE render so Ink never writes to the main
-        // screen buffer. If we enter after render(), the first Ink frame lands on
-        // the main screen and is then "saved" — restoring it on alt-screen exit
-        // produces the ghost UI artifacts the user sees.
-        // \x1b[?25l hides the cursor for the entire TUI session: the cursor
-        // jumping to new positions on every Ink render is the primary cause of
-        // visible flicker, especially in the bottom half of the screen.
-        process.stdout.write('\x1b[?1049h\x1b[48;2;10;10;10m\x1b[2J\x1b[H\x1b[?25l');
+        const app = mountApp({ bus, version: pkg.version, onQuit: resolveQuit });
 
-        const app = inkModule.render(
-          React.createElement(App, { bus, onQuit: resolveQuit, cwd, branch, version: pkg.version }),
-          { exitOnCtrlC: false },
-        );
-
-        // Yield one event-loop tick so React useEffect hooks can register bus
-        // listeners before runLoop starts emitting loop:start / loop:issue_pickup.
+        // Yield one event-loop tick so bus listeners register before runLoop emits.
         await new Promise<void>(resolve => setImmediate(resolve));
 
         let loopResult: import('./loop.js').LoopResult = { exitCode: 0, reason: 'victory' };
@@ -200,22 +160,15 @@ export async function main(): Promise<void> {
           }
         };
 
-        // cleanupTui: unmount Ink (stops renderer, flushes final sequences to alt
-        // screen), then clear the alt screen and restore the main screen.
-        // Calling unmount() before \x1b[?1049l ensures Ink's own cursor-movement
-        // cleanup lands on the alt screen buffer (discarded on restore) rather
-        // than bleeding onto the main screen.
         const cleanupTui = (interrupted: boolean) => {
           app.unmount();
+          // Restore terminal: show cursor, exit alt screen
           process.stdout.write('\x1b[2J\x1b[H\x1b[0m\x1b[?1049l\x1b[?25h');
           printLogo();
           process.stdout.write('\n' + exitMessage(loopResult, interrupted));
           process.exit(loopResult.exitCode);
         };
 
-        // Ctrl+C: in raw mode the terminal sends \x03 (ETX) instead of SIGINT,
-        // so a SIGINT handler alone is not enough on MINGW64. We handle SIGINT
-        // here as a belt-and-suspenders measure for non-raw-mode terminals.
         const onSigint = () => cleanupTui(true);
         process.once('SIGINT', onSigint);
 
@@ -226,8 +179,7 @@ export async function main(): Promise<void> {
           runLoop({ model, thinkingLevel, timeout, localCommits, amend, simulate }, bus)
             .then(r => {
               loopResult = r;
-              if (r.exitCode === 0) resolve(); // success → auto-exit
-              // error → stay alive; quitPromise drives the exit
+              if (r.exitCode === 0) resolve();
             })
             .catch(() => { loopResult = { exitCode: 1, reason: 'error' }; resolve(); });
           quitPromise.then(() => { userQuit = true; resolve(); });
