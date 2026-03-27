@@ -4,6 +4,7 @@ import { createBus } from '../events.js';
 import type { AppState, CompletedSession } from '../ui/state.js';
 import { INITIAL_STATE } from '../ui/state.js';
 import { mountApp } from '../ui/App.js';
+import { AgentPanel } from '../ui/components/AgentPanel.js';
 import { SessionsPanel } from '../ui/components/SessionsPanel.js';
 import { LogPanel } from '../ui/components/LogPanel.js';
 
@@ -11,6 +12,7 @@ const { mockCreateNodeApp } = vi.hoisted(() => ({
   mockCreateNodeApp: vi.fn(),
 }));
 
+const mockAgentPanel = vi.mocked(AgentPanel);
 const mockSessionsPanel = vi.mocked(SessionsPanel);
 const mockLogPanel = vi.mocked(LogPanel);
 
@@ -155,6 +157,11 @@ describe('mountApp', () => {
 
     expect(mockSessionsPanel).toHaveBeenCalledTimes(1);
     expect(mockLogPanel).toHaveBeenCalledTimes(1);
+    expect(mockAgentPanel).toHaveBeenCalledWith(expect.objectContaining({
+      width: expect.any(Number),
+      height: expect.any(Number),
+      effort: '',
+    }));
     expect(mockSessionsPanel).toHaveBeenCalledWith(expect.objectContaining({
       width: expect.any(Number),
       height: expect.any(Number),

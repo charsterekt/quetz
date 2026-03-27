@@ -145,7 +145,8 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     const rootBg = bgColor(c.bg);
     const termCols = process.stdout.columns ?? 120;
     const termRows = process.stdout.rows ?? 40;
-    const rightCols = Math.max(32, Math.round(termCols * 0.264));
+    const rightCols = Math.max(20, Math.min(38, termCols - 24));
+    const leftCols = Math.max(1, termCols - rightCols);
     const bodyRows = Math.max(10, termRows - 6);
     const sessionsRows = Math.max(6, Math.round(bodyRows * 0.282));
     const logRows = Math.max(4, bodyRows - sessionsRows);
@@ -185,14 +186,16 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
       ui.row({ width: 'full', flex: 1 }, [
         // Agent panel
         AgentPanel({
+          width: leftCols,
+          height: bodyRows,
           phase: state.phase,
           issueId: state.agentIssueId,
           model: state.agentModel,
+          effort: state.agentEffort,
           lines: state.agentLines,
           scrollOffset: state.agentScrollOffset,
           autoScroll: state.agentAutoScroll,
           sessionComplete: state.sessionComplete,
-          viewportHeight: termRows,
         }),
         // Right column: sessions + log
         ui.column({ width: rightCols, height: 'full' }, [

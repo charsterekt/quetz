@@ -45,6 +45,7 @@ export interface AppState {
   agentIssueId: string;
   currentIssueTitle: string;
   agentModel: string;
+  agentEffort: string;
   agentLines: AgentLine[];
   agentScrollOffset: number;
   agentAutoScroll: boolean;
@@ -74,6 +75,7 @@ export const INITIAL_STATE: AppState = {
   agentIssueId: '',
   currentIssueTitle: '',
   agentModel: '',
+  agentEffort: '',
   agentLines: [],
   agentScrollOffset: 0,
   agentAutoScroll: true,
@@ -86,7 +88,7 @@ export const INITIAL_STATE: AppState = {
   logAutoScroll: true,
   issueId: '',
   prNumber: null,
-  elapsed: '0:00',
+  elapsed: '0m 00s',
   viewingSession: null,
   sessionLogScrollOffset: 0,
   priorMode: 'running',
@@ -149,7 +151,7 @@ function buildCompletedSession(
 function formatElapsed(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
+  return `${m}m ${s.toString().padStart(2, '0')}s`;
 }
 
 function phaseLogLine(phase: QuetzPhase, elapsedSeconds: number): LogLine | null {
@@ -218,6 +220,8 @@ export function wireState(
       issueId: p.id,
       agentIssueId: p.id,
       currentIssueTitle: p.title,
+      agentModel: '',
+      agentEffort: '',
       issueCount: { current: p.iteration, total: p.total },
       agentLines: [],
       agentScrollOffset: 0,
@@ -225,7 +229,8 @@ export function wireState(
       sessionComplete: null,
       prNumber: null,
       phase: 'idle',
-      bgStatus: buildBgStatus(p.id, 'idle', '0:00'),
+      elapsed: '0m 00s',
+      bgStatus: buildBgStatus(p.id, 'idle', '0m 00s'),
     }));
   };
 
@@ -238,6 +243,7 @@ export function wireState(
       };
 
       if (p.agentModel) next.agentModel = p.agentModel;
+      if (p.agentEffort) next.agentEffort = p.agentEffort;
       if (s.mode !== 'session_detail') {
         if (p.phase === 'pr_polling') next.mode = 'polling';
         if (p.phase === 'agent_running') next.mode = 'running';

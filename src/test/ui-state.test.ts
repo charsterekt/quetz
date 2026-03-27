@@ -47,11 +47,11 @@ describe('wireState', () => {
     expect(state.completedSessions[0]).toMatchObject({
       id: 'bd-101',
       title: 'Preserve session history labels',
-      duration: '1:05',
+      duration: '1m 05s',
       outcome: 'merged',
     });
-    expect(state.sessionComplete).toEqual({ issueId: 'bd-101', elapsed: '1:05' });
-    expect(state.bgStatus).toBe('bd-101  |  session complete  |  1:05');
+    expect(state.sessionComplete).toEqual({ issueId: 'bd-101', elapsed: '1m 05s' });
+    expect(state.bgStatus).toBe('bd-101  |  session complete  |  1m 05s');
 
     cleanup();
   });
@@ -77,7 +77,7 @@ describe('wireState', () => {
 
     expect(state.mode).toBe('session_detail');
     expect(state.phase).toBe('pr_polling');
-    expect(state.bgStatus).toBe('bd-202  |  waiting for merge  |  0:05');
+    expect(state.bgStatus).toBe('bd-202  |  waiting for merge  |  0m 05s');
 
     cleanup();
   });
@@ -101,6 +101,32 @@ describe('wireState', () => {
 
     expect(state.completedSessions).toHaveLength(1);
     expect(state.completedSessions[0].title).toBe('Use human title in sessions panel');
+
+    cleanup();
+  });
+
+  it('clears stale agent metadata when a new issue is picked up', () => {
+    const bus = createBus();
+    let state = {
+      ...cloneState(),
+      agentModel: 'sonnet',
+      agentEffort: 'high',
+    };
+    const cleanup = wireState(bus, updater => {
+      state = updater(state);
+    });
+
+    bus.emit('loop:issue_pickup', {
+      id: 'bd-404',
+      title: 'Reset header metadata',
+      priority: 2,
+      type: 'task',
+      iteration: 2,
+      total: 5,
+    });
+
+    expect(state.agentModel).toBe('');
+    expect(state.agentEffort).toBe('');
 
     cleanup();
   });
@@ -133,13 +159,14 @@ describe('wireState', () => {
         iteration: 1,
         total: 3,
       });
-      bus.emit('loop:phase', { phase: 'agent_running', agentModel: 'sonnet' });
+      bus.emit('loop:phase', { phase: 'agent_running', agentModel: 'sonnet', agentEffort: 'medium' });
       bus.emit('loop:phase', { phase: 'pr_polling' });
     }).not.toThrow();
 
     expect(state.issueCount).toEqual({ current: 1, total: 3 });
     expect(state.issueId).toBe('mock-001');
     expect(state.agentModel).toBe('sonnet');
+    expect(state.agentEffort).toBe('medium');
     expect(state.mode).toBe('polling');
     expect(state.logLines).toHaveLength(4);
 
