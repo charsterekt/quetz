@@ -54,7 +54,7 @@ describe('spawnAgent', () => {
     }));
   });
 
-  it('passes Claude effort when a thinking level is provided', async () => {
+  it('passes Claude effort when an effort level is provided', async () => {
     mockQuery.mockReturnValue(mockQueryResult([
       { type: 'result', subtype: 'success', is_error: false, result: 'done' },
     ]));
@@ -65,6 +65,26 @@ describe('spawnAgent', () => {
         effort: 'medium',
       }),
     }));
+  });
+
+  it('uses SDK isolation and a read-only toolset in simulate mode', async () => {
+    mockQuery.mockReturnValue(mockQueryResult([
+      { type: 'result', subtype: 'success', is_error: false, result: 'done' },
+    ]));
+
+    await spawnAgent('inspect only', '/repo', 30, 'sonnet', undefined, 'medium', true);
+
+    expect(mockQuery).toHaveBeenCalledWith(expect.objectContaining({
+      options: expect.objectContaining({
+        permissionMode: 'dontAsk',
+        settingSources: [],
+        tools: ['Read', 'Glob', 'Grep'],
+        allowedTools: ['Read', 'Glob', 'Grep'],
+      }),
+    }));
+
+    const callArgs = mockQuery.mock.calls[0][0] as any;
+    expect(callArgs.options.allowDangerouslySkipPermissions).toBeUndefined();
   });
 
   it('handles long prompts without truncation (no OS arg-length limits with SDK)', async () => {

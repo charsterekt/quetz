@@ -1,20 +1,17 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { SDKMessage, SDKResultMessage, SDKPartialAssistantMessage } from '@anthropic-ai/claude-agent-sdk';
+import type {
+  Options,
+  SDKMessage,
+  SDKResultMessage,
+  SDKPartialAssistantMessage,
+  SettingSource,
+} from '@anthropic-ai/claude-agent-sdk';
 import type { QuetzBus } from './events.js';
-import type { ClaudeThinkingLevel } from './config.js';
+import type { ClaudeEffortLevel } from './config.js';
 
-// Tools disallowed in --simulate mode: no file writes, no git mutations, no GitHub operations
-const SIMULATE_DISALLOWED_TOOLS = [
-  'Write',
-  'Edit',
-  'MultiEdit',
-  'Bash(git commit:*)',
-  'Bash(git push:*)',
-  'Bash(git checkout:*)',
-  'Bash(git branch:*)',
-  'Bash(gh pr:*)',
-  'Bash(gh repo:*)',
-];
+const SIMULATE_ALLOWED_TOOLS = ['Read', 'Glob', 'Grep'];
+const DEFAULT_SETTING_SOURCES: SettingSource[] = ['user', 'project', 'local'];
+const SIMULATE_SETTING_SOURCES: SettingSource[] = [];
 
 /**
  * Spawn a Claude Code agent via the SDK and wait for it to complete.
@@ -24,7 +21,7 @@ const SIMULATE_DISALLOWED_TOOLS = [
  * @param timeoutMinutes Kill the agent after this many minutes (default 30)
  * @param model          Claude model to use (default: sonnet)
  * @param bus            Optional event bus for streaming output
- * @param thinkingLevel  Optional Claude effort level override
+ * @param effort         Optional Claude effort level override
  * @param simulate       If true, restrict destructive tools (no file writes, git mutations, or GitHub ops)
  * @returns              Resolved exit code (0 = success)
  */
@@ -34,14 +31,14 @@ export function spawnAgent(
   timeoutMinutes: number = 30,
   model: string = 'sonnet',
   bus?: QuetzBus,
-  thinkingLevel?: ClaudeThinkingLevel,
+  effort?: ClaudeEffortLevel,
   simulate: boolean = false
 ): Promise<number> {
   const abortController = new AbortController();
   const timeoutMs = timeoutMinutes * 60 * 1000;
   const timer = setTimeout(() => abortController.abort(), timeoutMs);
 
-  return runQuery(prompt, cwd, model, abortController, timer, timeoutMinutes, bus, thinkingLevel, simulate);
+  return runQuery(prompt, cwd, model, abortController, timer, timeoutMinutes, bus, effort, simulate);
 }
 
 async function runQuery(
@@ -52,28 +49,46 @@ async function runQuery(
   timer: ReturnType<typeof setTimeout>,
   timeoutMinutes: number,
   bus?: QuetzBus,
-  thinkingLevel?: ClaudeThinkingLevel,
+  effort?: ClaudeEffortLevel,
   simulate: boolean = false
 ): Promise<number> {
   try {
+    const options: Options = simulate
+      ? {
+          cwd,
+          model,
+          abortController,
+          permissionMode: 'dontAsk' as const,
+          systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const },
+          settingSources: SIMULATE_SETTING_SOURCES,
+          tools: [...SIMULATE_ALLOWED_TOOLS],
+          allowedTools: [...SIMULATE_ALLOWED_TOOLS],
+          includePartialMessages: true,
+          ...(effort ? { effort } : {}),
+          stderr: (data: string) => {
+            if (bus) bus.emit('agent:stderr', { data });
+            else process.stderr.write(data);
+          },
+        }
+      : {
+          cwd,
+          model,
+          abortController,
+          permissionMode: 'bypassPermissions' as const,
+          allowDangerouslySkipPermissions: true,
+          systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const },
+          settingSources: DEFAULT_SETTING_SOURCES,
+          includePartialMessages: true,
+          ...(effort ? { effort } : {}),
+          stderr: (data: string) => {
+            if (bus) bus.emit('agent:stderr', { data });
+            else process.stderr.write(data);
+          },
+        };
+
     const q = query({
       prompt,
-      options: {
-        cwd,
-        model,
-        abortController,
-        permissionMode: 'bypassPermissions',
-        allowDangerouslySkipPermissions: true,
-        systemPrompt: { type: 'preset', preset: 'claude_code' },
-        settingSources: ['user', 'project', 'local'],
-        includePartialMessages: true,
-        ...(thinkingLevel ? { effort: thinkingLevel } : {}),
-        ...(simulate ? { disallowedTools: SIMULATE_DISALLOWED_TOOLS } : {}),
-        stderr: (data: string) => {
-          if (bus) bus.emit('agent:stderr', { data });
-          else process.stderr.write(data);
-        },
-      },
+      options,
     });
 
     const blocks = new Map<number, BlockState>();

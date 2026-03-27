@@ -1,240 +1,450 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ink } from './ink-imports.js';
-import { colors } from './theme.js';
-import { useEventLog, useProgress, useSessionHistory } from './hooks.js';
-import { AgentPanel } from './AgentPanel.js';
-import { QuetzPanel, QUETZ_EVENTS, formatQuetzEvent } from './QuetzPanel.js';
-import { StatusBar } from './StatusBar.js';
-import { HistoryPanel } from './HistoryPanel.js';
-import { SessionDetailPanel } from './SessionDetailPanel.js';
-import { getRenderableRows, getVisiblePanelRows, useTerminalViewport } from './viewport.js';
+// Root Rezi TUI - spec section 11, adapted for the Rezi node app API
+
+import { ui, rgb } from '@rezi-ui/core';
+import { createNodeApp } from '@rezi-ui/node';
 import type { QuetzBus } from '../events.js';
+import { c, hexToRgb } from './theme.js';
+import { wireState, INITIAL_STATE } from './state.js';
+import type { AgentLine, AppState } from './state.js';
+import { Header } from './components/Header.js';
+import { Footer } from './components/Footer.js';
+import { AgentPanel } from './components/AgentPanel.js';
+import { SessionsPanel } from './components/SessionsPanel.js';
+import { LogPanel } from './components/LogPanel.js';
+import { SessionDetail } from './components/SessionDetail.js';
+import { VictoryCard } from './components/VictoryCard.js';
+import { FailureCard } from './components/FailureCard.js';
+import { LOGO_LINES } from './logo.js';
 
-interface AppProps {
+function bgColor(hex: string) { const [r, g, b] = hexToRgb(hex); return rgb(r, g, b); }
+
+function rightRailWidth(termCols: number): number {
+  return Math.max(20, Math.min(Math.round(termCols * 0.265), termCols - 24));
+}
+
+const FOOTER_ROWS = 2;
+const HEADER_ROWS = LOGO_LINES.length + 3;
+const INFO_BAR_ROWS = 2;
+const WHEEL_LINES = 3;
+
+export const SCROLL_REGION_IDS = {
+  agent: 'agent-scroll-region',
+  sessions: 'sessions-scroll-region',
+  log: 'log-scroll-region',
+  sessionDetail: 'session-detail-scroll-region',
+} as const;
+
+function bodyRowCount(termRows: number): number {
+  return Math.max(10, termRows - HEADER_ROWS - FOOTER_ROWS);
+}
+
+function sessionPanelRows(bodyRows: number): number {
+  return Math.max(7, Math.round(bodyRows * 0.31));
+}
+
+function visibleSessionRows(termRows: number): number {
+  const bodyRows = bodyRowCount(termRows);
+  const sessionsRows = sessionPanelRows(bodyRows);
+  return Math.max(1, sessionsRows - 2);
+}
+
+function agentVisibleRows(termRows: number): number {
+  return Math.max(1, bodyRowCount(termRows) - 2);
+}
+
+function logVisibleRows(termRows: number): number {
+  const bodyRows = bodyRowCount(termRows);
+  const sessionsRows = sessionPanelRows(bodyRows);
+  const logRows = Math.max(4, bodyRows - sessionsRows);
+  return Math.max(1, logRows - 2);
+}
+
+function detailVisibleRows(termRows: number): number {
+  return Math.max(1, termRows - HEADER_ROWS - INFO_BAR_ROWS - FOOTER_ROWS);
+}
+
+function clampScrollOffset(offset: number, maxOffset: number): number {
+  return Math.max(0, Math.min(offset, maxOffset));
+}
+
+function pointInRect(x: number, y: number, rect: { x: number; y: number; w: number; h: number } | null): boolean {
+  return rect != null && x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;
+}
+
+function syncSessionViewport(state: AppState, termRows: number): AppState {
+  const visibleRows = visibleSessionRows(termRows);
+  const total = state.completedSessions.length;
+
+  if (total === 0) {
+    return { ...state, selectedSessionIdx: -1, sessionsScrollOffset: 0 };
+  }
+
+  const selectedSessionIdx = Math.max(-1, Math.min(state.selectedSessionIdx, total - 1));
+  const maxOffset = Math.max(0, total - visibleRows);
+  let sessionsScrollOffset = Math.max(0, Math.min(state.sessionsScrollOffset, maxOffset));
+
+  if (selectedSessionIdx >= 0) {
+    if (selectedSessionIdx < sessionsScrollOffset) {
+      sessionsScrollOffset = selectedSessionIdx;
+    } else if (selectedSessionIdx >= sessionsScrollOffset + visibleRows) {
+      sessionsScrollOffset = selectedSessionIdx - visibleRows + 1;
+    }
+  }
+
+  return {
+    ...state,
+    selectedSessionIdx,
+    sessionsScrollOffset,
+  };
+}
+
+function agentLineText(line: AgentLine): string {
+  return line.type === 'tool'
+    ? `> ${(line.toolName ?? '').padEnd(5).slice(0, 5)}   ${line.content}`
+    : line.content;
+}
+
+function maxAgentHorizontalOffset(state: AppState, termCols: number): number {
+  const rightCols = rightRailWidth(termCols);
+  const leftCols = Math.max(1, termCols - rightCols);
+  const contentWidth = Math.max(1, leftCols - 6);
+  const longestLine = state.agentLines.reduce((max, line) => Math.max(max, agentLineText(line).length), 0);
+  return Math.max(0, longestLine - contentWidth);
+}
+
+function currentSessionSelection(state: AppState): number {
+  if (state.completedSessions.length === 0) return -1;
+  return state.selectedSessionIdx >= 0
+    ? state.selectedSessionIdx
+    : state.completedSessions.length - 1;
+}
+
+export interface MountOptions {
   bus: QuetzBus;
-  onQuit?: () => void;
-  cwd?: string;
-  branch?: string;
-  version?: string;
+  version: string;
+  onQuit: () => void;
 }
 
-type RightView = 'dashboard' | 'history' | 'detail';
-
-const FAILURE_BANNER_ROWS = 3;
-
-function ProgressBar({ current, total }: { current: number; total: number }) {
-  const { Text } = ink();
-  const width = 20;
-  const filled = total > 0 ? Math.round((current / total) * width) : 0;
-  const empty = width - filled;
-  const bar = '■'.repeat(filled) + '□'.repeat(empty);
-  return <Text dimColor>{bar} {current}/{total}</Text>;
+export interface AppHandle {
+  ready: Promise<void>;
+  unmount: () => Promise<void>;
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(value, max));
-}
-
-export const App: React.FC<AppProps> = ({ bus, onQuit, cwd = '', branch = '', version = '' }) => {
-  const { Box, Text, useInput } = ink();
-  const viewport = useTerminalViewport();
-  const progress = useProgress(bus);
-  const { completedSessions } = useSessionHistory(bus);
-  const quetzLogFormatter = useMemo(() => formatQuetzEvent, []);
-  const quetzLines = useEventLog(bus, QUETZ_EVENTS, quetzLogFormatter, 200);
-
-  const [failureReason, setFailureReason] = useState<string | null>(null);
-  const [rightView, setRightView] = useState<RightView>('dashboard');
-  const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(undefined);
-  const [detailScrollOffset, setDetailScrollOffset] = useState(0);
-  const failureBannerRows = failureReason ? FAILURE_BANNER_ROWS : 0;
-  const panelOverhead = 14 + failureBannerRows;
-  const detailPanelOverhead = 16 + failureBannerRows;
-
-  const selectedSession = useMemo(
-    () => completedSessions.find(session => session.issueId === selectedSessionId),
-    [completedSessions, selectedSessionId]
-  );
-
-  useEffect(() => {
-    const onFailure = (payload: { reason: string }) => setFailureReason(payload.reason);
-    bus.on('loop:failure', onFailure);
-    return () => { bus.off('loop:failure', onFailure); };
-  }, [bus]);
-
-  useEffect(() => {
-    if (completedSessions.length === 0) {
-      setSelectedSessionId(undefined);
-      if (rightView !== 'dashboard') setRightView('history');
-      return;
-    }
-
-    if (!selectedSessionId || !completedSessions.some(session => session.issueId === selectedSessionId)) {
-      setSelectedSessionId(completedSessions[0].issueId);
-    }
-  }, [completedSessions, selectedSessionId, rightView]);
-
-  useEffect(() => {
-    if (rightView === 'detail' && !selectedSession) {
-      setRightView('history');
-      setDetailScrollOffset(0);
-    }
-  }, [rightView, selectedSession]);
-
-  const handleQuit = useCallback(() => {
-    if (onQuit) onQuit();
-  }, [onQuit]);
-
-  const moveSelection = useCallback((delta: number) => {
-    if (completedSessions.length === 0) return;
-    const currentIndex = Math.max(
-      0,
-      completedSessions.findIndex(session => session.issueId === selectedSessionId)
-    );
-    const nextIndex = clamp(currentIndex + delta, 0, completedSessions.length - 1);
-    setSelectedSessionId(completedSessions[nextIndex].issueId);
-  }, [completedSessions, selectedSessionId]);
-
-  useInput((input, key) => {
-    const isCtrlC = input === '\x03' || (key.ctrl && input.toLowerCase() === 'c');
-
-    if (input === 'q' || isCtrlC) {
-      handleQuit();
-      return;
-    }
-
-    if (input === 'h') {
-      setRightView(prev => {
-        if (prev === 'dashboard') return 'history';
-        return prev;
-      });
-      if (!selectedSessionId && completedSessions[0]) {
-        setSelectedSessionId(completedSessions[0].issueId);
-      }
-      return;
-    }
-
-    if (key.escape || input === 'b') {
-      if (rightView === 'detail') {
-        setRightView('history');
-        setDetailScrollOffset(0);
-        return;
-      }
-      if (rightView === 'history') {
-        setRightView('dashboard');
-        return;
-      }
-    }
-
-    if (key.return && rightView === 'history' && selectedSessionId) {
-      setRightView('detail');
-      setDetailScrollOffset(0);
-      return;
-    }
-
-    if (key.upArrow) {
-      if (rightView === 'history') {
-        moveSelection(-1);
-        return;
-      }
-      if (rightView === 'detail') {
-        const maxScroll = Math.max(0, (selectedSession?.lines.length ?? 0) - getVisiblePanelRows(viewport.rows, detailPanelOverhead));
-        setDetailScrollOffset(prev => Math.min(prev + 3, maxScroll));
-        return;
-      }
-      (bus as any)._agentScroll?.('up');
-      return;
-    }
-
-    if (key.downArrow) {
-      if (rightView === 'history') {
-        moveSelection(1);
-        return;
-      }
-      if (rightView === 'detail') {
-        setDetailScrollOffset(prev => Math.max(0, prev - 3));
-        return;
-      }
-      (bus as any)._agentScroll?.('down');
-      return;
-    }
-
-    if (input === '[' && rightView === 'dashboard') {
-      (bus as any)._quetzScroll?.('up');
-      return;
-    }
-
-    if (input === ']' && rightView === 'dashboard') {
-      (bus as any)._quetzScroll?.('down');
-    }
+export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
+  const app = createNodeApp<AppState>({
+    initialState: INITIAL_STATE,
   });
 
-  const rows = getRenderableRows(viewport.rows);
-  const cols = viewport.columns;
-  const quetzWidth = Math.max(36, Math.round(cols * 0.33));
-  const agentWidth = cols - quetzWidth;
-  const panelVisibleHeight = getVisiblePanelRows(viewport.rows, panelOverhead);
-  const detailVisibleHeight = getVisiblePanelRows(viewport.rows, detailPanelOverhead);
+  const cleanupWire = wireState(bus, app.update);
 
-  const cwdDisplay = cwd.replace(/\\/g, '/');
-  const branchSuffix = branch ? `:${branch}` : '';
-  const versionLabel = version ? `◆ v${version}` : '';
-  const footerHints = rightView === 'dashboard'
-    ? 'q quit  ctrl+c quit  h runs  ↑↓ agent  [ ] log'
-    : rightView === 'history'
-      ? 'q quit  ctrl+c quit  esc dashboard  enter open  ↑↓ select'
-      : 'q quit  ctrl+c quit  esc back  ↑↓ scroll';
+  app.keys({
+    q: () => onQuit(),
+    'ctrl+c': () => onQuit(),
 
-  return (
-    <Box flexDirection="column" height={rows}>
-      <Box borderStyle="single" borderColor={colors.border} paddingX={1} justifyContent="space-between">
-        <Box>
-          <Text bold color={colors.brandBold}>QUETZ</Text>
-          <Text dimColor> The Feathered Serpent Dev Loop</Text>
-        </Box>
-        <Box>
-          <ProgressBar current={progress.iteration > 0 ? progress.iteration - 1 : 0} total={progress.total} />
-        </Box>
-      </Box>
+    up: () => app.update(s => {
+      const termRows = process.stdout.rows ?? 40;
+      if (s.mode === 'session_detail') {
+        return { ...s, sessionLogScrollOffset: Math.max(0, s.sessionLogScrollOffset - 3) };
+      }
+      if (s.completedSessions.length > 0) {
+        const newIdx = s.selectedSessionIdx <= 0
+          ? s.completedSessions.length - 1
+          : s.selectedSessionIdx - 1;
+        return syncSessionViewport({ ...s, focusedPane: 'sessions', selectedSessionIdx: newIdx }, termRows);
+      }
+      return s;
+    }),
 
-      <Box flexDirection="row" flexGrow={1}>
-        <AgentPanel bus={bus} width={agentWidth} visibleHeight={panelVisibleHeight} />
-        {rightView === 'dashboard' && <QuetzPanel bus={bus} lines={quetzLines} width={quetzWidth} visibleHeight={panelVisibleHeight} />}
-        {rightView === 'history' && (
-          <HistoryPanel
-            sessions={completedSessions}
-            selectedSessionId={selectedSessionId}
-            width={quetzWidth}
-          />
-        )}
-        {rightView === 'detail' && selectedSession && (
-          <SessionDetailPanel
-            session={selectedSession}
-            width={quetzWidth}
-            visibleHeight={detailVisibleHeight}
-            scrollOffset={detailScrollOffset}
-          />
-        )}
-      </Box>
+    down: () => app.update(s => {
+      const termRows = process.stdout.rows ?? 40;
+      if (s.mode === 'session_detail') {
+        const maxOffset = Math.max(0, (s.viewingSession?.lines.length ?? 0) - detailVisibleRows(termRows));
+        return { ...s, sessionLogScrollOffset: clampScrollOffset(s.sessionLogScrollOffset + 3, maxOffset) };
+      }
+      if (s.completedSessions.length > 0) {
+        const newIdx = s.selectedSessionIdx < 0
+          ? 0
+          : Math.min(s.selectedSessionIdx + 1, s.completedSessions.length - 1);
+        return syncSessionViewport({ ...s, focusedPane: 'sessions', selectedSessionIdx: newIdx }, termRows);
+      }
+      return s;
+    }),
 
-      <StatusBar bus={bus} />
+    ',': () => app.update(s => {
+      if (s.mode === 'session_detail' || s.focusedPane !== 'agent' || s.sessionComplete) return s;
+      return {
+        ...s,
+        agentHorizontalScrollOffset: Math.max(0, s.agentHorizontalScrollOffset - 8),
+      };
+    }),
 
-      {failureReason && (
-        <Box paddingX={1} borderStyle="single" borderColor={colors.error}>
-          <Text color={colors.error} bold>× </Text>
-          <Text color={colors.error}>{failureReason}</Text>
-          <Text dimColor>  press </Text>
-          <Text bold>q</Text>
-          <Text dimColor> or </Text>
-          <Text bold>ctrl+c</Text>
-          <Text dimColor> to quit</Text>
-        </Box>
-      )}
+    '.': () => app.update(s => {
+      if (s.mode === 'session_detail' || s.focusedPane !== 'agent' || s.sessionComplete) return s;
+      return {
+        ...s,
+        agentHorizontalScrollOffset: Math.min(
+          maxAgentHorizontalOffset(s, process.stdout.columns ?? 120),
+          s.agentHorizontalScrollOffset + 8,
+        ),
+      };
+    }),
 
-      <Box paddingX={1} justifyContent="space-between">
-        <Text dimColor>{cwdDisplay}<Text color={colors.brand}>{branchSuffix}</Text></Text>
-        <Text dimColor>{footerHints}  {versionLabel}</Text>
-      </Box>
-    </Box>
-  );
-};
+    enter: () => app.update(s => {
+      if (
+        s.mode !== 'session_detail' &&
+        s.selectedSessionIdx >= 0 &&
+        s.selectedSessionIdx < s.completedSessions.length
+      ) {
+        return {
+          ...s,
+          viewingSession: s.completedSessions[s.selectedSessionIdx],
+          priorMode: s.mode,
+          mode: 'session_detail',
+          sessionLogScrollOffset: 0,
+        };
+      }
+      return s;
+    }),
+
+    h: () => app.update(s => {
+      const termRows = process.stdout.rows ?? 40;
+      if (s.mode === 'session_detail') {
+        return syncSessionViewport({
+          ...s,
+          mode: s.priorMode,
+          viewingSession: null,
+          focusedPane: 'sessions',
+        }, termRows);
+      }
+
+      if (s.completedSessions.length === 0) return s;
+
+      const selectedSessionIdx = currentSessionSelection(s);
+      const nextState = syncSessionViewport({
+        ...s,
+        focusedPane: 'sessions',
+        selectedSessionIdx,
+      }, termRows);
+
+      if (s.mode === 'victory' || s.mode === 'failure' || s.focusedPane === 'sessions') {
+        return {
+          ...nextState,
+          viewingSession: nextState.completedSessions[nextState.selectedSessionIdx] ?? null,
+          priorMode: s.mode,
+          mode: 'session_detail',
+          sessionLogScrollOffset: 0,
+        };
+      }
+
+      return nextState;
+    }),
+
+    escape: () => app.update(s => {
+      if (s.mode === 'session_detail') {
+        return syncSessionViewport({
+          ...s,
+          mode: s.priorMode,
+          viewingSession: null,
+          focusedPane: 'sessions',
+        }, process.stdout.rows ?? 40);
+      }
+      return { ...s, focusedPane: 'agent', selectedSessionIdx: -1 };
+    }),
+
+    right: () => app.update(s => {
+      if (s.mode === 'session_detail' || s.completedSessions.length === 0) return s;
+      return syncSessionViewport({
+        ...s,
+        focusedPane: 'sessions',
+        selectedSessionIdx: s.selectedSessionIdx >= 0
+          ? s.selectedSessionIdx
+          : s.completedSessions.length - 1,
+      }, process.stdout.rows ?? 40);
+    }),
+
+    left: () => app.update(s => {
+      if (s.mode === 'session_detail') return s;
+      return { ...s, focusedPane: 'agent' };
+    }),
+
+    '[': () => app.update(s => {
+      const rows = process.stdout.rows ?? 40;
+      const bodyRows = bodyRowCount(rows);
+      const sessionsRows = sessionPanelRows(bodyRows);
+      const logVisibleRows = Math.max(1, bodyRows - sessionsRows - 3);
+      const currentOffset = s.logAutoScroll
+        ? Math.max(0, s.logLines.length - logVisibleRows)
+        : s.logScrollOffset;
+      return { ...s, logAutoScroll: false, logScrollOffset: Math.max(0, currentOffset - 3) };
+    }),
+
+    ']': () => app.update(s => {
+      const rows = process.stdout.rows ?? 40;
+      const visibleRows = logVisibleRows(rows);
+      const currentOffset = s.logAutoScroll
+        ? Math.max(0, s.logLines.length - visibleRows)
+        : s.logScrollOffset;
+      const maxOffset = Math.max(0, s.logLines.length - visibleRows);
+      return {
+        ...s,
+        logAutoScroll: false,
+        logScrollOffset: clampScrollOffset(currentOffset + 3, maxOffset),
+      };
+    }),
+  });
+
+  const cleanupEvents = app.onEvent(ev => {
+    if (ev.kind !== 'engine' || ev.event.kind !== 'mouse' || ev.event.mouseKind !== 5) {
+      return;
+    }
+
+    const { x, y, wheelY } = ev.event;
+    if (wheelY === 0) return;
+
+    const delta = wheelY * WHEEL_LINES;
+    const agentRect = app.measureElement(SCROLL_REGION_IDS.agent);
+    const sessionsRect = app.measureElement(SCROLL_REGION_IDS.sessions);
+    const logRect = app.measureElement(SCROLL_REGION_IDS.log);
+    const detailRect = app.measureElement(SCROLL_REGION_IDS.sessionDetail);
+
+    app.update(s => {
+      const termRows = process.stdout.rows ?? 40;
+
+      if (s.mode === 'session_detail' && pointInRect(x, y, detailRect) && s.viewingSession) {
+        const maxOffset = Math.max(0, s.viewingSession.lines.length - detailVisibleRows(termRows));
+        const nextOffset = clampScrollOffset(s.sessionLogScrollOffset + delta, maxOffset);
+        return nextOffset === s.sessionLogScrollOffset ? s : { ...s, sessionLogScrollOffset: nextOffset };
+      }
+
+      if (pointInRect(x, y, agentRect)) {
+        const maxOffset = Math.max(0, s.agentLines.length - agentVisibleRows(termRows));
+        const currentOffset = s.agentAutoScroll ? maxOffset : s.agentScrollOffset;
+        const nextOffset = clampScrollOffset(currentOffset + delta, maxOffset);
+        return nextOffset === currentOffset && !s.agentAutoScroll
+          ? s
+          : { ...s, agentAutoScroll: false, agentScrollOffset: nextOffset };
+      }
+
+      if (pointInRect(x, y, sessionsRect)) {
+        const maxOffset = Math.max(0, s.completedSessions.length - visibleSessionRows(termRows));
+        const nextOffset = clampScrollOffset(s.sessionsScrollOffset + delta, maxOffset);
+        return nextOffset === s.sessionsScrollOffset ? s : { ...s, sessionsScrollOffset: nextOffset };
+      }
+
+      if (pointInRect(x, y, logRect)) {
+        const maxOffset = Math.max(0, s.logLines.length - logVisibleRows(termRows));
+        const currentOffset = s.logAutoScroll ? maxOffset : s.logScrollOffset;
+        const nextOffset = clampScrollOffset(currentOffset + delta, maxOffset);
+        return nextOffset === currentOffset && !s.logAutoScroll
+          ? s
+          : { ...s, logAutoScroll: false, logScrollOffset: nextOffset };
+      }
+
+      return s;
+    });
+  });
+
+  app.view((state: AppState) => {
+    const rootBg = bgColor(c.bg);
+    const termCols = process.stdout.columns ?? 120;
+    const termRows = process.stdout.rows ?? 40;
+    const rightCols = rightRailWidth(termCols);
+    const leftCols = Math.max(1, termCols - rightCols);
+    const bodyRows = bodyRowCount(termRows);
+    const sessionsRows = sessionPanelRows(bodyRows);
+    const logRows = Math.max(4, bodyRows - sessionsRows);
+    const footerNode = Footer({
+      mode: state.mode,
+      focusedPane: state.focusedPane,
+      hasHistory: state.completedSessions.length > 0,
+      phase: state.phase,
+      issueId: state.issueId,
+      issueCount: state.issueCount,
+      prNumber: state.prNumber,
+      elapsed: state.elapsed,
+      version,
+      viewingSession: state.viewingSession,
+      failureData: state.failureData,
+    });
+
+    if (state.mode === 'victory' && !state.viewingSession) {
+      return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
+        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version }),
+        VictoryCard({ data: state.victoryData, version }),
+        footerNode,
+      ]);
+    }
+
+    if (state.mode === 'failure' && !state.viewingSession) {
+      return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
+        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version }),
+        FailureCard({ data: state.failureData }),
+        footerNode,
+      ]);
+    }
+
+    if (state.mode === 'session_detail' && state.viewingSession) {
+      return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
+        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version }),
+        SessionDetail({ session: state.viewingSession, scrollOffset: state.sessionLogScrollOffset }),
+        footerNode,
+      ]);
+    }
+
+    return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
+      Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version }),
+      ui.row({ width: 'full', flex: 1 }, [
+        AgentPanel({
+          width: leftCols,
+          height: bodyRows,
+          phase: state.phase,
+          issueId: state.agentIssueId,
+          model: state.agentModel,
+          effort: state.agentEffort,
+          lines: state.agentLines,
+          scrollOffset: state.agentScrollOffset,
+          horizontalScrollOffset: state.agentHorizontalScrollOffset,
+          autoScroll: state.agentAutoScroll,
+          sessionComplete: state.sessionComplete,
+        }),
+        ui.column({ width: rightCols, height: 'full' }, [
+          SessionsPanel({
+            sessions: state.completedSessions,
+            selectedIdx: state.selectedSessionIdx,
+            isFocused: state.focusedPane === 'sessions',
+            scrollOffset: state.sessionsScrollOffset,
+            width: rightCols,
+            height: sessionsRows,
+          }),
+          LogPanel({
+            lines: state.logLines,
+            scrollOffset: state.logScrollOffset,
+            autoScroll: state.logAutoScroll,
+            width: rightCols,
+            height: logRows,
+          }),
+        ]),
+      ]),
+      footerNode,
+    ]);
+  });
+
+  const startPromise = app.start();
+  let unmounted = false;
+
+  return {
+    ready: startPromise,
+    unmount: async () => {
+      if (unmounted) return;
+      unmounted = true;
+      cleanupWire();
+      cleanupEvents();
+      try {
+        await startPromise;
+      } catch {
+        return;
+      }
+      await app.stop();
+    },
+  };
+}

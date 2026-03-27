@@ -146,7 +146,7 @@ describe('runLoop normal', () => {
     expect(result.exitCode).toBe(0);
     expect(result.reason).toBe('victory');
     expect(mockGetIssueDetails).toHaveBeenCalledWith('quetz-abc');
-    expect(mockAssemblePrompt).toHaveBeenCalledWith(detailedIssue, '', baseConfig, false, false, true);
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(detailedIssue, '', baseConfig, false, false, true, false);
   });
 
   it('falls back to ready data if getIssueDetails throws', async () => {
@@ -161,7 +161,7 @@ describe('runLoop normal', () => {
     const bus = createBus();
     const result = await runLoop({}, bus);
     expect(result.exitCode).toBe(0);
-    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, false, false, true);
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, false, false, true, false);
   });
 
   it('returns exitCode 1 if git pull fails', async () => {
@@ -294,7 +294,7 @@ describe('runLoop normal', () => {
     expect(phaseHandler).toHaveBeenCalledWith(expect.objectContaining({ phase: 'pr_detecting' }));
   });
 
-  it('forwards thinking level to the agent and agent_running event', async () => {
+  it('forwards effort to the agent and agent_running event', async () => {
     mockGetReadyIssues
       .mockReturnValueOnce([baseIssue])
       .mockReturnValueOnce([]);
@@ -307,7 +307,7 @@ describe('runLoop normal', () => {
     const phaseHandler = vi.fn();
     bus.on('loop:phase', phaseHandler);
 
-    await runLoop({thinkingLevel: 'medium' }, bus);
+    await runLoop({effort: 'medium' }, bus);
 
     expect(mockSpawnAgent).toHaveBeenCalledWith(
       'assembled prompt',
@@ -321,7 +321,7 @@ describe('runLoop normal', () => {
     expect(phaseHandler).toHaveBeenCalledWith(expect.objectContaining({
       phase: 'agent_running',
       agentModel: 'sonnet',
-      agentThinkingLevel: 'medium',
+      agentEffort: 'medium',
     }));
   });
 });
@@ -361,7 +361,7 @@ describe('runLoop local-commits', () => {
 
     const bus = createBus();
     await runLoop({localCommits: true }, bus);
-    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, true, false, true);
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, true, false, true, false);
   });
 
   it('emits loop:commit_landed when agent commits', async () => {
@@ -434,7 +434,7 @@ describe('runLoop amend', () => {
 
     const bus = createBus();
     await runLoop({amend: true }, bus);
-    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, false, true, true);
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, false, true, true, false);
   });
 
   it('passes isFirstIssue=false to assemblePrompt on second issue after commit', async () => {
@@ -451,8 +451,8 @@ describe('runLoop amend', () => {
 
     const bus = createBus();
     await runLoop({amend: true }, bus);
-    expect(mockAssemblePrompt).toHaveBeenNthCalledWith(1, baseIssue, '', baseConfig, false, true, true);
-    expect(mockAssemblePrompt).toHaveBeenNthCalledWith(2, issue2, '', baseConfig, false, true, false);
+    expect(mockAssemblePrompt).toHaveBeenNthCalledWith(1, baseIssue, '', baseConfig, false, true, true, false);
+    expect(mockAssemblePrompt).toHaveBeenNthCalledWith(2, issue2, '', baseConfig, false, true, false, false);
   });
 
   it('keeps isFirstIssue=true when agent makes no commit', async () => {
@@ -472,7 +472,7 @@ describe('runLoop amend', () => {
     const bus = createBus();
     await runLoop({amend: true }, bus);
     // Second call should still have isFirstIssue=true since first had no commit
-    expect(mockAssemblePrompt).toHaveBeenNthCalledWith(2, issue2, '', baseConfig, false, true, true);
+    expect(mockAssemblePrompt).toHaveBeenNthCalledWith(2, issue2, '', baseConfig, false, true, true, false);
   });
 
   it('emits loop:warning when agent creates multiple commits', async () => {
@@ -741,6 +741,24 @@ describe('runLoop simulate', () => {
     expect(result.reason).toBe('victory');
     expect(prFoundHandler).toHaveBeenCalled();
     expect(mergedHandler).toHaveBeenCalled();
+  }, 15000);
+
+  it('simulate does not switch away from the branch it launched on when no temp branch was created', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockGetCurrentBranch
+      .mockReturnValueOnce('quetz-7kh/rezi-migration')
+      .mockReturnValueOnce('quetz-7kh/rezi-migration');
+
+    const bus = createBus();
+    const result = await runLoop({ simulate: true }, bus);
+
+    expect(result.exitCode).toBe(0);
+    expect(mockCheckoutDefault).not.toHaveBeenCalled();
+    expect(mockDeleteBranch).not.toHaveBeenCalled();
   }, 15000);
 
   it('simulate+localCommits: does not call createOctokit', async () => {

@@ -7,26 +7,18 @@ vi.mock('../loop.js', () => ({
   runLoop: vi.fn(),
   showStatus: vi.fn(),
 }));
-vi.mock('../ui/ink-imports.js', () => ({
-  initInk: vi.fn(),
-}));
 vi.mock('../ui/App.js', () => ({
-  App: () => null,
-}));
-vi.mock('child_process', () => ({
-  execSync: vi.fn(),
+  mountApp: vi.fn(),
 }));
 
-import { execSync } from 'child_process';
 import { createBus } from '../events.js';
 import { runLoop } from '../loop.js';
-import { initInk } from '../ui/ink-imports.js';
+import { mountApp } from '../ui/App.js';
 import { EXIT_SUCCESS, EXIT_FAILURE, EXIT_CONFIG_ERROR, EXIT_PREFLIGHT_FAILURE, main } from '../cli.js';
 
-const mockExecSync = vi.mocked(execSync);
 const mockCreateBus = vi.mocked(createBus);
 const mockRunLoop = vi.mocked(runLoop);
-const mockInitInk = vi.mocked(initInk);
+const mockMountApp = vi.mocked(mountApp);
 
 class ExitError extends Error {
   constructor(readonly code: number | undefined) {
@@ -60,6 +52,12 @@ function restoreStdoutDescriptors(): void {
   }
 }
 
+function stdoutText(): string {
+  return stdoutSpy.mock.calls
+    .map((call: Parameters<typeof process.stdout.write>) => String(call[0]))
+    .join('');
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   originalArgv = [...process.argv];
@@ -89,25 +87,28 @@ describe('exit codes', () => {
 
 describe('main', () => {
   it('launches the TUI on small terminals without warning or blocking', async () => {
-    const bus = { emit: vi.fn(), on: vi.fn() };
+    const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
     const unmount = vi.fn();
-    const render = vi.fn(() => ({ unmount }));
+    const ready = Promise.resolve();
+    let quit!: () => void;
 
     mockCreateBus.mockReturnValue(bus as never);
-    mockRunLoop.mockResolvedValue({ exitCode: 0 } as never);
-    mockInitInk.mockResolvedValue({ render } as never);
-    mockExecSync.mockReturnValue('fix/remove-terminal-size-gate\n' as never);
+    mockRunLoop.mockResolvedValue({ exitCode: 0, reason: 'no_issues' } as never);
+    mockMountApp.mockImplementation((opts) => {
+      quit = opts.onQuit;
+      return { ready, unmount } as never;
+    });
 
     process.argv = ['node', 'quetz', 'run'];
     setStdoutSize(true, 80, 24);
 
     await expect(main()).rejects.toMatchObject({ code: 0 });
 
-    expect(render).toHaveBeenCalledTimes(1);
+    expect(mockMountApp).toHaveBeenCalledTimes(1);
     expect(mockRunLoop).toHaveBeenCalledWith(
       {
         model: undefined,
-        thinkingLevel: undefined,
+        effort: undefined,
         timeout: undefined,
         localCommits: false,
         amend: false,
@@ -122,35 +123,140 @@ describe('main', () => {
       .join('');
     expect(stderrOutput).not.toContain('Terminal too small');
     expect(stderrOutput).not.toContain('below recommended');
+    expect(quit).toBeTypeOf('function');
   });
 
-  it('parses --thinking-level and forwards it to runLoop', async () => {
-    const bus = { emit: vi.fn(), on: vi.fn() };
+  it('parses --effort and forwards it to runLoop', async () => {
+    const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
     mockCreateBus.mockReturnValue(bus as never);
     mockRunLoop.mockResolvedValue({ exitCode: 0 } as never);
 
-    process.argv = ['node', 'quetz', 'run', '--thinking-level', 'medium'];
+    process.argv = ['node', 'quetz', 'run', '--effort', 'medium'];
     setStdoutSize(false, 120, 40);
 
     await expect(main()).rejects.toMatchObject({ code: 0 });
 
     expect(mockRunLoop).toHaveBeenCalledWith(
       expect.objectContaining({
-        thinkingLevel: 'medium',
+        effort: 'medium',
       }),
       bus,
     );
   });
 
-  it('fails fast on an invalid --thinking-level value', async () => {
-    process.argv = ['node', 'quetz', 'run', '--thinking-level', 'turbo'];
+  it('fails fast on an invalid --effort value', async () => {
+    process.argv = ['node', 'quetz', 'run', '--effort', 'turbo'];
 
     await expect(main()).rejects.toMatchObject({ code: 1 });
 
     const stderrOutput = stderrSpy.mock.calls
       .map((call: Parameters<typeof process.stderr.write>) => String(call[0]))
       .join('');
-    expect(stderrOutput).toContain('invalid --thinking-level');
+    expect(stderrOutput).toContain('invalid --effort');
     expect(mockRunLoop).not.toHaveBeenCalled();
+  });
+
+  it('still accepts --thinking-level as a compatibility alias', async () => {
+    const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
+    mockCreateBus.mockReturnValue(bus as never);
+    mockRunLoop.mockResolvedValue({ exitCode: 0 } as never);
+
+    process.argv = ['node', 'quetz', 'run', '--thinking-level', 'high'];
+    setStdoutSize(false, 120, 40);
+
+    await expect(main()).rejects.toMatchObject({ code: 0 });
+
+    expect(mockRunLoop).toHaveBeenCalledWith(
+      expect.objectContaining({
+        effort: 'high',
+      }),
+      bus,
+    );
+  });
+
+  it('keeps the victory screen mounted until the user quits in TTY mode', async () => {
+    const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
+    const unmount = vi.fn(() => Promise.resolve());
+    let quit!: () => void;
+
+    mockCreateBus.mockReturnValue(bus as never);
+    mockRunLoop.mockResolvedValue({ exitCode: 0, reason: 'victory' } as never);
+    mockMountApp.mockImplementation((opts) => {
+      quit = opts.onQuit;
+      return { ready: Promise.resolve(), unmount } as never;
+    });
+
+    process.argv = ['node', 'quetz', 'run'];
+    setStdoutSize(true, 120, 40);
+
+    const mainPromise = main();
+    await vi.waitFor(() => {
+      expect(mockMountApp).toHaveBeenCalledTimes(1);
+      expect(quit).toBeTypeOf('function');
+    });
+
+    expect(unmount).not.toHaveBeenCalled();
+
+    quit();
+
+    await expect(mainPromise).rejects.toMatchObject({ code: 0 });
+    expect(unmount).toHaveBeenCalledTimes(1);
+    expect(stdoutText()).toContain('The serpent rests — all issues resolved.');
+    expect(stdoutText()).not.toContain('interrupted by user');
+  });
+
+  it('shows the victory message when the completed screen is dismissed with Ctrl+C', async () => {
+    const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
+    const unmount = vi.fn(() => Promise.resolve());
+
+    mockCreateBus.mockReturnValue(bus as never);
+    mockRunLoop.mockResolvedValue({ exitCode: 0, reason: 'victory' } as never);
+    mockMountApp.mockReturnValue({ ready: Promise.resolve(), unmount } as never);
+
+    process.argv = ['node', 'quetz', 'run'];
+    setStdoutSize(true, 120, 40);
+
+    const mainPromise = main();
+    await vi.waitFor(() => {
+      expect(mockMountApp).toHaveBeenCalledTimes(1);
+    });
+
+    process.emit('SIGINT');
+
+    await expect(mainPromise).rejects.toMatchObject({ code: 0 });
+    expect(unmount).toHaveBeenCalledTimes(1);
+    expect(stdoutText()).toContain('The serpent rests — all issues resolved.');
+    expect(stdoutText()).not.toContain('interrupted by user');
+  });
+
+  it('keeps the failure screen mounted until the user quits in TTY mode', async () => {
+    const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
+    const unmount = vi.fn(() => Promise.resolve());
+    let quit!: () => void;
+
+    mockCreateBus.mockReturnValue(bus as never);
+    mockRunLoop.mockResolvedValue({ exitCode: 1, reason: 'error' } as never);
+    mockMountApp.mockImplementation((opts) => {
+      quit = opts.onQuit;
+      return { ready: Promise.resolve(), unmount } as never;
+    });
+
+    process.argv = ['node', 'quetz', 'run'];
+    setStdoutSize(true, 120, 40);
+
+    const mainPromise = main();
+    await vi.waitFor(() => {
+      expect(mockMountApp).toHaveBeenCalledTimes(1);
+      expect(quit).toBeTypeOf('function');
+    });
+
+    expect(unmount).not.toHaveBeenCalled();
+
+    quit();
+
+    await expect(mainPromise).rejects.toMatchObject({ code: 1 });
+    expect(unmount).toHaveBeenCalledTimes(1);
+    expect(stdoutText()).toContain('The serpent retreats (exit code 1 — runtime failure).');
+    expect(stdoutText()).not.toContain('interrupted by user');
   });
 });

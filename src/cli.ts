@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { CLAUDE_THINKING_LEVELS, isClaudeThinkingLevel } from './config.js';
+import { CLAUDE_EFFORT_LEVELS, isClaudeEffortLevel } from './config.js';
 
 // Exit codes per spec section 7.4
 export const EXIT_SUCCESS = 0;
@@ -31,7 +31,7 @@ export async function main(): Promise<void> {
     process.stdout.write('  run --simulate --local-commits  Simulate with fake commits (no PRs)\n');
     process.stdout.write('  run --simulate --amend       Simulate with fake amend commits\n');
     process.stdout.write('  run --model <model>          Override agent model (e.g. haiku, sonnet, opus)\n');
-    process.stdout.write(`  run --thinking-level <level> Override Claude effort (${CLAUDE_THINKING_LEVELS.join('|')})\n`);
+    process.stdout.write(`  run --effort <level>         Override Claude effort (${CLAUDE_EFFORT_LEVELS.join('|')})\n`);
     process.stdout.write('  run --timeout <minutes>      Kill agent after this many minutes (default: 30)\n');
     process.stdout.write('  status                       Show loop progress (issues ready/in-progress/done)\n');
     process.stdout.write('  validate                     Validate .quetzrc.yml\n');
@@ -97,24 +97,26 @@ export async function main(): Promise<void> {
         model = args[modelIdx + 1];
       }
 
-      // Parse --thinking-level flag
-      let thinkingLevel: typeof CLAUDE_THINKING_LEVELS[number] | undefined;
-      const thinkingLevelIdx = args.indexOf('--thinking-level');
-      if (thinkingLevelIdx !== -1) {
-        const value = args[thinkingLevelIdx + 1];
+      // Parse --effort flag. Keep --thinking-level as a compatibility alias.
+      let effort: typeof CLAUDE_EFFORT_LEVELS[number] | undefined;
+      const effortIdx = args.indexOf('--effort');
+      const legacyEffortIdx = args.indexOf('--thinking-level');
+      const selectedEffortIdx = effortIdx !== -1 ? effortIdx : legacyEffortIdx;
+      if (selectedEffortIdx !== -1) {
+        const value = args[selectedEffortIdx + 1];
         if (!value) {
           process.stderr.write(
-            `Error: --thinking-level requires a value (${CLAUDE_THINKING_LEVELS.join(', ')}).\n`
+            `Error: --effort requires a value (${CLAUDE_EFFORT_LEVELS.join(', ')}).\n`
           );
           process.exit(EXIT_FAILURE);
         }
-        if (!isClaudeThinkingLevel(value)) {
+        if (!isClaudeEffortLevel(value)) {
           process.stderr.write(
-            `Error: invalid --thinking-level "${value}". Use ${CLAUDE_THINKING_LEVELS.join(', ')}.\n`
+            `Error: invalid --effort "${value}". Use ${CLAUDE_EFFORT_LEVELS.join(', ')}.\n`
           );
           process.exit(EXIT_FAILURE);
         }
-        thinkingLevel = value;
+        effort = value;
       }
 
       // Parse --timeout flag
@@ -132,63 +134,24 @@ export async function main(): Promise<void> {
       const { printLogo } = await import('./display/quetz.js');
       const bus = createBus();
 
-      // TUI mode: render Ink dashboard if TTY
+      // TUI mode: render Rezi dashboard if TTY
       if (process.stdout.isTTY) {
-        const React = require('react');
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { execSync } = require('child_process');
-        const { initInk } = await import('./ui/ink-imports.js');
-        const inkModule = await initInk();
-        const { App } = await import('./ui/App.js');
+        const { mountApp } = await import('./ui/App.js');
 
-        // Gather footer metadata (best-effort — ignore errors)
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const pkg = require('../package.json');
-        const cwd = process.cwd().replace(/\\/g, '/');
-        let branch = '';
-        try {
-          branch = (execSync('git rev-parse --abbrev-ref HEAD', {
-            encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-          }) as string).trim();
-        } catch { /* not a git repo */ }
-
-        // MINGW64 / Git Bash: stdin.isTTY may be false even when the terminal is
-        // interactive. Ink skips setRawMode when isTTY is falsy, so useInput never
-        // fires. Override isTTY and set raw mode manually before render() so Ink
-        // treats stdin as a TTY and enables keypress handling.
-        if (typeof (process.stdin as any).setRawMode === 'function') {
-          if (!process.stdin.isTTY) {
-            Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
-          }
-          try {
-            (process.stdin as any).setRawMode(true);
-            process.stdin.resume();
-          } catch { /* keyboard shortcuts unavailable on this terminal */ }
-        }
 
         // Quit promise: resolves when the user asks to exit from the TUI.
         let resolveQuit!: () => void;
         const quitPromise = new Promise<void>(resolve => { resolveQuit = resolve; });
+        let resolveShutdown!: () => void;
+        const shutdownPromise = new Promise<void>(resolve => { resolveShutdown = resolve; });
 
-        // Enter alternate screen BEFORE render so Ink never writes to the main
-        // screen buffer. If we enter after render(), the first Ink frame lands on
-        // the main screen and is then "saved" — restoring it on alt-screen exit
-        // produces the ghost UI artifacts the user sees.
-        // \x1b[?25l hides the cursor for the entire TUI session: the cursor
-        // jumping to new positions on every Ink render is the primary cause of
-        // visible flicker, especially in the bottom half of the screen.
-        process.stdout.write('\x1b[?1049h\x1b[48;2;10;10;10m\x1b[2J\x1b[H\x1b[?25l');
-
-        const app = inkModule.render(
-          React.createElement(App, { bus, onQuit: resolveQuit, cwd, branch, version: pkg.version }),
-          { exitOnCtrlC: false },
-        );
-
-        // Yield one event-loop tick so React useEffect hooks can register bus
-        // listeners before runLoop starts emitting loop:start / loop:issue_pickup.
-        await new Promise<void>(resolve => setImmediate(resolve));
+        const app = mountApp({ bus, version: pkg.version, onQuit: resolveQuit });
+        await app.ready;
 
         let loopResult: import('./loop.js').LoopResult = { exitCode: 0, reason: 'victory' };
+        let loopTerminalResult: import('./loop.js').LoopResult | null = null;
 
         const exitMessage = (result: import('./loop.js').LoopResult, interrupted: boolean): string => {
           if (interrupted) return 'The serpent withdraws — interrupted by user.\n';
@@ -200,46 +163,55 @@ export async function main(): Promise<void> {
           }
         };
 
-        // cleanupTui: unmount Ink (stops renderer, flushes final sequences to alt
-        // screen), then clear the alt screen and restore the main screen.
-        // Calling unmount() before \x1b[?1049l ensures Ink's own cursor-movement
-        // cleanup lands on the alt screen buffer (discarded on restore) rather
-        // than bleeding onto the main screen.
-        const cleanupTui = (interrupted: boolean) => {
-          app.unmount();
+        let cleaningUp = false;
+        const cleanupTui = async (interrupted: boolean) => {
+          if (cleaningUp) return;
+          cleaningUp = true;
+          await app.unmount();
+          // Restore terminal: show cursor, exit alt screen
           process.stdout.write('\x1b[2J\x1b[H\x1b[0m\x1b[?1049l\x1b[?25h');
           printLogo();
-          process.stdout.write('\n' + exitMessage(loopResult, interrupted));
+          const isInterrupted = interrupted && loopTerminalResult === null;
+          process.stdout.write('\n' + exitMessage(loopResult, isInterrupted));
           process.exit(loopResult.exitCode);
         };
 
-        // Ctrl+C: in raw mode the terminal sends \x03 (ETX) instead of SIGINT,
-        // so a SIGINT handler alone is not enough on MINGW64. We handle SIGINT
-        // here as a belt-and-suspenders measure for non-raw-mode terminals.
-        const onSigint = () => cleanupTui(true);
+        let sigintRequested = false;
+        const onSigint = () => {
+          sigintRequested = true;
+          resolveShutdown();
+        };
         process.once('SIGINT', onSigint);
 
-        // Run the loop. On success, auto-exit. On error, stay alive so the user
-        // can read the highlighted failure before pressing q to quit.
+        // Keep outcome screens mounted until the user explicitly quits so the
+        // final state can be reviewed in the TUI.
         let userQuit = false;
         const exitSignal = new Promise<void>(resolve => {
-          runLoop({ model, thinkingLevel, timeout, localCommits, amend, simulate }, bus)
+          runLoop({ model, effort, timeout, localCommits, amend, simulate }, bus)
             .then(r => {
               loopResult = r;
-              if (r.exitCode === 0) resolve(); // success → auto-exit
-              // error → stay alive; quitPromise drives the exit
+              loopTerminalResult = r;
+              if (r.reason === 'no_issues') resolve();
             })
-            .catch(() => { loopResult = { exitCode: 1, reason: 'error' }; resolve(); });
-          quitPromise.then(() => { userQuit = true; resolve(); });
+            .catch(() => {
+              loopResult = { exitCode: 1, reason: 'error' };
+              loopTerminalResult = loopResult;
+              resolve();
+            });
+          quitPromise.then(() => {
+            userQuit = true;
+            resolveShutdown();
+            resolve();
+          });
         });
 
-        await exitSignal;
+        await Promise.race([exitSignal, shutdownPromise]);
 
         process.off('SIGINT', onSigint);
-        cleanupTui(userQuit);
+        await cleanupTui(userQuit || sigintRequested);
       } else {
         // Non-TUI fallback (piped, no TTY)
-        const result = await runLoop({ model, thinkingLevel, timeout, localCommits, amend, simulate }, bus);
+        const result = await runLoop({ model, effort, timeout, localCommits, amend, simulate }, bus);
         process.exit(result.exitCode);
       }
       break;
