@@ -309,6 +309,7 @@ export function wireState(
         ...s,
         mode: 'victory',
         phase: 'completed',
+        viewingSession: null,
         victoryData: p,
         bgStatus: buildBgStatus(issueId, 'completed', elapsed),
       };
@@ -332,6 +333,7 @@ export function wireState(
         ...s,
         mode: 'failure',
         phase: 'error',
+        viewingSession: null,
         elapsed,
         prNumber: prNumber ?? s.prNumber,
         sessionComplete: issueId

@@ -78,7 +78,7 @@ export const AgentPanel = defineWidget<AgentPanelProps>((props, ctx) => {
   }, 300);
 
   const runningHeaderText = model
-    ? `agent: ${issueId}  |  ${formatModel(model)}  [running]`
+    ? `agent: ${issueId}  |  ${formatModel(model)}${effort ? `  ${effort}` : ''}  [running]`
     : `agent: ${issueId}  |  preparing agent...`;
   const agentHeaderText = sessionComplete
     ? sliceViewportText(`agent: ${issueId}  |  session complete`, 0, Math.max(1, width - 4))

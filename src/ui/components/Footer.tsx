@@ -45,7 +45,7 @@ function controlsText(mode: ScreenMode, focusedPane: FocusPane, hasHistory: bool
       return `${quitHint}  ${versionText}`;
     }
 
-    return `${quitHint}  h history  \u2191\u2193 sessions  enter open  ${versionText}`;
+    return `${quitHint}  \u2191\u2193 sessions  enter open  ${versionText}`;
   }
 
   if (mode === 'victory' || mode === 'failure') {
