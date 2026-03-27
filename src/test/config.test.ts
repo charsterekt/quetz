@@ -57,11 +57,39 @@ describe('loadConfig', () => {
     expect(cfg.github.repo).toBe('myrepo');
     expect(cfg.github.defaultBranch).toBe(DEFAULTS.github.defaultBranch);
     expect(cfg.github.automergeLabel).toBe(DEFAULTS.github.automergeLabel);
+    expect(cfg.agent.provider).toBe('claude');
     expect(cfg.agent.timeout).toBe(DEFAULTS.agent.timeout);
     expect(cfg.poll.interval).toBe(DEFAULTS.poll.interval);
     expect(cfg.poll.mergeTimeout).toBe(DEFAULTS.poll.mergeTimeout);
     expect(cfg.poll.prDetectionTimeout).toBe(DEFAULTS.poll.prDetectionTimeout);
     expect(cfg.display.animations).toBe(DEFAULTS.display.animations);
+  });
+
+  it('loads provider-specific agent config blocks', () => {
+    const yaml = [
+      'github:',
+      '  owner: acme',
+      '  repo: widget',
+      'agent:',
+      '  provider: claude',
+      '  providers:',
+      '    claude:',
+      '      model: opus',
+      '      effort: high',
+      '      settingSources: [user, project]',
+      '    codex:',
+      '      model: gpt-5-codex',
+      '      profile: ci',
+    ].join('\n');
+    fs.writeFileSync(path.join(dir, '.quetzrc.yml'), yaml);
+
+    const cfg = loadConfig(dir);
+    expect(cfg.agent.provider).toBe('claude');
+    expect(cfg.agent.providers.claude.model).toBe('opus');
+    expect(cfg.agent.providers.claude.effort).toBe('high');
+    expect(cfg.agent.providers.claude.settingSources).toEqual(['user', 'project']);
+    expect(cfg.agent.providers.codex.model).toBe('gpt-5-codex');
+    expect(cfg.agent.providers.codex.profile).toBe('ci');
   });
 
   it('honours all explicit config values', () => {

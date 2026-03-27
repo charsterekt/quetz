@@ -399,6 +399,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
           height: bodyRows,
           phase: state.phase,
           issueId: state.agentIssueId,
+          provider: state.agentProvider,
           model: state.agentModel,
           effort: state.agentEffort,
           lines: state.agentLines,

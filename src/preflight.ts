@@ -3,15 +3,31 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { getRemoteUrl, parseOwnerRepo, getDefaultBranch } from './git.js';
+import {
+  AGENT_PROVIDERS,
+  getProviderDescriptor,
+  type AgentProvider,
+} from './provider.js';
+
+export interface ProviderStatus {
+  provider: AgentProvider;
+  installed: boolean;
+  authenticated: boolean;
+  runtimeImplemented: boolean;
+  warnings: string[];
+}
 
 export interface PreflightResult {
   owner: string;
   repo: string;
   defaultBranch: string;
+  providerStatuses: ProviderStatus[];
+  preferredProvider: AgentProvider;
 }
 
 export class PreflightError extends Error {
   readonly exitCode = 3;
+
   constructor(message: string) {
     super(message);
     this.name = 'PreflightError';
@@ -30,72 +46,141 @@ function tryExec(cmd: string): { ok: boolean; output: string } {
   }
 }
 
-/**
- * Returns true if a Claude Code auth token can be found without running inference.
- * Checks (in order):
- *  1. ANTHROPIC_API_KEY environment variable (API-key auth)
- *  2. ANTHROPIC_AUTH_TOKEN environment variable (OAuth token env override)
- *  3. <homedir>/.claude/.credentials.json (OAuth token written by `claude login`)
- *
- * Uses os.homedir() + path.join() so the check is OS-agnostic.
- */
 export function claudeAuthTokenExists(): boolean {
   if (process.env['ANTHROPIC_API_KEY']) return true;
   if (process.env['ANTHROPIC_AUTH_TOKEN']) return true;
-  // os.homedir() returns the platform-appropriate home directory;
-  // path.join() uses the native separator (backslash on Windows, slash elsewhere).
   const credPath = path.join(os.homedir(), '.claude', '.credentials.json');
   return fs.existsSync(credPath);
 }
 
-function checkClaudeCode(): void {
-  const version = tryExec('claude --version');
-  if (!version.ok) {
+function codexAuthTokenExists(): boolean {
+  if (process.env['OPENAI_API_KEY']) return true;
+  if (process.env['CODEX_API_KEY']) return true;
+  const status = tryExec('codex login status');
+  return status.ok;
+}
+
+function isProviderAuthenticated(provider: AgentProvider): boolean {
+  switch (provider) {
+    case 'claude':
+      return claudeAuthTokenExists();
+    case 'codex':
+      return codexAuthTokenExists();
+  }
+}
+
+function getProviderStatuses(): ProviderStatus[] {
+  return AGENT_PROVIDERS.map(provider => {
+    const descriptor = getProviderDescriptor(provider);
+    const installed = tryExec(`${descriptor.cli.command} --version`).ok;
+    const authenticated = installed ? isProviderAuthenticated(provider) : false;
+    const warnings: string[] = [];
+
+    if (installed && !authenticated) {
+      warnings.push(`${descriptor.displayName} is installed but not authenticated.`);
+    }
+    if (installed && authenticated && !descriptor.capabilities.runtimeImplemented) {
+      warnings.push(
+        `${descriptor.displayName} is detected but Quetz runtime support is still tracked separately.`
+      );
+    }
+
+    return {
+      provider,
+      installed,
+      authenticated,
+      runtimeImplemented: descriptor.capabilities.runtimeImplemented,
+      warnings,
+    };
+  });
+}
+
+function assertSupportedProvider(statuses: ProviderStatus[], selectedProvider?: AgentProvider): AgentProvider {
+  const usable = statuses.filter(status =>
+    status.installed && status.authenticated && status.runtimeImplemented
+  );
+  const claudeStatus = statuses.find(status => status.provider === 'claude');
+
+  if (selectedProvider) {
+    const selectedStatus = statuses.find(status => status.provider === selectedProvider);
+    if (!selectedStatus?.installed) {
+      const descriptor = getProviderDescriptor(selectedProvider);
+      throw new PreflightError(
+        `${descriptor.displayName} CLI not found. ${descriptor.cli.installHint}`
+      );
+    }
+    if (!selectedStatus.authenticated) {
+      const descriptor = getProviderDescriptor(selectedProvider);
+      throw new PreflightError(
+        `${descriptor.displayName} is installed but not authenticated. ${descriptor.cli.loginHint}`
+      );
+    }
+    if (!selectedStatus.runtimeImplemented) {
+      const descriptor = getProviderDescriptor(selectedProvider);
+      throw new PreflightError(
+        `${descriptor.displayName} is detected, but Quetz runtime support has not landed yet. Track quetz-88v.`
+      );
+    }
+    return selectedProvider;
+  }
+
+  if (usable.length === 0) {
+    if (claudeStatus && !claudeStatus.installed) {
+      const descriptor = getProviderDescriptor('claude');
+      throw new PreflightError(
+        `${descriptor.displayName} CLI not found. ${descriptor.cli.installHint}`
+      );
+    }
+    if (claudeStatus && claudeStatus.installed && !claudeStatus.authenticated) {
+      const descriptor = getProviderDescriptor('claude');
+      throw new PreflightError(
+        `${descriptor.displayName} is installed but not authenticated. ${descriptor.cli.loginHint}`
+      );
+    }
+
+    const installedButUnauthorized = statuses.filter(status => status.installed && !status.authenticated);
+    if (installedButUnauthorized.length > 0) {
+      const providerNames = installedButUnauthorized
+        .map(status => getProviderDescriptor(status.provider).displayName)
+        .join(', ');
+      throw new PreflightError(
+        `No supported agent CLI is ready. Installed but unauthenticated: ${providerNames}. Authenticate one provider and rerun init.`
+      );
+    }
+
     throw new PreflightError(
-      'Claude Code CLI not found. Install it: https://docs.claude.ai/en/docs/claude-code'
+      `No supported agent CLI found. Install one of: ${AGENT_PROVIDERS.join(', ')}.`
     );
   }
 
-  if (!claudeAuthTokenExists()) {
-    throw new PreflightError(
-      'Claude Code is installed but not authenticated. Run `claude` and complete login.'
-    );
-  }
+  return usable[0].provider;
 }
 
 function checkGitHubCLI(): void {
   const installed = tryExec('gh --version');
   if (!installed.ok) {
-    throw new PreflightError(
-      'GitHub CLI not found. Install it: https://cli.github.com'
-    );
+    throw new PreflightError('GitHub CLI not found. Install it: https://cli.github.com');
   }
 
   const auth = tryExec('gh auth status');
   if (!auth.ok) {
-    throw new PreflightError(
-      'GitHub CLI is not authenticated. Run `gh auth login`.'
-    );
+    throw new PreflightError('GitHub CLI is not authenticated. Run `gh auth login`.');
   }
 }
 
 function checkBeadsCLI(): void {
   const installed = tryExec('bd --version');
   if (!installed.ok) {
-    throw new PreflightError(
-      'Beads CLI not found. Install it: https://github.com/steveyegge/beads'
-    );
+    throw new PreflightError('Beads CLI not found. Install it: https://github.com/steveyegge/beads');
   }
 
   const ready = tryExec('bd ready --json');
   if (!ready.ok) {
-    throw new PreflightError(
-      'Beads is not initialised in this project. Run `bd init`.'
-    );
+    throw new PreflightError('Beads is not initialised in this project. Run `bd init`.');
   }
 }
 
-function checkGitRemote(): PreflightResult {
+function checkGitRemote(): Pick<PreflightResult, 'owner' | 'repo' | 'defaultBranch'> {
   let remoteUrl: string;
   try {
     remoteUrl = getRemoteUrl();
@@ -111,24 +196,21 @@ function checkGitRemote(): PreflightResult {
     ({ owner, repo } = parseOwnerRepo(remoteUrl));
   } catch {
     throw new PreflightError(
-      `Cannot parse owner/repo from git remote: ${remoteUrl}\n` +
-      'Ensure the remote is a GitHub URL (HTTPS or SSH).'
+      `Cannot parse owner/repo from git remote: ${remoteUrl}\nEnsure the remote is a GitHub URL (HTTPS or SSH).`
     );
   }
 
-  const defaultBranch = getDefaultBranch();
-
-  return { owner, repo, defaultBranch };
+  return { owner, repo, defaultBranch: getDefaultBranch() };
 }
 
-/**
- * Run all four preflight checks in order.
- * Any failure throws a PreflightError (exit code 3).
- * On success, returns inferred owner/repo/defaultBranch for config generation.
- */
-export function runPreflight(): PreflightResult {
-  checkClaudeCode();
+export function runPreflight(selectedProvider?: AgentProvider): PreflightResult {
+  const providerStatuses = getProviderStatuses();
+  const preferredProvider = assertSupportedProvider(providerStatuses, selectedProvider);
   checkGitHubCLI();
   checkBeadsCLI();
-  return checkGitRemote();
+  return {
+    ...checkGitRemote(),
+    providerStatuses,
+    preferredProvider,
+  };
 }

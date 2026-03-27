@@ -49,6 +49,9 @@ function controlsText(mode: ScreenMode, focusedPane: FocusPane, hasHistory: bool
   }
 
   if (mode === 'victory' || mode === 'failure') {
+    if (hasHistory) {
+      return `${quitHint}  enter open  esc back  ${versionText}`;
+    }
     return `${quitHint}  ${versionText}`;
   }
 

@@ -109,6 +109,6 @@ describe('Footer', () => {
     const rendered = textMock.mock.calls.map(([content]) => content).join(' ');
     expect(rendered).toContain('\u25c6 all done  |  exit code 0');
     expect(rendered).toContain('\u25cf ci failed  |  pr: #78  |  issue: mock-004  |  exit code 1');
-    expect(rendered).toContain('q quit  \u25c6  v0.5.3');
+    expect(rendered).toContain('q quit  enter open  esc back  \u25c6  v0.5.3');
   });
 });

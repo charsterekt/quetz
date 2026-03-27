@@ -1,58 +1,126 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type {
   Options,
-  SDKMessage,
-  SDKResultMessage,
   SDKPartialAssistantMessage,
+  SDKResultMessage,
   SettingSource,
 } from '@anthropic-ai/claude-agent-sdk';
+import type { ClaudeProviderConfig } from './config.js';
 import type { QuetzBus } from './events.js';
-import type { ClaudeEffortLevel } from './config.js';
+import { getProviderDescriptor, type AgentEffortLevel, type AgentProvider } from './provider.js';
 
 const SIMULATE_ALLOWED_TOOLS = ['Read', 'Glob', 'Grep'];
-const DEFAULT_SETTING_SOURCES: SettingSource[] = ['user', 'project', 'local'];
+const DEFAULT_CLAUDE_SETTING_SOURCES: SettingSource[] = ['user', 'project', 'local'];
 const SIMULATE_SETTING_SOURCES: SettingSource[] = [];
 
-/**
- * Spawn a Claude Code agent via the SDK and wait for it to complete.
- *
- * @param prompt         The prompt string sent to the agent
- * @param cwd            Working directory for the agent
- * @param timeoutMinutes Kill the agent after this many minutes (default 30)
- * @param model          Claude model to use (default: sonnet)
- * @param bus            Optional event bus for streaming output
- * @param effort         Optional Claude effort level override
- * @param simulate       If true, restrict destructive tools (no file writes, git mutations, or GitHub ops)
- * @returns              Resolved exit code (0 = success)
- */
+export interface RunAgentOptions {
+  provider: AgentProvider;
+  prompt: string;
+  cwd: string;
+  timeoutMinutes?: number;
+  model: string;
+  bus?: QuetzBus;
+  effort?: AgentEffortLevel;
+  simulate?: boolean;
+  providerConfig?: ClaudeProviderConfig;
+}
+
+export function runAgent({
+  provider,
+  prompt,
+  cwd,
+  timeoutMinutes = 30,
+  model,
+  bus,
+  effort,
+  simulate = false,
+  providerConfig,
+}: RunAgentOptions): Promise<number> {
+  const descriptor = getProviderDescriptor(provider);
+
+  if (!descriptor.capabilities.runtimeImplemented) {
+    throw new Error(
+      `${descriptor.displayName} runtime support has not landed yet. Track quetz-88v for the concrete adapter work.`
+    );
+  }
+
+  const abortController = new AbortController();
+  const timeoutMs = timeoutMinutes * 60 * 1000;
+  const timer = setTimeout(() => abortController.abort(), timeoutMs);
+
+  switch (provider) {
+    case 'claude':
+      return runClaudeQuery({
+        prompt,
+        cwd,
+        model,
+        bus,
+        effort,
+        simulate,
+        providerConfig,
+        abortController,
+        timer,
+        timeoutMinutes,
+      });
+    case 'codex':
+      throw new Error('Codex runtime support has not landed yet.');
+  }
+}
+
 export function spawnAgent(
   prompt: string,
   cwd: string,
   timeoutMinutes: number = 30,
   model: string = 'sonnet',
   bus?: QuetzBus,
-  effort?: ClaudeEffortLevel,
-  simulate: boolean = false
+  effort?: AgentEffortLevel,
+  simulate: boolean = false,
+  provider: AgentProvider = 'claude',
+  providerConfig?: ClaudeProviderConfig
 ): Promise<number> {
-  const abortController = new AbortController();
-  const timeoutMs = timeoutMinutes * 60 * 1000;
-  const timer = setTimeout(() => abortController.abort(), timeoutMs);
-
-  return runQuery(prompt, cwd, model, abortController, timer, timeoutMinutes, bus, effort, simulate);
+  return runAgent({
+    provider,
+    prompt,
+    cwd,
+    timeoutMinutes,
+    model,
+    bus,
+    effort,
+    simulate,
+    providerConfig,
+  });
 }
 
-async function runQuery(
-  prompt: string,
-  cwd: string,
-  model: string,
-  abortController: AbortController,
-  timer: ReturnType<typeof setTimeout>,
-  timeoutMinutes: number,
-  bus?: QuetzBus,
-  effort?: ClaudeEffortLevel,
-  simulate: boolean = false
-): Promise<number> {
+interface ClaudeQueryOptions {
+  prompt: string;
+  cwd: string;
+  model: string;
+  bus?: QuetzBus;
+  effort?: AgentEffortLevel;
+  simulate: boolean;
+  providerConfig?: ClaudeProviderConfig;
+  abortController: AbortController;
+  timer: ReturnType<typeof setTimeout>;
+  timeoutMinutes: number;
+}
+
+async function runClaudeQuery({
+  prompt,
+  cwd,
+  model,
+  bus,
+  effort,
+  simulate,
+  providerConfig,
+  abortController,
+  timer,
+  timeoutMinutes,
+}: ClaudeQueryOptions): Promise<number> {
   try {
+    const settingSources = simulate
+      ? SIMULATE_SETTING_SOURCES
+      : normalizeClaudeSettingSources(providerConfig?.settingSources);
+
     const options: Options = simulate
       ? {
           cwd,
@@ -60,7 +128,7 @@ async function runQuery(
           abortController,
           permissionMode: 'dontAsk' as const,
           systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const },
-          settingSources: SIMULATE_SETTING_SOURCES,
+          settingSources,
           tools: [...SIMULATE_ALLOWED_TOOLS],
           allowedTools: [...SIMULATE_ALLOWED_TOOLS],
           includePartialMessages: true,
@@ -77,7 +145,7 @@ async function runQuery(
           permissionMode: 'bypassPermissions' as const,
           allowDangerouslySkipPermissions: true,
           systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const },
-          settingSources: DEFAULT_SETTING_SOURCES,
+          settingSources,
           includePartialMessages: true,
           ...(effort ? { effort } : {}),
           stderr: (data: string) => {
@@ -98,12 +166,11 @@ async function runQuery(
         renderStreamEvent((message as SDKPartialAssistantMessage).event, blocks, bus);
       } else if (message.type === 'result') {
         clearTimeout(timer);
-        const res = message as SDKResultMessage;
-        return res.subtype === 'success' && !res.is_error ? 0 : 1;
+        const result = message as SDKResultMessage;
+        return result.subtype === 'success' && !result.is_error ? 0 : 1;
       }
     }
 
-    // Generator ended without a result message
     clearTimeout(timer);
     return 1;
   } catch (err) {
@@ -115,7 +182,14 @@ async function runQuery(
   }
 }
 
-// ── Stream rendering (replaces AgentStreamRenderer) ─────────────────────────
+function normalizeClaudeSettingSources(settingSources?: string[]): SettingSource[] {
+  if (!Array.isArray(settingSources) || settingSources.length === 0) {
+    return [...DEFAULT_CLAUDE_SETTING_SOURCES];
+  }
+  return settingSources.filter((value): value is SettingSource =>
+    value === 'user' || value === 'project' || value === 'local'
+  );
+}
 
 interface BlockState {
   name: string;
@@ -149,8 +223,12 @@ function renderStreamEvent(event: any, blocks: Map<number, BlockState>, bus?: Qu
       const block = blocks.get(event.index);
       if (block) {
         const inputStr = block.inputChunks.join('');
-        let input: Record<string, any> = {};
-        try { input = JSON.parse(inputStr); } catch { /* partial/empty is fine */ }
+        let input: Record<string, unknown> = {};
+        try {
+          input = JSON.parse(inputStr) as Record<string, unknown>;
+        } catch {
+          input = {};
+        }
         const summary = formatToolSummary(block.name, input);
         if (bus) bus.emit('agent:tool_done', { index: event.index, name: block.name, summary });
         else process.stdout.write(`  [${block.name}] ${summary}\n`);
@@ -161,7 +239,7 @@ function renderStreamEvent(event: any, blocks: Map<number, BlockState>, bus?: Qu
   }
 }
 
-function formatToolSummary(name: string, input: Record<string, any>): string {
+function formatToolSummary(name: string, input: Record<string, unknown>): string {
   switch (name) {
     case 'Read':
     case 'Write':
@@ -174,17 +252,17 @@ function formatToolSummary(name: string, input: Record<string, any>): string {
     case 'Grep':
       return `"${truncate(String(input.pattern ?? ''), 40)}"`;
     default: {
-      const firstVal = Object.values(input).find(v => typeof v === 'string');
-      return firstVal ? truncate(String(firstVal), 50) : '';
+      const firstValue = Object.values(input).find(value => typeof value === 'string');
+      return firstValue ? truncate(String(firstValue), 50) : '';
     }
   }
 }
 
-function shortPath(p: string): string {
-  const parts = p.replace(/\\/g, '/').split('/');
+function shortPath(filePath: string): string {
+  const parts = filePath.replace(/\\/g, '/').split('/');
   return parts.slice(-3).join('/');
 }
 
-function truncate(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+function truncate(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max - 3)}...` : value;
 }

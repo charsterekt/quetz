@@ -48,6 +48,7 @@ export interface AppState {
   phase: QuetzPhase;
   agentIssueId: string;
   currentIssueTitle: string;
+  agentProvider: string;
   agentModel: string;
   agentEffort: string;
   agentLines: AgentLine[];
@@ -79,6 +80,7 @@ export const INITIAL_STATE: AppState = {
   phase: 'idle',
   agentIssueId: '',
   currentIssueTitle: '',
+  agentProvider: '',
   agentModel: '',
   agentEffort: '',
   agentLines: [],
@@ -230,6 +232,7 @@ export function wireState(
       issueId: p.id,
       agentIssueId: p.id,
       currentIssueTitle: p.title,
+      agentProvider: '',
       agentModel: '',
       agentEffort: '',
       issueCount: { current: p.iteration, total: p.total },
@@ -255,6 +258,7 @@ export function wireState(
         bgStatus: buildBgStatus(s.issueId, p.phase, s.elapsed),
       };
 
+      if (p.agentProvider) next.agentProvider = p.agentProvider;
       if (p.agentModel) next.agentModel = p.agentModel;
       if (p.agentEffort) next.agentEffort = p.agentEffort;
       if (s.mode !== 'session_detail') {

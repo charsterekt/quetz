@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Provider-neutral agent configuration and runtime descriptors, including shared `provider`, `model`, and `effort` plumbing plus provider-scoped config blocks for Claude and Codex groundwork.
+
+### Changed
+- Quetz loop, CLI, preflight, init flow, and TUI metadata now carry provider-aware labels instead of assuming Claude-specific runtime vocabulary.
+- README and sample config now describe provider selection explicitly.
+
+### Fixed
+- Victory and failure screens now advertise the existing `enter` / `esc` session-detail navigation in the footer instead of leaving it hidden.
+
 ## [0.6.4] - 2026-03-27
 
 ### Removed
