@@ -104,4 +104,45 @@ describe('wireState', () => {
 
     cleanup();
   });
+
+  it('does not perform re-entrant updates for loop:start, issue pickup, and phase events', () => {
+    const bus = createBus();
+    let state = cloneState();
+    let inFlight = false;
+
+    const cleanup = wireState(bus, updater => {
+      if (inFlight) {
+        throw new Error('re-entrant update');
+      }
+
+      inFlight = true;
+      try {
+        state = updater(state);
+      } finally {
+        inFlight = false;
+      }
+    });
+
+    expect(() => {
+      bus.emit('loop:start', { total: 3 });
+      bus.emit('loop:issue_pickup', {
+        id: 'mock-001',
+        title: 'Create mock-output-a.txt',
+        priority: 1,
+        type: 'chore',
+        iteration: 1,
+        total: 3,
+      });
+      bus.emit('loop:phase', { phase: 'agent_running', agentModel: 'sonnet' });
+      bus.emit('loop:phase', { phase: 'pr_polling' });
+    }).not.toThrow();
+
+    expect(state.issueCount).toEqual({ current: 1, total: 3 });
+    expect(state.issueId).toBe('mock-001');
+    expect(state.agentModel).toBe('sonnet');
+    expect(state.mode).toBe('polling');
+    expect(state.logLines).toHaveLength(4);
+
+    cleanup();
+  });
 });

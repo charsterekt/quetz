@@ -1,14 +1,12 @@
-// State bridge: QuetzBus events → Rezi app state (spec §6, §11)
-// Adapted from spec's createSignal pattern to Rezi's app.update() model.
+// State bridge: QuetzBus events -> Rezi app state (spec 6, 11)
+// Adapted from the spec's createSignal pattern to Rezi's app.update() model.
 
-import type { QuetzBus, QuetzPhase, QuetzEvent } from '../events.js';
+import type { QuetzBus, QuetzEvent, QuetzPhase } from '../events.js';
 import { c } from './theme.js';
 
-// ── Screen modes ──────────────────────────────────────────────────
 export type ScreenMode = 'running' | 'polling' | 'session_detail' | 'victory' | 'failure';
 export type FocusPane = 'agent' | 'sessions';
 
-// ── Data types ────────────────────────────────────────────────────
 export interface AgentLine {
   type: 'text' | 'tool';
   content: string;
@@ -39,16 +37,11 @@ export interface SessionCompleteState {
 export type VictoryData = QuetzEvent['loop:victory'];
 export type FailureData = QuetzEvent['loop:failure'];
 
-// ── App state ─────────────────────────────────────────────────────
 export interface AppState {
   mode: ScreenMode;
   focusedPane: FocusPane;
-
-  // Header
   issueCount: { current: number; total: number };
   phase: QuetzPhase;
-
-  // Agent panel
   agentIssueId: string;
   currentIssueTitle: string;
   agentModel: string;
@@ -56,32 +49,20 @@ export interface AppState {
   agentScrollOffset: number;
   agentAutoScroll: boolean;
   sessionComplete: SessionCompleteState | null;
-
-  // Sessions panel
   completedSessions: CompletedSession[];
   selectedSessionIdx: number;
   sessionsScrollOffset: number;
-
-  // Quetz log panel
   logLines: LogLine[];
   logScrollOffset: number;
   logAutoScroll: boolean;
-
-  // Footer
   issueId: string;
   prNumber: number | null;
   elapsed: string;
-
-  // Session detail
   viewingSession: CompletedSession | null;
   sessionLogScrollOffset: number;
   priorMode: ScreenMode;
-
-  // Overlays
   victoryData: VictoryData | null;
   failureData: FailureData | null;
-
-  // Background status
   bgStatus: string;
 }
 
@@ -165,17 +146,27 @@ function buildCompletedSession(
   };
 }
 
-/** Format elapsed seconds as "M:SS" */
 function formatElapsed(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-/**
- * Wire all QuetzBus events to app.update() calls.
- * Returns a cleanup function that removes listeners and clears timers.
- */
+function phaseLogLine(phase: QuetzPhase, elapsedSeconds: number): LogLine | null {
+  switch (phase) {
+    case 'agent_running':
+      return { icon: '.', color: c.dim, text: 'AGENT running' };
+    case 'completed':
+      return { icon: 'v', color: c.brand, text: `AGENT done  (${formatElapsed(elapsedSeconds)})` };
+    case 'pr_detecting':
+      return { icon: '?', color: c.dim, text: 'PR search...' };
+    case 'pr_polling':
+      return { icon: '*', color: c.accent, text: 'MERGE polling...' };
+    default:
+      return null;
+  }
+}
+
 export function wireState(
   bus: QuetzBus,
   update: (fn: (prev: AppState) => AppState) => void,
@@ -202,23 +193,28 @@ export function wireState(
   };
 
   const stopElapsedTimer = () => {
-    if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
-  };
-
-  const addLogLine = (line: LogLine) => {
-    update(s => ({ ...s, logLines: [...s.logLines, line] }));
+    if (elapsedTimer) {
+      clearInterval(elapsedTimer);
+      elapsedTimer = null;
+    }
   };
 
   const onStart = (p: QuetzEvent['loop:start']) => {
-    addLogLine({ icon: '▶', color: c.brand, text: `START ${p.total} issues` });
-    update(s => ({ ...s, issueCount: { current: 0, total: p.total } }));
+    update(s => ({
+      ...s,
+      logLines: [...s.logLines, { icon: '>', color: c.brand, text: `START ${p.total} issues` }],
+      issueCount: { current: 0, total: p.total },
+    }));
   };
 
   const onPickup = (p: QuetzEvent['loop:issue_pickup']) => {
-    addLogLine({ icon: '→', color: c.cyan, text: `PICKUP ${p.id}  ${p.title}  [P${p.priority} ${p.type}]` });
     startElapsedTimer();
     update(s => ({
       ...s,
+      logLines: [
+        ...s.logLines,
+        { icon: '>', color: c.cyan, text: `PICKUP ${p.id}  ${p.title}  [P${p.priority} ${p.type}]` },
+      ],
       issueId: p.id,
       agentIssueId: p.id,
       currentIssueTitle: p.title,
@@ -234,40 +230,41 @@ export function wireState(
   };
 
   const onPhase = (p: QuetzEvent['loop:phase']) => {
-    if (p.phase === 'agent_running') {
-      addLogLine({ icon: '·', color: c.dim, text: 'AGENT running' });
-    } else if (p.phase === 'completed') {
-      addLogLine({ icon: '✓', color: c.brand, text: `AGENT done  (${formatElapsed(elapsedSeconds)})` });
-    } else if (p.phase === 'pr_detecting') {
-      addLogLine({ icon: '🔍', color: c.dim, text: 'PR search...' });
-    } else if (p.phase === 'pr_polling') {
-      addLogLine({ icon: '⏳', color: c.accent, text: 'MERGE polling...' });
-    }
+    const logLine = phaseLogLine(p.phase, elapsedSeconds);
     update(s => {
       const next: Partial<AppState> = {
         phase: p.phase,
         bgStatus: buildBgStatus(s.issueId, p.phase, s.elapsed),
       };
+
       if (p.agentModel) next.agentModel = p.agentModel;
       if (s.mode !== 'session_detail') {
         if (p.phase === 'pr_polling') next.mode = 'polling';
         if (p.phase === 'agent_running') next.mode = 'running';
       }
-      return { ...s, ...next };
+
+      return {
+        ...s,
+        ...(logLine ? { logLines: [...s.logLines, logLine] } : {}),
+        ...next,
+      };
     });
   };
 
   const onText = (p: QuetzEvent['agent:text']) => {
     update(s => ({
       ...s,
-      agentLines: [...s.agentLines.slice(-(MAX_AGENT_LINES - 1)), { type: 'text' as const, content: p.text }],
+      agentLines: [...s.agentLines.slice(-(MAX_AGENT_LINES - 1)), { type: 'text', content: p.text }],
     }));
   };
 
   const onToolDone = (p: QuetzEvent['agent:tool_done']) => {
     update(s => ({
       ...s,
-      agentLines: [...s.agentLines.slice(-(MAX_AGENT_LINES - 1)), { type: 'tool' as const, content: p.summary, toolName: p.name }],
+      agentLines: [
+        ...s.agentLines.slice(-(MAX_AGENT_LINES - 1)),
+        { type: 'tool', content: p.summary, toolName: p.name },
+      ],
     }));
   };
 
@@ -327,7 +324,6 @@ export function wireState(
     });
   };
 
-  // Register all listeners
   bus.on('loop:start', onStart);
   bus.on('loop:issue_pickup', onPickup);
   bus.on('loop:phase', onPhase);
@@ -340,7 +336,6 @@ export function wireState(
   bus.on('loop:commit_landed', onCommitLanded);
   bus.on('loop:amend_complete', onAmendComplete);
 
-  // Return cleanup
   return () => {
     stopElapsedTimer();
     bus.off('loop:start', onStart);

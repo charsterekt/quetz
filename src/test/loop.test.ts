@@ -743,6 +743,24 @@ describe('runLoop simulate', () => {
     expect(mergedHandler).toHaveBeenCalled();
   }, 15000);
 
+  it('simulate does not switch away from the branch it launched on when no temp branch was created', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockGetCurrentBranch
+      .mockReturnValueOnce('quetz-7kh/rezi-migration')
+      .mockReturnValueOnce('quetz-7kh/rezi-migration');
+
+    const bus = createBus();
+    const result = await runLoop({ simulate: true }, bus);
+
+    expect(result.exitCode).toBe(0);
+    expect(mockCheckoutDefault).not.toHaveBeenCalled();
+    expect(mockDeleteBranch).not.toHaveBeenCalled();
+  }, 15000);
+
   it('simulate+localCommits: does not call createOctokit', async () => {
     mockGetReadyIssues.mockReturnValue([]);
     mockGetCurrentBranch.mockReturnValue('main');

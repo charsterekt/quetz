@@ -83,10 +83,11 @@ describe('main', () => {
   it('launches the TUI on small terminals without warning or blocking', async () => {
     const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
     const unmount = vi.fn();
+    const ready = Promise.resolve();
 
     mockCreateBus.mockReturnValue(bus as never);
     mockRunLoop.mockResolvedValue({ exitCode: 0 } as never);
-    mockMountApp.mockReturnValue({ unmount } as never);
+    mockMountApp.mockReturnValue({ ready, unmount } as never);
 
     process.argv = ['node', 'quetz', 'run'];
     setStdoutSize(true, 80, 24);

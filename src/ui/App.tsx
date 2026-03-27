@@ -26,6 +26,7 @@ export interface MountOptions {
 }
 
 export interface AppHandle {
+  ready: Promise<void>;
   unmount: () => Promise<void>;
 }
 
@@ -225,6 +226,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
   let unmounted = false;
 
   return {
+    ready: startPromise,
     unmount: async () => {
       if (unmounted) return;
       unmounted = true;

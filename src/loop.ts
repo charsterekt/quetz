@@ -130,6 +130,7 @@ export async function runLoop(
   const localMode = localCommits || amend; // no GitHub API needed
   const octokit = (localMode || simulate) ? null : createOctokit();
   const runMode: 'pr' | 'commit' | 'amend' = amend ? 'amend' : (localCommits ? 'commit' : 'pr');
+  const simulateLaunchBranch = simulate ? getCurrentBranch(projectRoot) : '';
   if (bus) bus.emit('loop:mode', { mode: runMode });
   let iteration = 0;
   const loopStart = Date.now();
@@ -363,7 +364,11 @@ export async function runLoop(
 
         // Cleanup: return to default branch and delete agent's temp branch
         const agentBranch = getCurrentBranch(projectRoot);
-        if (agentBranch && agentBranch !== config.github.defaultBranch) {
+        if (
+          agentBranch &&
+          agentBranch !== config.github.defaultBranch &&
+          agentBranch !== simulateLaunchBranch
+        ) {
           try {
             checkoutDefault(config.github.defaultBranch, projectRoot);
             deleteBranch(agentBranch, projectRoot);

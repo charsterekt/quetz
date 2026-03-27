@@ -144,9 +144,7 @@ export async function main(): Promise<void> {
         const quitPromise = new Promise<void>(resolve => { resolveQuit = resolve; });
 
         const app = mountApp({ bus, version: pkg.version, onQuit: resolveQuit });
-
-        // Yield one event-loop tick so bus listeners register before runLoop emits.
-        await new Promise<void>(resolve => setImmediate(resolve));
+        await app.ready;
 
         let loopResult: import('./loop.js').LoopResult = { exitCode: 0, reason: 'victory' };
 
