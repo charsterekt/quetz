@@ -119,6 +119,10 @@ function currentSessionSelection(state: AppState): number {
     : state.completedSessions.length - 1;
 }
 
+function isOutcomeMode(mode: AppState['mode']): boolean {
+  return mode === 'victory' || mode === 'failure';
+}
+
 export interface MountOptions {
   bus: QuetzBus;
   version: string;
@@ -146,6 +150,9 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
       if (s.mode === 'session_detail') {
         return { ...s, sessionLogScrollOffset: Math.max(0, s.sessionLogScrollOffset - 3) };
       }
+      if (isOutcomeMode(s.mode)) {
+        return s;
+      }
       if (s.completedSessions.length > 0) {
         const newIdx = s.selectedSessionIdx <= 0
           ? s.completedSessions.length - 1
@@ -160,6 +167,9 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
       if (s.mode === 'session_detail') {
         const maxOffset = Math.max(0, (s.viewingSession?.lines.length ?? 0) - detailVisibleRows(termRows));
         return { ...s, sessionLogScrollOffset: clampScrollOffset(s.sessionLogScrollOffset + 3, maxOffset) };
+      }
+      if (isOutcomeMode(s.mode)) {
+        return s;
       }
       if (s.completedSessions.length > 0) {
         const newIdx = s.selectedSessionIdx < 0
@@ -190,6 +200,9 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     }),
 
     enter: () => app.update(s => {
+      if (isOutcomeMode(s.mode)) {
+        return s;
+      }
       if (
         s.mode !== 'session_detail' &&
         s.selectedSessionIdx >= 0 &&
@@ -215,6 +228,10 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
           viewingSession: null,
           focusedPane: 'sessions',
         }, termRows);
+      }
+
+      if (isOutcomeMode(s.mode)) {
+        return s;
       }
 
       if (s.completedSessions.length === 0) return s;
@@ -248,11 +265,14 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
           focusedPane: 'sessions',
         }, process.stdout.rows ?? 40);
       }
+      if (isOutcomeMode(s.mode)) {
+        return s;
+      }
       return { ...s, focusedPane: 'agent', selectedSessionIdx: -1 };
     }),
 
     right: () => app.update(s => {
-      if (s.mode === 'session_detail' || s.completedSessions.length === 0) return s;
+      if (s.mode === 'session_detail' || isOutcomeMode(s.mode) || s.completedSessions.length === 0) return s;
       return syncSessionViewport({
         ...s,
         focusedPane: 'sessions',
@@ -263,7 +283,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     }),
 
     left: () => app.update(s => {
-      if (s.mode === 'session_detail') return s;
+      if (s.mode === 'session_detail' || isOutcomeMode(s.mode)) return s;
       return { ...s, focusedPane: 'agent' };
     }),
 

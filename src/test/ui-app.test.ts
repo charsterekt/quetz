@@ -179,7 +179,7 @@ describe('mountApp', () => {
     expect(state.viewingSession).toBeNull();
   });
 
-  it('uses h to open session detail from outcome screens', () => {
+  it('keeps outcome screens static when history shortcuts are pressed', () => {
     const bus = createBus();
     let state = makeState({
       mode: 'failure',
@@ -202,15 +202,25 @@ describe('mountApp', () => {
 
     void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
 
+    bindings.down();
+    expect(state.selectedSessionIdx).toBe(-1);
+    expect(state.mode).toBe('failure');
+
+    bindings.up();
+    expect(state.selectedSessionIdx).toBe(-1);
+    expect(state.mode).toBe('failure');
+
     bindings.h();
-    expect(state.mode).toBe('session_detail');
-    expect(state.priorMode).toBe('failure');
-    expect(state.viewingSession?.id).toBe('bd-9');
+    expect(state.mode).toBe('failure');
+    expect(state.viewingSession).toBeNull();
+
+    bindings.enter();
+    expect(state.mode).toBe('failure');
+    expect(state.viewingSession).toBeNull();
 
     bindings.escape();
-    expect(state.mode).toBe('failure');
-    expect(state.focusedPane).toBe('sessions');
-    expect(state.viewingSession).toBeNull();
+    expect(state.focusedPane).toBe('agent');
+    expect(state.selectedSessionIdx).toBe(-1);
   });
 
   it('keeps the selected session visible while scrolling through a long rail', () => {
