@@ -49,14 +49,14 @@ export const Header = defineWidget<HeaderProps>((props, ctx) => {
 
   const rightCol =
     mode === 'session_detail'
-      ? ui.column({ items: 'end', gap: 1 }, [
+      ? ui.column({ items: 'end', gap: 0 }, [
           ui.text('[ viewing session ]', { style: { fg: fg(c.cyan) } }),
-          ui.row({ gap: 1, items: 'center' }, [
+          ui.row({ gap: 0, items: 'center' }, [
             ui.box({ style: { bg: rgb(245, 158, 11) }, width: 1, height: 1 }),
             ui.text(bgStatus, { style: { fg: fg(c.accent) } }),
           ]),
         ])
-      : ui.column({ items: 'end', gap: 1 }, [
+      : ui.column({ items: 'end', gap: 0 }, [
           ui.row({ items: 'center' }, [
             ui.text(snakeHead(mode, frame), { style: { fg: fg(c.brand) } }),
             ...(mode === 'failure'
@@ -78,10 +78,10 @@ export const Header = defineWidget<HeaderProps>((props, ctx) => {
       borderBottom: true,
       borderStyle: { fg: fg(c.border) },
       style: { bg: headerBg },
-      px: 3,
-      py: 1,
+      px: 2,
+      py: 0,
       width: 'full',
     },
-    [ui.row({ justify: 'between', width: 'full', items: 'center' }, [logoCol, rightCol])]
+    [ui.row({ justify: 'between', width: 'full', items: 'start' }, [logoCol, rightCol])]
   );
 });
