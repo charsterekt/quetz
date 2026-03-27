@@ -21,6 +21,12 @@ Dependencies (already resolved):
 {{/if}}
 
 Your task:
+{{#if simulate}}
+1. This is Quetz simulate mode. Keep the session strictly read-only.
+2. Do not modify files, git state, GitHub state, issue tracker state, or any user/project settings.
+3. Use read-only investigation tools only, then summarize what you would change in a real run.
+4. Do not ask for confirmation. Finish autonomously without attempting mutations.
+{{else}}
 1. Claim this issue: bd update {{issue.id}} --claim
 2. Review the project spec and relevant code to understand context.
 3. Create a new branch for this work.
@@ -44,7 +50,8 @@ Do NOT push. Do NOT open a PR.
 8. Open a pull request with the "{{automergeLabel}}" label.
 9. Close the issue: bd close {{issue.id}} --reason "Completed — PR raised"
 {{/if}}
-Do not ask for confirmation. Complete all steps autonomously.`;
+Do not ask for confirmation. Complete all steps autonomously.
+{{/if}}`;
 
 export function assemblePrompt(
   issue: BeadsIssue,
@@ -52,7 +59,8 @@ export function assemblePrompt(
   config: QuetzConfig,
   localCommits: boolean = false,
   amend: boolean = false,
-  isFirstIssue: boolean = true
+  isFirstIssue: boolean = true,
+  simulate: boolean = false,
 ): string {
   const templateSource = config.agent.prompt ?? DEFAULT_TEMPLATE;
   const template = Handlebars.compile(templateSource, { noEscape: true });
@@ -75,5 +83,6 @@ export function assemblePrompt(
     localCommits,
     amend,
     isFirstIssue,
+    simulate,
   });
 }

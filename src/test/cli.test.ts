@@ -98,7 +98,7 @@ describe('main', () => {
     expect(mockRunLoop).toHaveBeenCalledWith(
       {
         model: undefined,
-        thinkingLevel: undefined,
+        effort: undefined,
         timeout: undefined,
         localCommits: false,
         amend: false,
@@ -115,33 +115,51 @@ describe('main', () => {
     expect(stderrOutput).not.toContain('below recommended');
   });
 
-  it('parses --thinking-level and forwards it to runLoop', async () => {
+  it('parses --effort and forwards it to runLoop', async () => {
     const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
     mockCreateBus.mockReturnValue(bus as never);
     mockRunLoop.mockResolvedValue({ exitCode: 0 } as never);
 
-    process.argv = ['node', 'quetz', 'run', '--thinking-level', 'medium'];
+    process.argv = ['node', 'quetz', 'run', '--effort', 'medium'];
     setStdoutSize(false, 120, 40);
 
     await expect(main()).rejects.toMatchObject({ code: 0 });
 
     expect(mockRunLoop).toHaveBeenCalledWith(
       expect.objectContaining({
-        thinkingLevel: 'medium',
+        effort: 'medium',
       }),
       bus,
     );
   });
 
-  it('fails fast on an invalid --thinking-level value', async () => {
-    process.argv = ['node', 'quetz', 'run', '--thinking-level', 'turbo'];
+  it('fails fast on an invalid --effort value', async () => {
+    process.argv = ['node', 'quetz', 'run', '--effort', 'turbo'];
 
     await expect(main()).rejects.toMatchObject({ code: 1 });
 
     const stderrOutput = stderrSpy.mock.calls
       .map((call: Parameters<typeof process.stderr.write>) => String(call[0]))
       .join('');
-    expect(stderrOutput).toContain('invalid --thinking-level');
+    expect(stderrOutput).toContain('invalid --effort');
     expect(mockRunLoop).not.toHaveBeenCalled();
+  });
+
+  it('still accepts --thinking-level as a compatibility alias', async () => {
+    const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
+    mockCreateBus.mockReturnValue(bus as never);
+    mockRunLoop.mockResolvedValue({ exitCode: 0 } as never);
+
+    process.argv = ['node', 'quetz', 'run', '--thinking-level', 'high'];
+    setStdoutSize(false, 120, 40);
+
+    await expect(main()).rejects.toMatchObject({ code: 0 });
+
+    expect(mockRunLoop).toHaveBeenCalledWith(
+      expect.objectContaining({
+        effort: 'high',
+      }),
+      bus,
+    );
   });
 });

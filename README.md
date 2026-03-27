@@ -96,7 +96,7 @@ Start the dev loop. Runs until all issues are resolved or a failure occurs. Comp
 | Flag | Default | Description |
 |---|---|---|
 | `--model <model>` | `sonnet` | Override agent model (e.g. `haiku`, `sonnet`, `opus`) |
-| `--thinking-level <level>` | config | Override Claude effort level (`low`, `medium`, `high`, `max`) |
+| `--effort <level>` | config | Override Claude effort level (`low`, `medium`, `high`, `max`) |
 | `--timeout <minutes>` | `30` | Kill agent if it runs longer than this |
 | `--local-commits` | — | Skip PR lifecycle; verify local commits only |
 | `--amend` | — | Accumulate all issue work into a single rolling commit (no PR) |
@@ -173,7 +173,7 @@ github:
 agent:
   timeout: 30               # minutes before killing the agent
   model: "sonnet"
-  thinkingLevel: "medium"   # low|medium|high|max
+  effort: "medium"         # low|medium|high|max
 
 poll:
   interval: 30              # seconds between merge-status checks
@@ -184,7 +184,7 @@ poll:
 Runtime overrides:
 
 ```bash
-quetz run --model haiku --thinking-level low --timeout 60
+quetz run --model haiku --effort low --timeout 60
 ```
 
 ### GitHub Actions for automerge

@@ -2,9 +2,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
-export const CLAUDE_THINKING_LEVELS = ['low', 'medium', 'high', 'max'] as const;
+export const CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'max'] as const;
 
-export type ClaudeThinkingLevel = (typeof CLAUDE_THINKING_LEVELS)[number];
+export type ClaudeEffortLevel = (typeof CLAUDE_EFFORT_LEVELS)[number];
+export type ClaudeThinkingLevel = ClaudeEffortLevel;
+export const CLAUDE_THINKING_LEVELS = CLAUDE_EFFORT_LEVELS;
 
 export interface QuetzConfig {
   github: {
@@ -16,7 +18,7 @@ export interface QuetzConfig {
   agent: {
     timeout: number;
     model?: string;
-    thinkingLevel?: ClaudeThinkingLevel;
+    effort?: ClaudeEffortLevel;
     prompt?: string;
   };
   poll: {
@@ -68,9 +70,11 @@ export class ConfigError extends Error {
   }
 }
 
-export function isClaudeThinkingLevel(value: unknown): value is ClaudeThinkingLevel {
-  return typeof value === 'string' && CLAUDE_THINKING_LEVELS.includes(value as ClaudeThinkingLevel);
+export function isClaudeEffortLevel(value: unknown): value is ClaudeEffortLevel {
+  return typeof value === 'string' && CLAUDE_EFFORT_LEVELS.includes(value as ClaudeEffortLevel);
 }
+
+export const isClaudeThinkingLevel = isClaudeEffortLevel;
 
 export function loadConfig(projectRoot: string = process.cwd()): QuetzConfig {
   const configPath = path.join(projectRoot, CONFIG_FILE);
@@ -119,11 +123,11 @@ function validateAndMerge(raw: unknown): QuetzConfig {
   const agent = (obj['agent'] as Record<string, unknown> | undefined) ?? {};
   const poll = (obj['poll'] as Record<string, unknown> | undefined) ?? {};
   const display = (obj['display'] as Record<string, unknown> | undefined) ?? {};
-  const thinkingLevel = agent['thinkingLevel'];
+  const effort = agent['effort'] ?? agent['thinkingLevel'];
 
-  if (thinkingLevel !== undefined && !isClaudeThinkingLevel(thinkingLevel)) {
+  if (effort !== undefined && !isClaudeEffortLevel(effort)) {
     throw new ConfigError(
-      `${CONFIG_FILE}: "agent.thinkingLevel" must be one of ${CLAUDE_THINKING_LEVELS.join(', ')}.`
+      `${CONFIG_FILE}: "agent.effort" must be one of ${CLAUDE_EFFORT_LEVELS.join(', ')}.`
     );
   }
 
@@ -149,7 +153,7 @@ function validateAndMerge(raw: unknown): QuetzConfig {
         typeof agent['model'] === 'string'
           ? agent['model']
           : DEFAULTS.agent.model,
-      thinkingLevel: thinkingLevel as ClaudeThinkingLevel | undefined,
+      effort: effort as ClaudeEffortLevel | undefined,
       prompt:
         typeof agent['prompt'] === 'string' ? agent['prompt'] : undefined,
     },

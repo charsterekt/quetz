@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { CLAUDE_THINKING_LEVELS, isClaudeThinkingLevel } from './config.js';
+import { CLAUDE_EFFORT_LEVELS, isClaudeEffortLevel } from './config.js';
 
 // Exit codes per spec section 7.4
 export const EXIT_SUCCESS = 0;
@@ -31,7 +31,7 @@ export async function main(): Promise<void> {
     process.stdout.write('  run --simulate --local-commits  Simulate with fake commits (no PRs)\n');
     process.stdout.write('  run --simulate --amend       Simulate with fake amend commits\n');
     process.stdout.write('  run --model <model>          Override agent model (e.g. haiku, sonnet, opus)\n');
-    process.stdout.write(`  run --thinking-level <level> Override Claude effort (${CLAUDE_THINKING_LEVELS.join('|')})\n`);
+    process.stdout.write(`  run --effort <level>         Override Claude effort (${CLAUDE_EFFORT_LEVELS.join('|')})\n`);
     process.stdout.write('  run --timeout <minutes>      Kill agent after this many minutes (default: 30)\n');
     process.stdout.write('  status                       Show loop progress (issues ready/in-progress/done)\n');
     process.stdout.write('  validate                     Validate .quetzrc.yml\n');
@@ -97,24 +97,26 @@ export async function main(): Promise<void> {
         model = args[modelIdx + 1];
       }
 
-      // Parse --thinking-level flag
-      let thinkingLevel: typeof CLAUDE_THINKING_LEVELS[number] | undefined;
-      const thinkingLevelIdx = args.indexOf('--thinking-level');
-      if (thinkingLevelIdx !== -1) {
-        const value = args[thinkingLevelIdx + 1];
+      // Parse --effort flag. Keep --thinking-level as a compatibility alias.
+      let effort: typeof CLAUDE_EFFORT_LEVELS[number] | undefined;
+      const effortIdx = args.indexOf('--effort');
+      const legacyEffortIdx = args.indexOf('--thinking-level');
+      const selectedEffortIdx = effortIdx !== -1 ? effortIdx : legacyEffortIdx;
+      if (selectedEffortIdx !== -1) {
+        const value = args[selectedEffortIdx + 1];
         if (!value) {
           process.stderr.write(
-            `Error: --thinking-level requires a value (${CLAUDE_THINKING_LEVELS.join(', ')}).\n`
+            `Error: --effort requires a value (${CLAUDE_EFFORT_LEVELS.join(', ')}).\n`
           );
           process.exit(EXIT_FAILURE);
         }
-        if (!isClaudeThinkingLevel(value)) {
+        if (!isClaudeEffortLevel(value)) {
           process.stderr.write(
-            `Error: invalid --thinking-level "${value}". Use ${CLAUDE_THINKING_LEVELS.join(', ')}.\n`
+            `Error: invalid --effort "${value}". Use ${CLAUDE_EFFORT_LEVELS.join(', ')}.\n`
           );
           process.exit(EXIT_FAILURE);
         }
-        thinkingLevel = value;
+        effort = value;
       }
 
       // Parse --timeout flag
@@ -177,7 +179,7 @@ export async function main(): Promise<void> {
         // can read the highlighted failure before pressing q to quit.
         let userQuit = false;
         const exitSignal = new Promise<void>(resolve => {
-          runLoop({ model, thinkingLevel, timeout, localCommits, amend, simulate }, bus)
+          runLoop({ model, effort, timeout, localCommits, amend, simulate }, bus)
             .then(r => {
               loopResult = r;
               if (r.exitCode === 0) resolve();
@@ -192,7 +194,7 @@ export async function main(): Promise<void> {
         await cleanupTui(userQuit);
       } else {
         // Non-TUI fallback (piped, no TTY)
-        const result = await runLoop({ model, thinkingLevel, timeout, localCommits, amend, simulate }, bus);
+        const result = await runLoop({ model, effort, timeout, localCommits, amend, simulate }, bus);
         process.exit(result.exitCode);
       }
       break;

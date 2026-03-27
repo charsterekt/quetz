@@ -116,4 +116,11 @@ describe('assemblePrompt', () => {
     expect(prompt).toContain('git commit --amend --no-edit');
     expect(prompt).not.toContain('Stage and commit your work');
   });
+  it('uses read-only instructions in simulate mode', () => {
+    const prompt = assemblePrompt(baseIssue, '', baseConfig, false, false, true, true);
+    expect(prompt).toContain('strictly read-only');
+    expect(prompt).toContain('Do not modify files, git state, GitHub state');
+    expect(prompt).not.toContain('Claim this issue');
+    expect(prompt).not.toContain('Push your branch to origin');
+  });
 });
