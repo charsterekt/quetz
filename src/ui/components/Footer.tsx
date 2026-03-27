@@ -1,6 +1,3 @@
-// Footer component — spec §7.7
-// Bottom status bar for Screens 1 & 2 (running / polling)
-
 import { ui, rgb } from '@rezi-ui/core';
 import { c, hexToRgb } from '../theme.js';
 import type { QuetzPhase } from '../../events.js';
@@ -11,17 +8,17 @@ function fg(hex: string) {
 }
 
 const PHASE_LABELS: Record<QuetzPhase, string> = {
-  agent_running:     'agent running',
-  pr_detecting:      'pr detecting',
-  pr_polling:        'waiting for merge',
-  git_reset:         'git reset',
-  assembling:        'assembling',
-  fetching:          'fetching',
-  commit_verifying:  'verifying',
-  amend_verifying:   'verifying',
-  completed:         'done',
-  error:             'failed',
-  idle:              '',
+  agent_running: 'agent running',
+  pr_detecting: 'pr detecting',
+  pr_polling: 'waiting for merge',
+  git_reset: 'git reset',
+  assembling: 'assembling',
+  fetching: 'fetching',
+  commit_verifying: 'verifying',
+  amend_verifying: 'verifying',
+  completed: 'done',
+  error: 'failed',
+  idle: '',
 };
 
 interface FooterProps {
@@ -35,12 +32,12 @@ interface FooterProps {
 
 export function Footer({ phase, issueId, issueCount, prNumber, elapsed, version }: FooterProps) {
   const leftColor =
-    phase === 'error'      ? fg(c.error)  :
-    phase === 'pr_polling' ? fg(c.accent) : fg(c.brand);
+    phase === 'error' ? fg(c.error) :
+    phase === 'pr_polling' ? fg(c.accent) :
+    fg(c.brand);
 
   const prStr = prNumber != null ? `pr: #${prNumber}` : 'pr: ---';
   const prColor = prNumber != null ? fg(c.text) : fg(c.muted);
-
   const phaseLabel = PHASE_LABELS[phase] ?? phase;
   const leftPrefix = `◆ issue ${issueCount.current}/${issueCount.total}  |  ${issueId}  |  ${phaseLabel}  |  `;
   const leftSuffix = `  |  ${elapsed}`;

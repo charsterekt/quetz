@@ -1,7 +1,6 @@
-// Header component — spec §7.1
-// Block-pixel logo + animated snake + counter (or session context for session_detail mode)
+// Header component aligned to the current quetz.pen design.
 
-import { ui, rgb, defineWidget, useInterval } from '@rezi-ui/core';
+import { defineWidget, ui, rgb, useInterval } from '@rezi-ui/core';
 import { LOGO_LINES, LOGO_SUBTITLE } from '../logo.js';
 import { c, hexToRgb } from '../theme.js';
 import {
@@ -19,7 +18,7 @@ function fg(hex: string) {
   return rgb(r, g, b);
 }
 
-const headerBg = rgb(15, 15, 15); // #0F0F0F
+const headerBg = rgb(15, 15, 15);
 
 interface HeaderProps {
   mode: ScreenMode;
@@ -31,7 +30,6 @@ interface HeaderProps {
 
 export const Header = defineWidget<HeaderProps>((props, ctx) => {
   const { mode, issueCount, bgStatus } = props;
-
   const [frameIdx, setFrameIdx] = ctx.useState(0);
 
   useInterval(ctx, () => {
@@ -42,21 +40,19 @@ export const Header = defineWidget<HeaderProps>((props, ctx) => {
 
   const frame = SNAKE_FRAMES[frameIdx % SNAKE_FRAMES.length];
 
-  // Left column: logo + subtitle
-  const logoCol = ui.column({ pt: 2 }, [
-    ...LOGO_LINES.map(line =>
-      ui.text(line, { style: { fg: fg(c.logo) } })
+  const logoCol = ui.column({ gap: 0 }, [
+    ...LOGO_LINES.map((line, index) =>
+      ui.text(line, { key: String(index), style: { fg: fg(c.logo) } })
     ),
     ui.text(LOGO_SUBTITLE, { style: { fg: fg(c.muted) } }),
   ]);
 
-  // Right column: session_detail vs snake+counter
   const rightCol =
     mode === 'session_detail'
       ? ui.column({ items: 'end', gap: 1 }, [
           ui.text('[ viewing session ]', { style: { fg: fg(c.cyan) } }),
           ui.row({ gap: 1, items: 'center' }, [
-            ui.box({ style: { bg: fg(c.accent) }, width: 1, height: 1 }),
+            ui.box({ style: { bg: rgb(245, 158, 11) }, width: 1, height: 1 }),
             ui.text(bgStatus, { style: { fg: fg(c.accent) } }),
           ]),
         ])
@@ -83,13 +79,9 @@ export const Header = defineWidget<HeaderProps>((props, ctx) => {
       borderStyle: { fg: fg(c.border) },
       style: { bg: headerBg },
       px: 2,
+      py: 0,
       width: 'full',
     },
-    [
-      ui.row({ justify: 'between', width: 'full', items: 'center' }, [
-        logoCol,
-        rightCol,
-      ]),
-    ]
+    [ui.row({ justify: 'between', width: 'full', items: 'center' }, [logoCol, rightCol])]
   );
 });

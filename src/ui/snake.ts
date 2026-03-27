@@ -1,4 +1,3 @@
-// Snake animation helpers — spec §7.1
 import { c } from './theme.js';
 import type { ScreenMode } from './state.js';
 

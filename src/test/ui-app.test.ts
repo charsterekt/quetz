@@ -4,10 +4,15 @@ import { createBus } from '../events.js';
 import type { AppState, CompletedSession } from '../ui/state.js';
 import { INITIAL_STATE } from '../ui/state.js';
 import { mountApp } from '../ui/App.js';
+import { SessionsPanel } from '../ui/components/SessionsPanel.js';
+import { LogPanel } from '../ui/components/LogPanel.js';
 
 const { mockCreateNodeApp } = vi.hoisted(() => ({
   mockCreateNodeApp: vi.fn(),
 }));
+
+const mockSessionsPanel = vi.mocked(SessionsPanel);
+const mockLogPanel = vi.mocked(LogPanel);
 
 vi.mock('@rezi-ui/node', () => ({
   createNodeApp: mockCreateNodeApp,
@@ -125,5 +130,38 @@ describe('mountApp', () => {
 
     bindings.left();
     expect(state.focusedPane).toBe('agent');
+  });
+
+  it('renders both the sessions panel and quetz log in running mode', () => {
+    const bus = createBus();
+    let viewFn!: (state: AppState) => unknown;
+
+    Object.defineProperty(process.stdout, 'columns', { value: 120, configurable: true });
+    Object.defineProperty(process.stdout, 'rows', { value: 40, configurable: true });
+
+    const app = {
+      update: vi.fn(),
+      keys: vi.fn(),
+      view: vi.fn((fn: (state: AppState) => unknown) => {
+        viewFn = fn;
+      }),
+      start: vi.fn(() => Promise.resolve()),
+      stop: vi.fn(() => Promise.resolve()),
+    };
+    mockCreateNodeApp.mockReturnValue(app);
+
+    void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
+    viewFn(makeState({ mode: 'running' }));
+
+    expect(mockSessionsPanel).toHaveBeenCalledTimes(1);
+    expect(mockLogPanel).toHaveBeenCalledTimes(1);
+    expect(mockSessionsPanel).toHaveBeenCalledWith(expect.objectContaining({
+      width: expect.any(Number),
+      height: expect.any(Number),
+    }));
+    expect(mockLogPanel).toHaveBeenCalledWith(expect.objectContaining({
+      width: expect.any(Number),
+      height: expect.any(Number),
+    }));
   });
 });

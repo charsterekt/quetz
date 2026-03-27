@@ -155,13 +155,13 @@ function formatElapsed(totalSeconds: number): string {
 function phaseLogLine(phase: QuetzPhase, elapsedSeconds: number): LogLine | null {
   switch (phase) {
     case 'agent_running':
-      return { icon: '.', color: c.dim, text: 'AGENT running' };
+      return { icon: '·', color: c.dim, text: 'AGENT running' };
     case 'completed':
-      return { icon: 'v', color: c.brand, text: `AGENT done  (${formatElapsed(elapsedSeconds)})` };
+      return { icon: '✓', color: c.brand, text: `AGENT done  (${formatElapsed(elapsedSeconds)})` };
     case 'pr_detecting':
-      return { icon: '?', color: c.dim, text: 'PR search...' };
+      return { icon: '🔍', color: c.dim, text: 'PR search...' };
     case 'pr_polling':
-      return { icon: '*', color: c.accent, text: 'MERGE polling...' };
+      return { icon: '⏳', color: c.accent, text: 'MERGE polling...' };
     default:
       return null;
   }
@@ -202,7 +202,7 @@ export function wireState(
   const onStart = (p: QuetzEvent['loop:start']) => {
     update(s => ({
       ...s,
-      logLines: [...s.logLines, { icon: '>', color: c.brand, text: `START ${p.total} issues` }],
+      logLines: [...s.logLines, { icon: '▶', color: c.brand, text: `START ${p.total} issues` }],
       issueCount: { current: 0, total: p.total },
     }));
   };
@@ -213,7 +213,7 @@ export function wireState(
       ...s,
       logLines: [
         ...s.logLines,
-        { icon: '>', color: c.cyan, text: `PICKUP ${p.id}  ${p.title}  [P${p.priority} ${p.type}]` },
+        { icon: '→', color: c.cyan, text: `PICKUP ${p.id}  ${p.title}  [P${p.priority} ${p.type}]` },
       ],
       issueId: p.id,
       agentIssueId: p.id,

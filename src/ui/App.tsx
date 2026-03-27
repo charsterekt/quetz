@@ -15,8 +15,6 @@ import { SessionDetail } from './components/SessionDetail.js';
 import { VictoryCard } from './components/VictoryCard.js';
 import { FailureCard } from './components/FailureCard.js';
 
-/** Parse a c.* hex color into an rgb() call */
-function fg(hex: string) { const [r, g, b] = hexToRgb(hex); return rgb(r, g, b); }
 function bgColor(hex: string) { const [r, g, b] = hexToRgb(hex); return rgb(r, g, b); }
 
 export interface MountOptions {
@@ -147,9 +145,9 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     const rootBg = bgColor(c.bg);
     const termCols = process.stdout.columns ?? 120;
     const termRows = process.stdout.rows ?? 40;
-    const rightCols = Math.max(36, Math.round(termCols * 0.26));
-    const bodyRows = termRows - 8;
-    const sessionsRows = Math.max(4, Math.round(bodyRows * 0.24));
+    const rightCols = Math.max(32, Math.round(termCols * 0.264));
+    const bodyRows = Math.max(10, termRows - 6);
+    const sessionsRows = Math.max(6, Math.round(bodyRows * 0.282));
     const logRows = Math.max(4, bodyRows - sessionsRows);
 
     if (state.mode === 'victory') {
