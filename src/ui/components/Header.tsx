@@ -49,25 +49,29 @@ export const Header = defineWidget<HeaderProps>((props, ctx) => {
 
   const rightCol =
     mode === 'session_detail'
-      ? ui.column({ items: 'end', gap: 0 }, [
-          ui.text('[ viewing session ]', { style: { fg: fg(c.cyan) } }),
-          ui.row({ gap: 1, items: 'center' }, [
-            ui.box({ style: { bg: rgb(245, 158, 11) }, width: 1, height: 1 }),
-            ui.text(bgStatus, { style: { fg: fg(c.accent) } }),
+      ? ui.column({ items: 'end', justify: 'between', height: LOGO_LINES.length }, [
+          ui.column({ items: 'end', gap: 0 }, [
+            ui.text('[ viewing session ]', { style: { fg: fg(c.cyan) } }),
+            ui.row({ gap: 1, items: 'center' }, [
+              ui.box({ style: { bg: rgb(245, 158, 11) }, width: 1, height: 1 }),
+              ui.text(bgStatus, { style: { fg: fg(c.accent) } }),
+            ]),
           ]),
           ui.text(logoSubtitle(version), { style: { fg: fg(c.muted) } }),
         ])
-      : ui.column({ items: 'end', gap: 0 }, [
-          ui.row({ items: 'center' }, [
-            ui.text(snakeHead(mode, frame), { style: { fg: fg(c.brand) } }),
-            ...(mode === 'failure'
-              ? [ui.text(' \u2717', { style: { fg: fg(c.error), bold: true } })]
-              : []),
-            ui.text(buildDots(issueCount, mode), { style: { fg: fg(dotsColor(mode)) } }),
+      : ui.column({ items: 'end', justify: 'between', height: LOGO_LINES.length }, [
+          ui.column({ items: 'end', gap: 0 }, [
+            ui.row({ items: 'center' }, [
+              ui.text(snakeHead(mode, frame), { style: { fg: fg(c.brand) } }),
+              ...(mode === 'failure'
+                ? [ui.text(' \u2717', { style: { fg: fg(c.error), bold: true } })]
+                : []),
+              ui.text(buildDots(issueCount, mode), { style: { fg: fg(dotsColor(mode)) } }),
+            ]),
+            ui.text(counterText(issueCount, mode), {
+              style: { fg: fg(counterColor(mode)), bold: true },
+            }),
           ]),
-          ui.text(counterText(issueCount, mode), {
-            style: { fg: fg(counterColor(mode)), bold: true },
-          }),
           ui.text(logoSubtitle(version), { style: { fg: fg(c.muted) } }),
         ]);
 

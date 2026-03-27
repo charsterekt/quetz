@@ -55,7 +55,7 @@ function agentVisibleRows(termRows: number): number {
 function logVisibleRows(termRows: number): number {
   const bodyRows = bodyRowCount(termRows);
   const sessionsRows = sessionPanelRows(bodyRows);
-  const logRows = Math.max(4, bodyRows - sessionsRows - 1);
+  const logRows = Math.max(4, bodyRows - sessionsRows);
   return Math.max(1, logRows - 2);
 }
 
@@ -352,7 +352,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     const leftCols = Math.max(1, termCols - rightCols);
     const bodyRows = bodyRowCount(termRows);
     const sessionsRows = sessionPanelRows(bodyRows);
-    const logRows = Math.max(4, bodyRows - sessionsRows - 1);
+    const logRows = Math.max(4, bodyRows - sessionsRows);
     const footerNode = Footer({
       mode: state.mode,
       focusedPane: state.focusedPane,
@@ -416,7 +416,6 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
             width: rightCols,
             height: sessionsRows,
           }),
-          ui.box({ width: 'full', height: 1, style: { bg: bgColor(c.border) } }),
           LogPanel({
             lines: state.logLines,
             scrollOffset: state.logScrollOffset,

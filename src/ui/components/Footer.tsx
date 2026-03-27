@@ -42,12 +42,10 @@ function controlsText(mode: ScreenMode, focusedPane: FocusPane, hasHistory: bool
 
   if (mode === 'running' || mode === 'polling') {
     if (!hasHistory) {
-      return `${quitHint}  , . line  [ ] log  ${versionText}`;
+      return `${quitHint}  ${versionText}`;
     }
 
-    return focusedPane === 'sessions'
-      ? `${quitHint}  h history  \u2191\u2193 sessions  enter open  [ ] log  ${versionText}`
-      : `${quitHint}  h history  \u2191\u2193 sessions  enter open  , . line  [ ] log  ${versionText}`;
+    return `${quitHint}  h history  \u2191\u2193 sessions  enter open  ${versionText}`;
   }
 
   if (mode === 'victory' || mode === 'failure') {
