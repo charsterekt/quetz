@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-03-27
+
+### Removed
+- `TUI_V2_SPEC.md` deleted — spec has shipped; no longer needed in the repo
+
 ## [0.6.3] - 2026-03-27
 
 ### Changed
@@ -66,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Built-in fake issues for `--mock` / `--simulate` modes (`mock-data.ts`)
 - Exit codes: 0 clean, 1 runtime failure, 2 config error, 3 preflight failure
 
+[0.6.4]: https://github.com/dkchar/quetz/releases/tag/v0.6.4
 [0.6.3]: https://github.com/dkchar/quetz/releases/tag/v0.6.3
 [0.5.3]: https://github.com/dkchar/quetz/releases/tag/v0.5.3
 [0.5.2]: https://github.com/dkchar/quetz/releases/tag/v0.5.2
