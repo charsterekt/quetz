@@ -3,6 +3,7 @@
 import { ui, rgb } from '@rezi-ui/core';
 import { c, hexToRgb } from '../theme.js';
 import type { CompletedSession } from '../state.js';
+import { Scrollbar } from './Scrollbar.js';
 
 function fg(hex: string) {
   const [r, g, b] = hexToRgb(hex);
@@ -11,6 +12,7 @@ function fg(hex: string) {
 
 const HEADER_BG = rgb(15, 15, 15);
 const CONTENT_BG = rgb(10, 10, 10);
+const TITLE_BAR_ROWS = 2;
 
 interface SessionsPanelProps {
   sessions: CompletedSession[];
@@ -23,7 +25,7 @@ interface SessionsPanelProps {
 }
 
 export function SessionsPanel({ sessions, selectedIdx, isFocused, scrollOffset, width, height }: SessionsPanelProps) {
-  const visibleRows = Math.max(1, height - 2);
+  const visibleRows = Math.max(1, height - TITLE_BAR_ROWS);
   const maxOffset = Math.max(0, sessions.length - visibleRows);
   const safeOffset = Math.max(0, Math.min(scrollOffset, maxOffset));
   const visibleSessions = sessions.slice(safeOffset, safeOffset + visibleRows);
@@ -61,14 +63,22 @@ export function SessionsPanel({ sessions, selectedIdx, isFocused, scrollOffset, 
       },
       [
         ui.row({ justify: 'between', width: 'full', items: 'center' }, [
-          ui.text('completed sessions', { style: { fg: isFocused ? fg(c.brand) : fg(c.cyan) } }),
+          ui.text('completed sessions', { style: { fg: fg(c.cyan) } }),
           ui.text('↑↓ enter esc', { style: { fg: fg(c.dim) } }),
         ]),
       ]
     ),
-    ui.column(
-      { flex: 1, overflow: 'hidden', py: 0, px: 2, gap: 0, style: { bg: CONTENT_BG } },
-      listContent as ReturnType<typeof ui.text>[]
-    ),
+    ui.row({ id: 'sessions-scroll-region', flex: 1, height: 'full', width: 'full' }, [
+      ui.column(
+        { flex: 1, overflow: 'hidden', py: 0, px: 2, gap: 0, style: { bg: CONTENT_BG } },
+        listContent as ReturnType<typeof ui.text>[]
+      ),
+      Scrollbar({
+        totalLines: sessions.length,
+        visibleLines: visibleRows,
+        scrollOffset: safeOffset,
+        height: visibleRows,
+      }),
+    ]),
   ]);
 }

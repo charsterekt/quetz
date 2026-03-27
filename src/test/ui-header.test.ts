@@ -25,7 +25,7 @@ import { Header } from '../ui/components/Header.js';
 import { LOGO_LINES, LOGO_SUBTITLE } from '../ui/logo.js';
 
 describe('Header', () => {
-  it('uses a compact logo with a shallow header box', () => {
+  it('uses the block logo and top-aligned header chrome', () => {
     const ctx = {
       useState: vi.fn(() => [0, vi.fn()]),
     };

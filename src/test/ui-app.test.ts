@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createBus } from '../events.js';
 import type { AppState, CompletedSession } from '../ui/state.js';
 import { INITIAL_STATE } from '../ui/state.js';
-import { mountApp } from '../ui/App.js';
+import { mountApp, SCROLL_REGION_IDS } from '../ui/App.js';
 import { AgentPanel } from '../ui/components/AgentPanel.js';
 import { SessionsPanel } from '../ui/components/SessionsPanel.js';
 import { LogPanel } from '../ui/components/LogPanel.js';
@@ -66,6 +66,19 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
   };
 }
 
+function createAppMock(overrides: Record<string, unknown> = {}) {
+  return {
+    update: vi.fn(),
+    keys: vi.fn(),
+    view: vi.fn(),
+    start: vi.fn(() => Promise.resolve()),
+    stop: vi.fn(() => Promise.resolve()),
+    onEvent: vi.fn(() => vi.fn()),
+    measureElement: vi.fn(() => null),
+    ...overrides,
+  };
+}
+
 describe('mountApp', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -75,13 +88,10 @@ describe('mountApp', () => {
     const bus = createBus();
     let resolveStart!: () => void;
 
-    const app = {
-      update: vi.fn(),
-      keys: vi.fn(),
-      view: vi.fn(),
+    const app = createAppMock({
       start: vi.fn(() => new Promise<void>(resolve => { resolveStart = resolve; })),
       stop: vi.fn(() => Promise.resolve()),
-    };
+    });
     mockCreateNodeApp.mockReturnValue(app);
 
     const handle = mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
@@ -95,45 +105,38 @@ describe('mountApp', () => {
     expect(app.stop).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps arrow scrolling on the agent panel until sessions are explicitly focused', () => {
+  it('routes arrow navigation to completed sessions without scrolling the agent pane', () => {
     const bus = createBus();
     let state = makeState({
       focusedPane: 'agent',
-      completedSessions: [makeSession('bd-1', 'First fix')],
+      completedSessions: [
+        makeSession('bd-1', 'First fix'),
+        makeSession('bd-2', 'Second fix'),
+      ],
       selectedSessionIdx: -1,
       agentScrollOffset: 9,
       agentAutoScroll: false,
     });
     let bindings: Record<string, () => void> = {};
 
-    const app = {
+    const app = createAppMock({
       update: vi.fn((updater: AppState | ((prev: Readonly<AppState>) => AppState)) => {
         state = typeof updater === 'function' ? updater(state) : updater;
       }),
       keys: vi.fn((nextBindings: Record<string, () => void>) => {
         bindings = nextBindings;
       }),
-      view: vi.fn(),
-      start: vi.fn(() => Promise.resolve()),
-      stop: vi.fn(() => Promise.resolve()),
-    };
+    });
     mockCreateNodeApp.mockReturnValue(app);
 
     void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
 
-    bindings.up();
-    expect(state.agentScrollOffset).toBe(6);
-    expect(state.selectedSessionIdx).toBe(-1);
-
-    bindings.right();
-    expect(state.focusedPane).toBe('sessions');
+    bindings.down();
+    expect(state.agentScrollOffset).toBe(9);
     expect(state.selectedSessionIdx).toBe(0);
 
     bindings.down();
-    expect(state.selectedSessionIdx).toBe(0);
-
-    bindings.left();
-    expect(state.focusedPane).toBe('agent');
+    expect(state.selectedSessionIdx).toBe(1);
   });
 
   it('uses h to focus history and enter to open the selected session', () => {
@@ -149,17 +152,14 @@ describe('mountApp', () => {
     });
     let bindings: Record<string, () => void> = {};
 
-    const app = {
+    const app = createAppMock({
       update: vi.fn((updater: AppState | ((prev: Readonly<AppState>) => AppState)) => {
         state = typeof updater === 'function' ? updater(state) : updater;
       }),
       keys: vi.fn((nextBindings: Record<string, () => void>) => {
         bindings = nextBindings;
       }),
-      view: vi.fn(),
-      start: vi.fn(() => Promise.resolve()),
-      stop: vi.fn(() => Promise.resolve()),
-    };
+    });
     mockCreateNodeApp.mockReturnValue(app);
 
     void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
@@ -190,17 +190,14 @@ describe('mountApp', () => {
     });
     let bindings: Record<string, () => void> = {};
 
-    const app = {
+    const app = createAppMock({
       update: vi.fn((updater: AppState | ((prev: Readonly<AppState>) => AppState)) => {
         state = typeof updater === 'function' ? updater(state) : updater;
       }),
       keys: vi.fn((nextBindings: Record<string, () => void>) => {
         bindings = nextBindings;
       }),
-      view: vi.fn(),
-      start: vi.fn(() => Promise.resolve()),
-      stop: vi.fn(() => Promise.resolve()),
-    };
+    });
     mockCreateNodeApp.mockReturnValue(app);
 
     void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
@@ -226,17 +223,14 @@ describe('mountApp', () => {
     });
     let bindings: Record<string, () => void> = {};
 
-    const app = {
+    const app = createAppMock({
       update: vi.fn((updater: AppState | ((prev: Readonly<AppState>) => AppState)) => {
         state = typeof updater === 'function' ? updater(state) : updater;
       }),
       keys: vi.fn((nextBindings: Record<string, () => void>) => {
         bindings = nextBindings;
       }),
-      view: vi.fn(),
-      start: vi.fn(() => Promise.resolve()),
-      stop: vi.fn(() => Promise.resolve()),
-    };
+    });
     mockCreateNodeApp.mockReturnValue(app);
 
     void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
@@ -264,17 +258,14 @@ describe('mountApp', () => {
     });
     let bindings: Record<string, () => void> = {};
 
-    const app = {
+    const app = createAppMock({
       update: vi.fn((updater: AppState | ((prev: Readonly<AppState>) => AppState)) => {
         state = typeof updater === 'function' ? updater(state) : updater;
       }),
       keys: vi.fn((nextBindings: Record<string, () => void>) => {
         bindings = nextBindings;
       }),
-      view: vi.fn(),
-      start: vi.fn(() => Promise.resolve()),
-      stop: vi.fn(() => Promise.resolve()),
-    };
+    });
     mockCreateNodeApp.mockReturnValue(app);
 
     Object.defineProperty(process.stdout, 'columns', { value: 120, configurable: true });
@@ -296,15 +287,11 @@ describe('mountApp', () => {
     Object.defineProperty(process.stdout, 'columns', { value: 120, configurable: true });
     Object.defineProperty(process.stdout, 'rows', { value: 40, configurable: true });
 
-    const app = {
-      update: vi.fn(),
-      keys: vi.fn(),
+    const app = createAppMock({
       view: vi.fn((fn: (state: AppState) => unknown) => {
         viewFn = fn;
       }),
-      start: vi.fn(() => Promise.resolve()),
-      stop: vi.fn(() => Promise.resolve()),
-    };
+    });
     mockCreateNodeApp.mockReturnValue(app);
 
     void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
@@ -313,17 +300,17 @@ describe('mountApp', () => {
     expect(mockSessionsPanel).toHaveBeenCalledTimes(1);
     expect(mockLogPanel).toHaveBeenCalledTimes(1);
     expect(mockAgentPanel).toHaveBeenCalledWith(expect.objectContaining({
-      width: 72,
+      width: 88,
       height: expect.any(Number),
       effort: '',
       horizontalScrollOffset: expect.any(Number),
     }));
     expect(mockSessionsPanel).toHaveBeenCalledWith(expect.objectContaining({
-      width: 48,
+      width: 32,
       height: expect.any(Number),
     }));
     expect(mockLogPanel).toHaveBeenCalledWith(expect.objectContaining({
-      width: 48,
+      width: 32,
       height: expect.any(Number),
     }));
     expect(mockFooter).toHaveBeenCalledWith(expect.objectContaining({
@@ -340,15 +327,11 @@ describe('mountApp', () => {
     Object.defineProperty(process.stdout, 'columns', { value: 50, configurable: true });
     Object.defineProperty(process.stdout, 'rows', { value: 40, configurable: true });
 
-    const app = {
-      update: vi.fn(),
-      keys: vi.fn(),
+    const app = createAppMock({
       view: vi.fn((fn: (state: AppState) => unknown) => {
         viewFn = fn;
       }),
-      start: vi.fn(() => Promise.resolve()),
-      stop: vi.fn(() => Promise.resolve()),
-    };
+    });
     mockCreateNodeApp.mockReturnValue(app);
 
     void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
@@ -366,15 +349,11 @@ describe('mountApp', () => {
     Object.defineProperty(process.stdout, 'columns', { value: 120, configurable: true });
     Object.defineProperty(process.stdout, 'rows', { value: 40, configurable: true });
 
-    const app = {
-      update: vi.fn(),
-      keys: vi.fn(),
+    const app = createAppMock({
       view: vi.fn((fn: (state: AppState) => unknown) => {
         viewFn = fn;
       }),
-      start: vi.fn(() => Promise.resolve()),
-      stop: vi.fn(() => Promise.resolve()),
-    };
+    });
     mockCreateNodeApp.mockReturnValue(app);
 
     void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
@@ -423,5 +402,101 @@ describe('mountApp', () => {
       focusedPane: 'sessions',
       hasHistory: true,
     }));
+  });
+
+  it('scrolls the hovered pane on mouse wheel events', () => {
+    const bus = createBus();
+    let state = makeState({
+      focusedPane: 'sessions',
+      agentLines: Array.from({ length: 30 }, (_, i) => ({ type: 'text' as const, content: `agent ${i}` })),
+      completedSessions: Array.from({ length: 12 }, (_, i) => makeSession(`bd-${i + 1}`, `Issue ${i + 1}`)),
+      logLines: Array.from({ length: 30 }, (_, i) => ({ icon: '•', color: '#fff', text: `log ${i}` })),
+      agentAutoScroll: false,
+      logAutoScroll: false,
+    });
+    let eventHandler!: (event: unknown) => void;
+
+    Object.defineProperty(process.stdout, 'rows', { value: 40, configurable: true });
+
+    const rects = {
+      [SCROLL_REGION_IDS.agent]: { x: 0, y: 0, w: 80, h: 20 },
+      [SCROLL_REGION_IDS.sessions]: { x: 90, y: 0, w: 20, h: 10 },
+      [SCROLL_REGION_IDS.log]: { x: 90, y: 12, w: 20, h: 15 },
+    };
+
+    const app = createAppMock({
+      update: vi.fn((updater: AppState | ((prev: Readonly<AppState>) => AppState)) => {
+        state = typeof updater === 'function' ? updater(state) : updater;
+      }),
+      onEvent: vi.fn((handler: (event: unknown) => void) => {
+        eventHandler = handler;
+        return vi.fn();
+      }),
+      measureElement: vi.fn((id: string) => rects[id as keyof typeof rects] ?? null),
+    });
+    mockCreateNodeApp.mockReturnValue(app);
+
+    void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
+
+    eventHandler({
+      kind: 'engine',
+      event: { kind: 'mouse', timeMs: 0, x: 5, y: 5, mouseKind: 5, mods: 0, buttons: 0, wheelX: 0, wheelY: 1 },
+    });
+    expect(state.agentScrollOffset).toBe(3);
+
+    eventHandler({
+      kind: 'engine',
+      event: { kind: 'mouse', timeMs: 0, x: 95, y: 5, mouseKind: 5, mods: 0, buttons: 0, wheelX: 0, wheelY: 1 },
+    });
+    expect(state.sessionsScrollOffset).toBe(3);
+
+    eventHandler({
+      kind: 'engine',
+      event: { kind: 'mouse', timeMs: 0, x: 95, y: 15, mouseKind: 5, mods: 0, buttons: 0, wheelX: 0, wheelY: 1 },
+    });
+    expect(state.logScrollOffset).toBe(3);
+  });
+
+  it('ignores enter while already viewing session detail and clamps keyboard log scrolling', () => {
+    const bus = createBus();
+    let state = makeState({
+      mode: 'session_detail',
+      focusedPane: 'sessions',
+      selectedSessionIdx: 0,
+      viewingSession: {
+        id: 'bd-1',
+        title: 'Inspect detail',
+        duration: '0:42',
+        outcome: 'merged',
+        lines: Array.from({ length: 4 }, (_, i) => ({ type: 'text' as const, content: `detail ${i}` })),
+      },
+      completedSessions: [makeSession('bd-1', 'Inspect detail')],
+      logLines: Array.from({ length: 4 }, (_, i) => ({ icon: '•', color: '#fff', text: `log ${i}` })),
+      logAutoScroll: false,
+      logScrollOffset: 0,
+    });
+    let bindings: Record<string, () => void> = {};
+
+    Object.defineProperty(process.stdout, 'rows', { value: 40, configurable: true });
+
+    const app = createAppMock({
+      update: vi.fn((updater: AppState | ((prev: Readonly<AppState>) => AppState)) => {
+        state = typeof updater === 'function' ? updater(state) : updater;
+      }),
+      keys: vi.fn((nextBindings: Record<string, () => void>) => {
+        bindings = nextBindings;
+      }),
+    });
+    mockCreateNodeApp.mockReturnValue(app);
+
+    void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
+
+    bindings.enter();
+    expect(state.sessionLogScrollOffset).toBe(0);
+    expect(state.mode).toBe('session_detail');
+
+    state = { ...state, mode: 'running', viewingSession: null };
+    bindings[']']();
+    expect(state.logScrollOffset).toBe(0);
   });
 });

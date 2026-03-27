@@ -5,6 +5,7 @@ import { ui, rgb } from '@rezi-ui/core';
 import { c, hexToRgb } from '../theme.js';
 import { Scrollbar } from './Scrollbar.js';
 import type { CompletedSession, AgentLine } from '../state.js';
+import { LOGO_LINES } from '../logo.js';
 
 function fg(hex: string) {
   const [r, g, b] = hexToRgb(hex);
@@ -14,8 +15,7 @@ function fg(hex: string) {
 const INFO_BG = rgb(13, 13, 13);
 const CONTENT_BG = rgb(10, 10, 10);
 
-// Chrome rows: header (~6) + info bar (~2) + footer (~2)
-const CHROME_ROWS = 10;
+const CHROME_ROWS = LOGO_LINES.length + 6;
 
 interface SessionDetailProps {
   session: CompletedSession;
@@ -40,8 +40,10 @@ function renderLine(line: AgentLine, i: number) {
 export function SessionDetail({ session, scrollOffset }: SessionDetailProps) {
   const termRows = process.stdout.rows ?? 40;
   const visibleRows = Math.max(1, termRows - CHROME_ROWS);
+  const maxOffset = Math.max(0, session.lines.length - visibleRows);
+  const safeOffset = Math.max(0, Math.min(scrollOffset, maxOffset));
 
-  const visibleLines = session.lines.slice(scrollOffset, scrollOffset + visibleRows);
+  const visibleLines = session.lines.slice(safeOffset, safeOffset + visibleRows);
   const lineNodes = visibleLines.length > 0
     ? visibleLines.map((line, i) => renderLine(line, i))
     : [ui.text('no log lines', { style: { fg: fg(c.dim) } })];
@@ -81,9 +83,9 @@ export function SessionDetail({ session, scrollOffset }: SessionDetailProps) {
     ]
   );
 
-  return ui.column({ width: 'full', height: 'full', style: { bg: CONTENT_BG } }, [
+  return ui.column({ flex: 1, width: 'full', style: { bg: CONTENT_BG } }, [
     infoBar,
-    ui.row({ flex: 1, height: 'full', width: 'full' }, [
+    ui.row({ id: 'session-detail-scroll-region', flex: 1, height: 'full', width: 'full' }, [
       ui.column(
         { flex: 1, overflow: 'hidden', py: 0, px: 3, gap: 0, style: { bg: CONTENT_BG } },
         lineNodes
@@ -91,7 +93,7 @@ export function SessionDetail({ session, scrollOffset }: SessionDetailProps) {
       Scrollbar({
         totalLines: session.lines.length,
         visibleLines: visibleRows,
-        scrollOffset,
+        scrollOffset: safeOffset,
         height: visibleRows,
       }),
     ]),

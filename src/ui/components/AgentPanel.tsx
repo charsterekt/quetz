@@ -77,8 +77,8 @@ export const AgentPanel = defineWidget<AgentPanelProps>((props, ctx) => {
     }
   }, 300);
 
-  const runningHeaderText = model && effort
-    ? `agent: ${issueId}  |  ${formatModel(model)}  |  effort: ${effort}  [running]`
+  const runningHeaderText = model
+    ? `agent: ${issueId}  |  ${formatModel(model)}  [running]`
     : `agent: ${issueId}  |  preparing agent...`;
   const agentHeaderText = sessionComplete
     ? sliceViewportText(`agent: ${issueId}  |  session complete`, 0, Math.max(1, width - 4))
@@ -134,7 +134,7 @@ export const AgentPanel = defineWidget<AgentPanelProps>((props, ctx) => {
       },
       [ui.text(agentHeaderText, { style: { fg: fg(c.agent) } })]
     ),
-    ui.row({ flex: 1, height: 'full', width: 'full' }, [
+    ui.row({ id: 'agent-scroll-region', flex: 1, height: 'full', width: 'full' }, [
       content,
       Scrollbar({
         totalLines: lines.length,

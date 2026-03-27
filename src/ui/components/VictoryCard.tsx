@@ -109,7 +109,7 @@ export function VictoryCard({ data, version }: VictoryCardProps) {
     ]
   );
 
-  return ui.column({ flex: 1, height: 'full', width: 'full', style: { bg: CARD_BG } }, [
+  return ui.column({ flex: 1, width: 'full', style: { bg: CARD_BG } }, [
     ui.row({ flex: 1, height: 'full', width: 'full' }, [
       ui.column({ flex: 1, height: 'full' }, []),
       card,

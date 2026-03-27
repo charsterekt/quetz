@@ -14,25 +14,61 @@ import { LogPanel } from './components/LogPanel.js';
 import { SessionDetail } from './components/SessionDetail.js';
 import { VictoryCard } from './components/VictoryCard.js';
 import { FailureCard } from './components/FailureCard.js';
+import { LOGO_LINES } from './logo.js';
 
 function bgColor(hex: string) { const [r, g, b] = hexToRgb(hex); return rgb(r, g, b); }
 
 function rightRailWidth(termCols: number): number {
-  return Math.max(20, Math.min(Math.round(termCols * 0.4), termCols - 24));
+  return Math.max(20, Math.min(Math.round(termCols * 0.265), termCols - 24));
 }
 
+const FOOTER_ROWS = 2;
+const HEADER_ROWS = LOGO_LINES.length + 2;
+const INFO_BAR_ROWS = 2;
+const WHEEL_LINES = 3;
+
+export const SCROLL_REGION_IDS = {
+  agent: 'agent-scroll-region',
+  sessions: 'sessions-scroll-region',
+  log: 'log-scroll-region',
+  sessionDetail: 'session-detail-scroll-region',
+} as const;
+
 function bodyRowCount(termRows: number): number {
-  return Math.max(10, termRows - 6);
+  return Math.max(10, termRows - HEADER_ROWS - FOOTER_ROWS);
 }
 
 function sessionPanelRows(bodyRows: number): number {
-  return Math.max(6, Math.round(bodyRows * 0.27));
+  return Math.max(7, Math.round(bodyRows * 0.31));
 }
 
 function visibleSessionRows(termRows: number): number {
   const bodyRows = bodyRowCount(termRows);
   const sessionsRows = sessionPanelRows(bodyRows);
   return Math.max(1, sessionsRows - 2);
+}
+
+function agentVisibleRows(termRows: number): number {
+  return Math.max(1, bodyRowCount(termRows) - 2);
+}
+
+function logVisibleRows(termRows: number): number {
+  const bodyRows = bodyRowCount(termRows);
+  const sessionsRows = sessionPanelRows(bodyRows);
+  const logRows = Math.max(4, bodyRows - sessionsRows - 1);
+  return Math.max(1, logRows - 2);
+}
+
+function detailVisibleRows(termRows: number): number {
+  return Math.max(1, termRows - HEADER_ROWS - INFO_BAR_ROWS - FOOTER_ROWS);
+}
+
+function clampScrollOffset(offset: number, maxOffset: number): number {
+  return Math.max(0, Math.min(offset, maxOffset));
+}
+
+function pointInRect(x: number, y: number, rect: { x: number; y: number; w: number; h: number } | null): boolean {
+  return rect != null && x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;
 }
 
 function syncSessionViewport(state: AppState, termRows: number): AppState {
@@ -110,37 +146,28 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
       if (s.mode === 'session_detail') {
         return { ...s, sessionLogScrollOffset: Math.max(0, s.sessionLogScrollOffset - 3) };
       }
-      if (s.focusedPane === 'sessions' && s.completedSessions.length > 0) {
+      if (s.completedSessions.length > 0) {
         const newIdx = s.selectedSessionIdx <= 0
           ? s.completedSessions.length - 1
           : s.selectedSessionIdx - 1;
-        return syncSessionViewport({ ...s, selectedSessionIdx: newIdx }, termRows);
+        return syncSessionViewport({ ...s, focusedPane: 'sessions', selectedSessionIdx: newIdx }, termRows);
       }
-      return {
-        ...s,
-        agentAutoScroll: false,
-        agentScrollOffset: Math.max(0, s.agentScrollOffset - 3),
-      };
+      return s;
     }),
 
     down: () => app.update(s => {
       const termRows = process.stdout.rows ?? 40;
       if (s.mode === 'session_detail') {
-        return { ...s, sessionLogScrollOffset: s.sessionLogScrollOffset + 3 };
+        const maxOffset = Math.max(0, (s.viewingSession?.lines.length ?? 0) - detailVisibleRows(termRows));
+        return { ...s, sessionLogScrollOffset: clampScrollOffset(s.sessionLogScrollOffset + 3, maxOffset) };
       }
-      if (s.focusedPane === 'sessions' && s.completedSessions.length > 0) {
+      if (s.completedSessions.length > 0) {
         const newIdx = s.selectedSessionIdx < 0
           ? 0
           : Math.min(s.selectedSessionIdx + 1, s.completedSessions.length - 1);
-        return syncSessionViewport({ ...s, selectedSessionIdx: newIdx }, termRows);
+        return syncSessionViewport({ ...s, focusedPane: 'sessions', selectedSessionIdx: newIdx }, termRows);
       }
-      const newOffset = s.agentScrollOffset + 3;
-      const atBottom = newOffset >= Math.max(0, s.agentLines.length - 1);
-      return {
-        ...s,
-        agentScrollOffset: newOffset,
-        agentAutoScroll: atBottom,
-      };
+      return s;
     }),
 
     ',': () => app.update(s => {
@@ -164,7 +191,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
 
     enter: () => app.update(s => {
       if (
-        s.focusedPane === 'sessions' &&
+        s.mode !== 'session_detail' &&
         s.selectedSessionIdx >= 0 &&
         s.selectedSessionIdx < s.completedSessions.length
       ) {
@@ -253,14 +280,68 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
 
     ']': () => app.update(s => {
       const rows = process.stdout.rows ?? 40;
-      const bodyRows = bodyRowCount(rows);
-      const sessionsRows = sessionPanelRows(bodyRows);
-      const logVisibleRows = Math.max(1, bodyRows - sessionsRows - 3);
+      const visibleRows = logVisibleRows(rows);
       const currentOffset = s.logAutoScroll
-        ? Math.max(0, s.logLines.length - logVisibleRows)
+        ? Math.max(0, s.logLines.length - visibleRows)
         : s.logScrollOffset;
-      return { ...s, logAutoScroll: false, logScrollOffset: currentOffset + 3 };
+      const maxOffset = Math.max(0, s.logLines.length - visibleRows);
+      return {
+        ...s,
+        logAutoScroll: false,
+        logScrollOffset: clampScrollOffset(currentOffset + 3, maxOffset),
+      };
     }),
+  });
+
+  const cleanupEvents = app.onEvent(ev => {
+    if (ev.kind !== 'engine' || ev.event.kind !== 'mouse' || ev.event.mouseKind !== 5) {
+      return;
+    }
+
+    const { x, y, wheelY } = ev.event;
+    if (wheelY === 0) return;
+
+    const delta = wheelY * WHEEL_LINES;
+    const agentRect = app.measureElement(SCROLL_REGION_IDS.agent);
+    const sessionsRect = app.measureElement(SCROLL_REGION_IDS.sessions);
+    const logRect = app.measureElement(SCROLL_REGION_IDS.log);
+    const detailRect = app.measureElement(SCROLL_REGION_IDS.sessionDetail);
+
+    app.update(s => {
+      const termRows = process.stdout.rows ?? 40;
+
+      if (s.mode === 'session_detail' && pointInRect(x, y, detailRect) && s.viewingSession) {
+        const maxOffset = Math.max(0, s.viewingSession.lines.length - detailVisibleRows(termRows));
+        const nextOffset = clampScrollOffset(s.sessionLogScrollOffset + delta, maxOffset);
+        return nextOffset === s.sessionLogScrollOffset ? s : { ...s, sessionLogScrollOffset: nextOffset };
+      }
+
+      if (pointInRect(x, y, agentRect)) {
+        const maxOffset = Math.max(0, s.agentLines.length - agentVisibleRows(termRows));
+        const currentOffset = s.agentAutoScroll ? maxOffset : s.agentScrollOffset;
+        const nextOffset = clampScrollOffset(currentOffset + delta, maxOffset);
+        return nextOffset === currentOffset && !s.agentAutoScroll
+          ? s
+          : { ...s, agentAutoScroll: false, agentScrollOffset: nextOffset };
+      }
+
+      if (pointInRect(x, y, sessionsRect)) {
+        const maxOffset = Math.max(0, s.completedSessions.length - visibleSessionRows(termRows));
+        const nextOffset = clampScrollOffset(s.sessionsScrollOffset + delta, maxOffset);
+        return nextOffset === s.sessionsScrollOffset ? s : { ...s, sessionsScrollOffset: nextOffset };
+      }
+
+      if (pointInRect(x, y, logRect)) {
+        const maxOffset = Math.max(0, s.logLines.length - logVisibleRows(termRows));
+        const currentOffset = s.logAutoScroll ? maxOffset : s.logScrollOffset;
+        const nextOffset = clampScrollOffset(currentOffset + delta, maxOffset);
+        return nextOffset === currentOffset && !s.logAutoScroll
+          ? s
+          : { ...s, logAutoScroll: false, logScrollOffset: nextOffset };
+      }
+
+      return s;
+    });
   });
 
   app.view((state: AppState) => {
@@ -282,6 +363,8 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
       prNumber: state.prNumber,
       elapsed: state.elapsed,
       version,
+      viewingSession: state.viewingSession,
+      failureData: state.failureData,
     });
 
     if (state.mode === 'victory' && !state.viewingSession) {
@@ -356,6 +439,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
       if (unmounted) return;
       unmounted = true;
       cleanupWire();
+      cleanupEvents();
       try {
         await startPromise;
       } catch {
