@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-03-27
+
+### Changed
+- **TUI rewritten from Ink (React) to [Rezi](https://rezitui.dev)** (`@rezi-ui/node`). The full-screen terminal UI is now driven by Rezi's declarative node backend, which manages layout, input handling, scrolling, and rendering. The component tree (`Header`, `Footer`, `AgentPanel`, `SessionsPanel`, `LogPanel`, `SessionDetail`, `VictoryCard`, `FailureCard`) has been ported from Ink JSX to Rezi's `ui.*` widget API. Mouse wheel scrolling, element measurement, and the animation loop are all handled by the Rezi runtime.
+- Header subtitle ("the feathered serpent dev loop") repositioned to the bottom-right, aligned with the bottom of the Quetz wordmark, using a `justify: 'between'` column spanning the logo height.
+- Agent header now displays the effort/thinking level alongside the model name (e.g. `claude haiku  turbo  [running]`).
+- Footer controls simplified: removed `, . line` horizontal-scroll cue (appeared/disappeared inconsistently with pane focus) and `[ ] log` hint. Removed redundant `h history` — `↑↓ sessions  enter open` covers the same navigation.
+
+### Fixed
+- Session-detail exit trap: when the loop reached victory or failure while the user was viewing a past session, the exit screen would not render (mode was `victory`/`failure` but `viewingSession` was still set, causing the view to fall through to the main layout). `onVictory` and `onFailure` in `state.ts` now clear `viewingSession` immediately.
+- Removed explicit border-colored separator row between the sessions and log panels; the panel borders provide sufficient visual separation. Adjusted `logRows` calculation to reclaim the freed row.
+
 ## [0.5.3] - 2026-03-24
 
 ### Fixed
@@ -54,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Built-in fake issues for `--mock` / `--simulate` modes (`mock-data.ts`)
 - Exit codes: 0 clean, 1 runtime failure, 2 config error, 3 preflight failure
 
+[0.6.3]: https://github.com/dkchar/quetz/releases/tag/v0.6.3
 [0.5.3]: https://github.com/dkchar/quetz/releases/tag/v0.5.3
 [0.5.2]: https://github.com/dkchar/quetz/releases/tag/v0.5.2
 [0.5.1]: https://github.com/dkchar/quetz/releases/tag/v0.5.1
