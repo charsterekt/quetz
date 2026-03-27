@@ -3,6 +3,7 @@ import { c, hexToRgb } from '../theme.js';
 import { Scrollbar } from './Scrollbar.js';
 import type { AgentLine, SessionCompleteState } from '../state.js';
 import type { QuetzPhase } from '../../events.js';
+import { formatProviderModel, isAgentProvider } from '../../provider.js';
 
 function fg(hex: string) {
   const [r, g, b] = hexToRgb(hex);
@@ -17,11 +18,6 @@ const TITLE_BAR_ROWS = 2;
 export function toolLine(line: AgentLine): string {
   const name = (line.toolName ?? '').padEnd(5).slice(0, 5);
   return `> ${name}   ${line.content}`;
-}
-
-function formatModel(model: string): string {
-  if (!model) return 'claude sonnet';
-  return model.startsWith('claude ') ? model : `claude ${model}`;
 }
 
 export function sliceViewportText(text: string, start: number, width: number): string {
@@ -45,6 +41,7 @@ interface AgentPanelProps {
   height: number;
   phase: QuetzPhase;
   issueId: string;
+  provider: string;
   model: string;
   effort: string;
   lines: AgentLine[];
@@ -61,6 +58,7 @@ export const AgentPanel = defineWidget<AgentPanelProps>((props, ctx) => {
     height,
     phase,
     issueId,
+    provider,
     model,
     effort,
     lines,
@@ -78,7 +76,7 @@ export const AgentPanel = defineWidget<AgentPanelProps>((props, ctx) => {
   }, 300);
 
   const runningHeaderText = model
-    ? `agent: ${issueId}  |  ${formatModel(model)}${effort ? `  ${effort}` : ''}  [running]`
+    ? `agent: ${issueId}  |  ${formatProviderModel(isAgentProvider(provider) ? provider : 'claude', model)}${effort ? `  ${effort}` : ''}  [running]`
     : `agent: ${issueId}  |  preparing agent...`;
   const agentHeaderText = sessionComplete
     ? sliceViewportText(`agent: ${issueId}  |  session complete`, 0, Math.max(1, width - 4))

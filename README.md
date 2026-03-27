@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@dkchar/quetz)](https://www.npmjs.com/package/@dkchar/quetz)
 
-**Quetz** is a local npm package that wraps an agentic CLI (currently Claude Code) into a self-feeding development loop. It reads prioritized issues from an issue graph, spawns a fully autonomous agent for each one sequentially, monitors the resulting GitHub PR through to merge, and repeats until done.
+**Quetz** is a local npm package that wraps a supported agent CLI into a self-feeding development loop. It reads prioritized issues from an issue graph, spawns a fully autonomous agent for each one sequentially, monitors the resulting GitHub PR through to merge, and repeats until done.
 
 > *Quetzalcoatl, the feathered serpent — a winged reptile that bridges earth and sky.*
 
@@ -25,15 +25,16 @@
 
 ## Prerequisites
 
-Quetz requires three CLI tools installed and authenticated:
+Quetz requires GitHub CLI, Beads CLI, and at least one supported agent CLI installed. Today the shared runtime path is implemented for Claude, with provider-neutral config and preflight groundwork in place for future adapters.
 
 | Tool | Purpose | Check |
 |---|---|---|
-| **Claude Code** (`claude`) | The agent that does the work | `claude --version` |
+| **Claude Code** (`claude`) | Current runtime-backed agent provider | `claude --version` |
+| **Codex CLI** (`codex`) | Detected during preflight for upcoming provider support | `codex --version` |
 | **GitHub CLI** (`gh`) | PR detection, GitHub API | `gh auth status` |
 | **Beads CLI** (`bd`) | Issue tracking | `bd --version` |
 
-`quetz init` verifies all three before generating config. Future versions may support other agents and issue trackers.
+`quetz init` verifies GitHub, Beads, and the available agent providers before generating config.
 
 ---
 
@@ -95,8 +96,9 @@ Start the dev loop. Runs until all issues are resolved or a failure occurs. Comp
 
 | Flag | Default | Description |
 |---|---|---|
+| `--provider <provider>` | config | Override agent provider (`claude`, `codex`) |
 | `--model <model>` | `sonnet` | Override agent model (e.g. `haiku`, `sonnet`, `opus`) |
-| `--effort <level>` | config | Override Claude effort level (`low`, `medium`, `high`, `max`) |
+| `--effort <level>` | config | Override agent effort level (`low`, `medium`, `high`, `max`) |
 | `--timeout <minutes>` | `30` | Kill agent if it runs longer than this |
 | `--local-commits` | — | Skip PR lifecycle; verify local commits only |
 | `--amend` | — | Accumulate all issue work into a single rolling commit (no PR) |
@@ -143,7 +145,7 @@ The TUI disables itself automatically when stdout is not a TTY (CI, piped output
 
 - Uses built-in mock issues
 - Skips git checkout/pull
-- Spawns a real Claude agent for each mock issue
+- Spawns a real agent through the selected provider path
 - Simulates PR detection (1.5s), merge (3s), and celebration
 - Loops through all mock issues and shows the victory screen
 
@@ -169,9 +171,14 @@ github:
   automergeLabel: "automerge"
 
 agent:
+  provider: "claude"
   timeout: 30               # minutes before killing the agent
   model: "sonnet"
   effort: "medium"         # low|medium|high|max
+  providers:
+    claude:
+      settingSources: ["user", "project", "local"]
+    codex: {}
 
 poll:
   interval: 30              # seconds between merge-status checks
@@ -182,7 +189,7 @@ poll:
 Runtime overrides:
 
 ```bash
-quetz run --model haiku --effort low --timeout 60
+quetz run --provider claude --model haiku --effort low --timeout 60
 ```
 
 ### GitHub Actions for automerge

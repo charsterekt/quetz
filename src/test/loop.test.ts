@@ -317,9 +317,12 @@ describe('runLoop normal', () => {
       bus,
       'medium',
       false,
+      'claude',
+      expect.any(Object),
     );
     expect(phaseHandler).toHaveBeenCalledWith(expect.objectContaining({
       phase: 'agent_running',
+      agentProvider: 'claude',
       agentModel: 'sonnet',
       agentEffort: 'medium',
     }));

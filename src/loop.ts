@@ -1,5 +1,5 @@
 import { loadConfig } from './config.js';
-import type { ClaudeEffortLevel } from './config.js';
+import type { AgentEffortLevel, AgentProvider } from './provider.js';
 import { getReadyIssues, getIssueDetails, getPrimeContext, listAllIssues, enableMockMode } from './beads.js';
 import { checkoutDefault, pullDefault, countNewCommits, getCommitCountAhead, getCurrentBranch, deleteBranch } from './git.js';
 import { assemblePrompt } from './prompt.js';
@@ -8,6 +8,7 @@ import { createOctokit, findPR, pollForMerge } from './github.js';
 import { setVerbose, log } from './verbose.js';
 import { brand, success, waiting, error, dim } from './display/terminal.js';
 import { execSync } from 'child_process';
+import { getProviderDescriptor } from './provider.js';
 
 function formatElapsed(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -101,8 +102,9 @@ export async function showStatus(): Promise<void> {
 
 export async function runLoop(
   opts: {
+    provider?: AgentProvider;
     model?: string;
-    effort?: ClaudeEffortLevel;
+    effort?: AgentEffortLevel;
     timeout?: number;
     localCommits?: boolean;
     amend?: boolean;
@@ -268,12 +270,25 @@ export async function runLoop(
     // 5. Spawn agent
     const agentStart = Date.now();
     const agentTimeout = opts.timeout ?? config.agent.timeout;
-    const agentModel = opts.model ?? config.agent.model ?? 'sonnet';
-    const agentEffort: ClaudeEffortLevel = opts.effort ?? config.agent.effort ?? 'medium';
+    const agentProvider = opts.provider ?? config.agent.provider ?? 'claude';
+    const providerConfig =
+      config.agent.providers?.[agentProvider] ??
+      {};
+    const agentModel =
+      opts.model ??
+      providerConfig.model ??
+      config.agent.model ??
+      getProviderDescriptor(agentProvider).defaultModel;
+    const agentEffort =
+      opts.effort ??
+      providerConfig.effort ??
+      config.agent.effort ??
+      'medium';
     if (bus) {
       bus.emit('loop:phase', {
         phase: 'agent_running',
         detail: agentModel,
+        agentProvider,
         agentModel,
         agentEffort,
       });
@@ -281,12 +296,22 @@ export async function runLoop(
     else process.stdout.write(dim('\n  Starting agent…\n'));
     log(
       'AGENT',
-      `model=${agentModel}, timeout=${agentTimeout}m${agentEffort ? `, effort=${agentEffort}` : ''}`
+      `provider=${agentProvider}, model=${agentModel}, timeout=${agentTimeout}m${agentEffort ? `, effort=${agentEffort}` : ''}`
     );
 
     let exitCode: number;
     try {
-      exitCode = await spawnAgent(prompt, projectRoot, agentTimeout, agentModel, bus, agentEffort, simulate);
+      exitCode = await spawnAgent(
+        prompt,
+        projectRoot,
+        agentTimeout,
+        agentModel,
+        bus,
+        agentEffort,
+        simulate,
+        agentProvider,
+        providerConfig
+      );
     } catch (err) {
       if (bus) bus.emit('loop:failure', { reason: `Agent error: ${(err as Error).message}` });
       else process.stderr.write(error(`\nAgent error: ${(err as Error).message}\n`));
