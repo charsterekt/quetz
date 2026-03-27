@@ -52,6 +52,12 @@ function restoreStdoutDescriptors(): void {
   }
 }
 
+function stdoutText(): string {
+  return stdoutSpy.mock.calls
+    .map((call: Parameters<typeof process.stdout.write>) => String(call[0]))
+    .join('');
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   originalArgv = [...process.argv];
@@ -195,6 +201,32 @@ describe('main', () => {
 
     await expect(mainPromise).rejects.toMatchObject({ code: 0 });
     expect(unmount).toHaveBeenCalledTimes(1);
+    expect(stdoutText()).toContain('The serpent rests — all issues resolved.');
+    expect(stdoutText()).not.toContain('interrupted by user');
+  });
+
+  it('shows the victory message when the completed screen is dismissed with Ctrl+C', async () => {
+    const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
+    const unmount = vi.fn(() => Promise.resolve());
+
+    mockCreateBus.mockReturnValue(bus as never);
+    mockRunLoop.mockResolvedValue({ exitCode: 0, reason: 'victory' } as never);
+    mockMountApp.mockReturnValue({ ready: Promise.resolve(), unmount } as never);
+
+    process.argv = ['node', 'quetz', 'run'];
+    setStdoutSize(true, 120, 40);
+
+    const mainPromise = main();
+    await vi.waitFor(() => {
+      expect(mockMountApp).toHaveBeenCalledTimes(1);
+    });
+
+    process.emit('SIGINT');
+
+    await expect(mainPromise).rejects.toMatchObject({ code: 0 });
+    expect(unmount).toHaveBeenCalledTimes(1);
+    expect(stdoutText()).toContain('The serpent rests — all issues resolved.');
+    expect(stdoutText()).not.toContain('interrupted by user');
   });
 
   it('keeps the failure screen mounted until the user quits in TTY mode', async () => {
@@ -224,5 +256,7 @@ describe('main', () => {
 
     await expect(mainPromise).rejects.toMatchObject({ code: 1 });
     expect(unmount).toHaveBeenCalledTimes(1);
+    expect(stdoutText()).toContain('The serpent retreats (exit code 1 — runtime failure).');
+    expect(stdoutText()).not.toContain('interrupted by user');
   });
 });

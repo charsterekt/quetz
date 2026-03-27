@@ -144,11 +144,14 @@ export async function main(): Promise<void> {
         // Quit promise: resolves when the user asks to exit from the TUI.
         let resolveQuit!: () => void;
         const quitPromise = new Promise<void>(resolve => { resolveQuit = resolve; });
+        let resolveShutdown!: () => void;
+        const shutdownPromise = new Promise<void>(resolve => { resolveShutdown = resolve; });
 
         const app = mountApp({ bus, version: pkg.version, onQuit: resolveQuit });
         await app.ready;
 
         let loopResult: import('./loop.js').LoopResult = { exitCode: 0, reason: 'victory' };
+        let loopTerminalResult: import('./loop.js').LoopResult | null = null;
 
         const exitMessage = (result: import('./loop.js').LoopResult, interrupted: boolean): string => {
           if (interrupted) return 'The serpent withdraws — interrupted by user.\n';
@@ -168,11 +171,16 @@ export async function main(): Promise<void> {
           // Restore terminal: show cursor, exit alt screen
           process.stdout.write('\x1b[2J\x1b[H\x1b[0m\x1b[?1049l\x1b[?25h');
           printLogo();
-          process.stdout.write('\n' + exitMessage(loopResult, interrupted));
+          const isInterrupted = interrupted && loopTerminalResult === null;
+          process.stdout.write('\n' + exitMessage(loopResult, isInterrupted));
           process.exit(loopResult.exitCode);
         };
 
-        const onSigint = () => { void cleanupTui(true); };
+        let sigintRequested = false;
+        const onSigint = () => {
+          sigintRequested = true;
+          resolveShutdown();
+        };
         process.once('SIGINT', onSigint);
 
         // Keep outcome screens mounted until the user explicitly quits so the
@@ -182,16 +190,25 @@ export async function main(): Promise<void> {
           runLoop({ model, effort, timeout, localCommits, amend, simulate }, bus)
             .then(r => {
               loopResult = r;
+              loopTerminalResult = r;
               if (r.reason === 'no_issues') resolve();
             })
-            .catch(() => { loopResult = { exitCode: 1, reason: 'error' }; resolve(); });
-          quitPromise.then(() => { userQuit = true; resolve(); });
+            .catch(() => {
+              loopResult = { exitCode: 1, reason: 'error' };
+              loopTerminalResult = loopResult;
+              resolve();
+            });
+          quitPromise.then(() => {
+            userQuit = true;
+            resolveShutdown();
+            resolve();
+          });
         });
 
-        await exitSignal;
+        await Promise.race([exitSignal, shutdownPromise]);
 
         process.off('SIGINT', onSigint);
-        await cleanupTui(userQuit);
+        await cleanupTui(userQuit || sigintRequested);
       } else {
         // Non-TUI fallback (piped, no TTY)
         const result = await runLoop({ model, effort, timeout, localCommits, amend, simulate }, bus);
