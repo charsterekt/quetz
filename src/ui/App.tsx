@@ -23,7 +23,7 @@ function rightRailWidth(termCols: number): number {
 }
 
 const FOOTER_ROWS = 2;
-const HEADER_ROWS = LOGO_LINES.length + 2;
+const HEADER_ROWS = LOGO_LINES.length + 3;
 const INFO_BAR_ROWS = 2;
 const WHEEL_LINES = 3;
 
@@ -369,7 +369,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
 
     if (state.mode === 'victory' && !state.viewingSession) {
       return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
-        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus }),
+        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version }),
         VictoryCard({ data: state.victoryData, version }),
         footerNode,
       ]);
@@ -377,7 +377,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
 
     if (state.mode === 'failure' && !state.viewingSession) {
       return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
-        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus }),
+        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version }),
         FailureCard({ data: state.failureData }),
         footerNode,
       ]);
@@ -385,14 +385,14 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
 
     if (state.mode === 'session_detail' && state.viewingSession) {
       return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
-        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus }),
+        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version }),
         SessionDetail({ session: state.viewingSession, scrollOffset: state.sessionLogScrollOffset }),
         footerNode,
       ]);
     }
 
     return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
-      Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus }),
+      Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version }),
       ui.row({ width: 'full', flex: 1 }, [
         AgentPanel({
           width: leftCols,

@@ -38,30 +38,31 @@ interface FooterProps {
 
 function controlsText(mode: ScreenMode, focusedPane: FocusPane, hasHistory: boolean, version: string): string {
   const quitHint = 'q quit';
+  const versionText = `\u25c6  v${version}`;
 
   if (mode === 'running' || mode === 'polling') {
     if (!hasHistory) {
-      return `${quitHint}  ←→ panes  , . line  [ ] log  ◆ v${version}`;
+      return `${quitHint}  , . line  [ ] log  ${versionText}`;
     }
 
     return focusedPane === 'sessions'
-      ? `${quitHint}  h history  ←→ panes  ↑↓ sessions  enter open  [ ] log  ◆ v${version}`
-      : `${quitHint}  h history  ←→ panes  ↑↓ sessions  enter open  , . line  [ ] log  ◆ v${version}`;
+      ? `${quitHint}  h history  \u2191\u2193 sessions  enter open  [ ] log  ${versionText}`
+      : `${quitHint}  h history  \u2191\u2193 sessions  enter open  , . line  [ ] log  ${versionText}`;
   }
 
   if (mode === 'victory' || mode === 'failure') {
-    return `${quitHint}  ◆ v${version}`;
+    return `${quitHint}  ${versionText}`;
   }
 
-  return `bg: ${focusedPane === 'sessions' ? 'history open' : 'agent running'}  |  ${quitHint}  ◆ v${version}`;
+  return `bg: ${focusedPane === 'sessions' ? 'history open' : 'agent running'}  |  ${quitHint}  ${versionText}`;
 }
 
 function detailRightText(issueId: string, phase: QuetzPhase, elapsed: string, version: string): string {
   const phaseLabel = PHASE_LABELS[phase] ?? phase;
   if (!issueId) {
-    return `◆ v${version}`;
+    return `\u25c6  v${version}`;
   }
-  return `bg: ${issueId} ${phaseLabel}  |  ${elapsed}  |  ◆ v${version}`;
+  return `bg: ${issueId} ${phaseLabel}  |  ${elapsed}  |  \u25c6  v${version}`;
 }
 
 export function Footer({
@@ -82,21 +83,21 @@ export function Footer({
   let right = controlsText(mode, focusedPane, hasHistory, version);
 
   if (mode === 'victory') {
-    leftText = '◆ all done  |  exit code 0';
+    leftText = '\u25c6 all done  |  exit code 0';
   } else if (mode === 'failure') {
     const failureIssueId = failureData?.issueId ?? issueId;
     const failurePrNumber = failureData?.prNumber ?? prNumber;
-    const failureLabel = failureData?.reason === 'CI failed' ? '● ci failed' : '● run failed';
+    const failureLabel = failureData?.reason === 'CI failed' ? '\u25cf ci failed' : '\u25cf run failed';
     leftText = `${failureLabel}  |  pr: ${failurePrNumber != null ? `#${failurePrNumber}` : '---'}  |  issue: ${failureIssueId || '---'}  |  exit code 1`;
     leftColor = fg(c.error);
   } else if (mode === 'session_detail') {
-    leftText = `← esc  back to main  |  session: ${viewingSession?.id ?? '---'}`;
+    leftText = `\u2190 esc  back to main  |  session: ${viewingSession?.id ?? '---'}`;
     leftColor = fg(c.muted);
     right = detailRightText(issueId, phase, elapsed, version);
   } else {
     const prStr = prNumber != null ? `pr: #${prNumber}` : 'pr: ---';
     const phaseLabel = PHASE_LABELS[phase] ?? phase;
-    leftText = `◆ issue ${issueCount.current}/${issueCount.total}  |  ${issueId}  |  ${phaseLabel}  |  ${prStr}  |  ${elapsed}`;
+    leftText = `\u25c6 issue ${issueCount.current}/${issueCount.total}  |  ${issueId}  |  ${phaseLabel}  |  ${prStr}  |  ${elapsed}`;
     leftColor =
       phase === 'error' ? fg(c.error) :
       phase === 'pr_polling' ? fg(c.accent) :

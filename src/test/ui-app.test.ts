@@ -240,11 +240,11 @@ describe('mountApp', () => {
     }
 
     expect(state.selectedSessionIdx).toBe(8);
-    expect(state.sessionsScrollOffset).toBe(2);
+    expect(state.sessionsScrollOffset).toBe(3);
 
     bindings.down();
     expect(state.selectedSessionIdx).toBe(9);
-    expect(state.sessionsScrollOffset).toBe(3);
+    expect(state.sessionsScrollOffset).toBe(4);
   });
 
   it('supports horizontal agent transcript inspection without mutating vertical scroll', () => {

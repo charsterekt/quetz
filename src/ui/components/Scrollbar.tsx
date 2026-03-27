@@ -1,4 +1,4 @@
-// Scrollbar helper — spec §11 Scrollbar pattern
+// Scrollbar helper, spec section 11 Scrollbar pattern
 // 1 col wide, used in agent panel, log panel, session detail
 
 import { ui, rgb } from '@rezi-ui/core';
@@ -20,16 +20,17 @@ export function Scrollbar({ totalLines, visibleLines, scrollOffset, height }: Sc
   const trackColor = fg(c.sbTrack);
   const thumbColor = fg(c.sbThumb);
 
-  if (totalLines <= visibleLines || height <= 0) {
+  if (height <= 0) {
     return ui.column({ width: 1, height: 'full', style: { bg: trackColor } }, []);
   }
 
-  const thumbRatio = visibleLines / totalLines;
+  const hasOverflow = totalLines > visibleLines;
+  const thumbRatio = hasOverflow ? visibleLines / totalLines : 1;
   const thumbHeight = Math.max(1, Math.round(thumbRatio * height));
-  const maxScrollOffset = totalLines - visibleLines;
-  const thumbTop = Math.round(
-    (Math.min(scrollOffset, maxScrollOffset) / maxScrollOffset) * (height - thumbHeight)
-  );
+  const maxScrollOffset = Math.max(0, totalLines - visibleLines);
+  const thumbTop = hasOverflow && maxScrollOffset > 0
+    ? Math.round((Math.min(scrollOffset, maxScrollOffset) / maxScrollOffset) * (height - thumbHeight))
+    : 0;
 
   const children = [];
   if (thumbTop > 0) {

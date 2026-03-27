@@ -22,7 +22,7 @@ vi.mock('@rezi-ui/core', () => ({
 }));
 
 import { Header } from '../ui/components/Header.js';
-import { LOGO_LINES, LOGO_SUBTITLE } from '../ui/logo.js';
+import { LOGO_LINES, logoSubtitle } from '../ui/logo.js';
 
 describe('Header', () => {
   it('uses the block logo and top-aligned header chrome', () => {
@@ -35,12 +35,13 @@ describe('Header', () => {
       issueCount: { current: 2, total: 5 },
       phase: 'agent_running',
       bgStatus: 'bd-1  |  running  |  0m 12s',
+      version: '0.5.3',
     }, ctx as never);
 
     expect(boxMock).toHaveBeenCalledTimes(1);
     expect(boxMock.mock.calls[0][0]).toMatchObject({
       px: 2,
-      py: 0,
+      py: 1,
       borderBottom: true,
     });
 
@@ -59,7 +60,7 @@ describe('Header', () => {
     for (const line of LOGO_LINES) {
       expect(renderedText).toContain(line);
     }
-    expect(renderedText).toContain(LOGO_SUBTITLE);
+    expect(renderedText).toContain(logoSubtitle('0.5.3'));
     expect(renderedText.join(' ')).toContain('~*~*~*~>');
     expect(renderedText.join(' ')).toContain('2/5');
   });

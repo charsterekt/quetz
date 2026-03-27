@@ -36,10 +36,11 @@ describe('Footer', () => {
     });
 
     const rendered = textMock.mock.calls.map(([content]) => content).join(' ');
-    expect(rendered).toContain('◆ issue 1/3  |  mock-001  |  agent running');
-    expect(rendered).toContain('←→ panes');
-    expect(rendered).toContain('↑↓ sessions');
+    expect(rendered).toContain('\u25c6 issue 1/3  |  mock-001  |  agent running');
+    expect(rendered).not.toContain('\u2190\u2192 panes');
+    expect(rendered).toContain('\u2191\u2193 sessions');
     expect(rendered).toContain('enter open');
+    expect(rendered).toContain('\u25c6  v0.5.3');
   });
 
   it('renders background context for session detail mode', () => {
@@ -67,6 +68,7 @@ describe('Footer', () => {
     const rendered = textMock.mock.calls.map(([content]) => content).join(' ');
     expect(rendered).toContain('session: bd-a1b2');
     expect(rendered).toContain('bg: mock-002 waiting for merge  |  8m 22s');
+    expect(rendered).toContain('\u25c6  v0.5.3');
   });
 
   it('renders distinct outcome footer text for victory and failure', () => {
@@ -105,8 +107,8 @@ describe('Footer', () => {
     });
 
     const rendered = textMock.mock.calls.map(([content]) => content).join(' ');
-    expect(rendered).toContain('◆ all done  |  exit code 0');
-    expect(rendered).toContain('● ci failed  |  pr: #78  |  issue: mock-004  |  exit code 1');
-    expect(rendered).toContain('q quit  ◆ v0.5.3');
+    expect(rendered).toContain('\u25c6 all done  |  exit code 0');
+    expect(rendered).toContain('\u25cf ci failed  |  pr: #78  |  issue: mock-004  |  exit code 1');
+    expect(rendered).toContain('q quit  \u25c6  v0.5.3');
   });
 });
