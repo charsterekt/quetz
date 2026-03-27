@@ -16,23 +16,30 @@ interface SessionsPanelProps {
   sessions: CompletedSession[];
   selectedIdx: number;
   isFocused: boolean;
+  scrollOffset: number;
   width: number;
   height: number;
   key?: string;
 }
 
-export function SessionsPanel({ sessions, selectedIdx, isFocused, width, height }: SessionsPanelProps) {
+export function SessionsPanel({ sessions, selectedIdx, isFocused, scrollOffset, width, height }: SessionsPanelProps) {
+  const visibleRows = Math.max(1, height - 2);
+  const maxOffset = Math.max(0, sessions.length - visibleRows);
+  const safeOffset = Math.max(0, Math.min(scrollOffset, maxOffset));
+  const visibleSessions = sessions.slice(safeOffset, safeOffset + visibleRows);
+
   const listContent =
     sessions.length === 0
       ? [ui.text('no completed sessions yet', { style: { fg: fg(c.dim) } })]
-      : sessions.map((session, i) => {
-          const isSelected = i === selectedIdx;
+      : visibleSessions.map((session, i) => {
+          const absoluteIdx = safeOffset + i;
+          const isSelected = absoluteIdx === selectedIdx;
           const marker = isSelected ? '▶' : ' ';
           const rowColor = isSelected ? fg(c.brand) : fg(c.dim);
           const outcomeIcon = session.outcome === 'merged' ? '✓' : '✗';
           const outcomeColor = session.outcome === 'merged' ? fg(c.brand) : fg(c.error);
 
-          return ui.row({ height: 1, gap: 1, key: String(i), items: 'center' }, [
+          return ui.row({ height: 1, gap: 1, key: session.id, items: 'center' }, [
             ui.text(marker, { style: { fg: isSelected ? fg(c.brand) : fg(c.dim) } }),
             ui.text(`${session.id}  ${session.title}`, { style: { fg: rowColor } }),
             ui.text(outcomeIcon, { style: { fg: isSelected ? fg(c.brand) : outcomeColor } }),

@@ -41,7 +41,7 @@ export function Footer({ phase, issueId, issueCount, prNumber, elapsed, version 
   const phaseLabel = PHASE_LABELS[phase] ?? phase;
   const leftPrefix = `◆ issue ${issueCount.current}/${issueCount.total}  |  ${issueId}  |  ${phaseLabel}  |  `;
   const leftSuffix = `  |  ${elapsed}`;
-  const right = `q quit  ↑↓ agent  [ ] log  ◆ v${version}`;
+  const right = `q quit  ↑↓ agent  , . line  [ ] log  ◆ v${version}`;
 
   return ui.box(
     {

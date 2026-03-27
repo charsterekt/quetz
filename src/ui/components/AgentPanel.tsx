@@ -14,7 +14,7 @@ const HEADER_BG = rgb(15, 15, 15);
 const CONTENT_BG = rgb(10, 10, 10);
 const TITLE_BAR_ROWS = 2;
 
-function toolLine(line: AgentLine): string {
+export function toolLine(line: AgentLine): string {
   const name = (line.toolName ?? '').padEnd(5).slice(0, 5);
   return `> ${name}   ${line.content}`;
 }
@@ -24,11 +24,20 @@ function formatModel(model: string): string {
   return model.startsWith('claude ') ? model : `claude ${model}`;
 }
 
-function clampText(text: string, maxWidth: number): string {
-  if (maxWidth <= 0) return '';
-  if (text.length <= maxWidth) return text;
-  if (maxWidth === 1) return '.';
-  return `${text.slice(0, maxWidth - 1)}.`;
+export function sliceViewportText(text: string, start: number, width: number): string {
+  if (width <= 0) return '';
+  const safeStart = Math.max(0, start);
+  if (safeStart === 0 && text.length <= width) return text;
+
+  const hasLeft = safeStart > 0;
+  const reservedForLeft = hasLeft ? 1 : 0;
+  const available = Math.max(0, width - reservedForLeft);
+  const rawSlice = text.slice(safeStart, safeStart + available);
+  const hasRight = safeStart + rawSlice.length < text.length;
+
+  if (!hasRight) return `${hasLeft ? '…' : ''}${rawSlice}`;
+  if (available <= 1) return `${hasLeft ? '…' : ''}…`.slice(0, width);
+  return `${hasLeft ? '…' : ''}${rawSlice.slice(0, available - 1)}…`;
 }
 
 interface AgentPanelProps {
@@ -40,13 +49,26 @@ interface AgentPanelProps {
   effort: string;
   lines: AgentLine[];
   scrollOffset: number;
+  horizontalScrollOffset: number;
   autoScroll: boolean;
   sessionComplete: SessionCompleteState | null;
   key?: string;
 }
 
 export const AgentPanel = defineWidget<AgentPanelProps>((props, ctx) => {
-  const { width, height, phase, issueId, model, effort, lines, scrollOffset, autoScroll, sessionComplete } = props;
+  const {
+    width,
+    height,
+    phase,
+    issueId,
+    model,
+    effort,
+    lines,
+    scrollOffset,
+    horizontalScrollOffset,
+    autoScroll,
+    sessionComplete,
+  } = props;
   const [spinnerIdx, setSpinnerIdx] = ctx.useState(0);
 
   useInterval(ctx, () => {
@@ -59,8 +81,8 @@ export const AgentPanel = defineWidget<AgentPanelProps>((props, ctx) => {
     ? `agent: ${issueId}  |  ${formatModel(model)}  |  effort: ${effort}  [running]`
     : `agent: ${issueId}  |  preparing agent...`;
   const agentHeaderText = sessionComplete
-    ? clampText(`agent: ${issueId}  |  session complete`, Math.max(1, width - 4))
-    : clampText(runningHeaderText, Math.max(1, width - 4));
+    ? sliceViewportText(`agent: ${issueId}  |  session complete`, 0, Math.max(1, width - 4))
+    : sliceViewportText(runningHeaderText, 0, Math.max(1, width - 4));
   const visibleRows = Math.max(1, height - TITLE_BAR_ROWS);
   const contentWidth = Math.max(1, width - 6);
 
@@ -73,9 +95,11 @@ export const AgentPanel = defineWidget<AgentPanelProps>((props, ctx) => {
     const spin = SPINNER_FRAMES[spinnerIdx];
 
     content = ui.column({ flex: 1, height: 'full', py: 1, px: 2, gap: 0, style: { bg: CONTENT_BG } }, [
-      ui.text(clampText('---- agent session complete ----', contentWidth), { style: { fg: fg(c.muted) } }),
-      ui.text(clampText(prText, contentWidth), { style: { fg: fg(c.brand) } }),
-      ui.text(clampText(`waiting for merge...  ${spin}  (${sessionComplete.elapsed})`, contentWidth), { style: { fg: fg(c.accent) } }),
+      ui.text(sliceViewportText('---- agent session complete ----', 0, contentWidth), { style: { fg: fg(c.muted) } }),
+      ui.text(sliceViewportText(prText, 0, contentWidth), { style: { fg: fg(c.brand) } }),
+      ui.text(sliceViewportText(`waiting for merge...  ${spin}  (${sessionComplete.elapsed})`, 0, contentWidth), {
+        style: { fg: fg(c.accent) },
+      }),
     ]);
   } else {
     const visibleLines = autoScroll
@@ -83,7 +107,7 @@ export const AgentPanel = defineWidget<AgentPanelProps>((props, ctx) => {
       : lines.slice(scrollOffset, scrollOffset + visibleRows);
 
     const lineNodes = visibleLines.map((line, i) =>
-      ui.text(clampText(line.type === 'tool' ? toolLine(line) : line.content, contentWidth), {
+      ui.text(sliceViewportText(line.type === 'tool' ? toolLine(line) : line.content, horizontalScrollOffset, contentWidth), {
         key: String(i),
         style: { fg: line.type === 'tool' ? fg(c.cyan) : fg(c.text) },
       })

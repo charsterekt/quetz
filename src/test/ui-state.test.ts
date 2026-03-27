@@ -82,6 +82,47 @@ describe('wireState', () => {
     cleanup();
   });
 
+  it('promotes PR-found sessions into the agent summary immediately', () => {
+    const bus = createBus();
+    let state = cloneState();
+    const cleanup = wireState(bus, updater => {
+      state = updater(state);
+    });
+
+    bus.emit('loop:issue_pickup', {
+      id: 'bd-222',
+      title: 'Show session summary on PR detection',
+      priority: 2,
+      type: 'task',
+      iteration: 1,
+      total: 3,
+    });
+    bus.emit('loop:pr_found', {
+      number: 42,
+      title: 'feat: show session summary on PR detection',
+      url: 'https://example.test/pr/42',
+    });
+
+    expect(state.sessionComplete).toEqual({
+      issueId: 'bd-222',
+      prNumber: 42,
+      elapsed: '0m 00s',
+    });
+
+    vi.advanceTimersByTime(5_000);
+
+    expect(state.sessionComplete).toEqual({
+      issueId: 'bd-222',
+      prNumber: 42,
+      elapsed: '0m 05s',
+    });
+
+    bus.emit('loop:phase', { phase: 'pr_polling' });
+    expect(state.mode).toBe('polling');
+
+    cleanup();
+  });
+
   it('reuses the picked issue title when commits land', () => {
     const bus = createBus();
     let state = cloneState();
@@ -101,6 +142,45 @@ describe('wireState', () => {
 
     expect(state.completedSessions).toHaveLength(1);
     expect(state.completedSessions[0].title).toBe('Use human title in sessions panel');
+
+    cleanup();
+  });
+
+  it('records failed runs in completed session history with failed outcome', () => {
+    const bus = createBus();
+    let state = cloneState();
+    const cleanup = wireState(bus, updater => {
+      state = updater(state);
+    });
+
+    bus.emit('loop:issue_pickup', {
+      id: 'bd-404',
+      title: 'Capture failed runs',
+      priority: 1,
+      type: 'bug',
+      iteration: 1,
+      total: 1,
+    });
+    bus.emit('loop:pr_found', {
+      number: 84,
+      title: 'feat: capture failed runs',
+      url: 'https://example.test/pr/84',
+    });
+    vi.advanceTimersByTime(8_000);
+    bus.emit('loop:failure', {
+      reason: 'CI failed',
+      detail: 'tests did not pass',
+      prNumber: 84,
+    });
+
+    expect(state.completedSessions).toHaveLength(1);
+    expect(state.completedSessions[0]).toMatchObject({
+      id: 'bd-404',
+      title: 'Capture failed runs',
+      prNumber: 84,
+      duration: '0m 08s',
+      outcome: 'failed',
+    });
 
     cleanup();
   });

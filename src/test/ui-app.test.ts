@@ -43,12 +43,12 @@ vi.mock('../ui/components/SessionDetail.js', () => ({ SessionDetail: vi.fn(() =>
 vi.mock('../ui/components/VictoryCard.js', () => ({ VictoryCard: vi.fn(() => ({})) }));
 vi.mock('../ui/components/FailureCard.js', () => ({ FailureCard: vi.fn(() => ({})) }));
 
-function makeSession(id: string, title: string): CompletedSession {
+function makeSession(id: string, title: string, outcome: CompletedSession['outcome'] = 'merged'): CompletedSession {
   return {
     id,
     title,
     duration: '0:42',
-    outcome: 'merged',
+    outcome,
     lines: [],
   };
 }
@@ -134,6 +134,159 @@ describe('mountApp', () => {
     expect(state.focusedPane).toBe('agent');
   });
 
+  it('uses h to focus history and enter to open the selected session', () => {
+    const bus = createBus();
+    let state = makeState({
+      focusedPane: 'agent',
+      completedSessions: [
+        makeSession('bd-1', 'First fix'),
+        makeSession('bd-2', 'Second fix'),
+      ],
+      selectedSessionIdx: -1,
+      sessionsScrollOffset: 0,
+    });
+    let bindings: Record<string, () => void> = {};
+
+    const app = {
+      update: vi.fn((updater: AppState | ((prev: Readonly<AppState>) => AppState)) => {
+        state = typeof updater === 'function' ? updater(state) : updater;
+      }),
+      keys: vi.fn((nextBindings: Record<string, () => void>) => {
+        bindings = nextBindings;
+      }),
+      view: vi.fn(),
+      start: vi.fn(() => Promise.resolve()),
+      stop: vi.fn(() => Promise.resolve()),
+    };
+    mockCreateNodeApp.mockReturnValue(app);
+
+    void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
+
+    bindings.h();
+    expect(state.focusedPane).toBe('sessions');
+    expect(state.selectedSessionIdx).toBe(1);
+    expect(state.sessionsScrollOffset).toBe(0);
+
+    bindings.enter();
+    expect(state.mode).toBe('session_detail');
+    expect(state.viewingSession?.id).toBe('bd-2');
+
+    bindings.escape();
+    expect(state.mode).toBe('running');
+    expect(state.focusedPane).toBe('sessions');
+    expect(state.viewingSession).toBeNull();
+  });
+
+  it('uses h to open session detail from outcome screens', () => {
+    const bus = createBus();
+    let state = makeState({
+      mode: 'failure',
+      focusedPane: 'agent',
+      completedSessions: [makeSession('bd-9', 'Inspect failed run', 'failed')],
+      selectedSessionIdx: -1,
+      sessionsScrollOffset: 0,
+    });
+    let bindings: Record<string, () => void> = {};
+
+    const app = {
+      update: vi.fn((updater: AppState | ((prev: Readonly<AppState>) => AppState)) => {
+        state = typeof updater === 'function' ? updater(state) : updater;
+      }),
+      keys: vi.fn((nextBindings: Record<string, () => void>) => {
+        bindings = nextBindings;
+      }),
+      view: vi.fn(),
+      start: vi.fn(() => Promise.resolve()),
+      stop: vi.fn(() => Promise.resolve()),
+    };
+    mockCreateNodeApp.mockReturnValue(app);
+
+    void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
+
+    bindings.h();
+    expect(state.mode).toBe('session_detail');
+    expect(state.priorMode).toBe('failure');
+    expect(state.viewingSession?.id).toBe('bd-9');
+
+    bindings.escape();
+    expect(state.mode).toBe('failure');
+    expect(state.focusedPane).toBe('sessions');
+    expect(state.viewingSession).toBeNull();
+  });
+
+  it('keeps the selected session visible while scrolling through a long rail', () => {
+    const bus = createBus();
+    let state = makeState({
+      focusedPane: 'sessions',
+      completedSessions: Array.from({ length: 12 }, (_, i) => makeSession(`bd-${i + 1}`, `Issue ${i + 1}`)),
+      selectedSessionIdx: 0,
+      sessionsScrollOffset: 0,
+    });
+    let bindings: Record<string, () => void> = {};
+
+    const app = {
+      update: vi.fn((updater: AppState | ((prev: Readonly<AppState>) => AppState)) => {
+        state = typeof updater === 'function' ? updater(state) : updater;
+      }),
+      keys: vi.fn((nextBindings: Record<string, () => void>) => {
+        bindings = nextBindings;
+      }),
+      view: vi.fn(),
+      start: vi.fn(() => Promise.resolve()),
+      stop: vi.fn(() => Promise.resolve()),
+    };
+    mockCreateNodeApp.mockReturnValue(app);
+
+    void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
+
+    for (let i = 0; i < 8; i++) {
+      bindings.down();
+    }
+
+    expect(state.selectedSessionIdx).toBe(8);
+    expect(state.sessionsScrollOffset).toBe(1);
+
+    bindings.down();
+    expect(state.selectedSessionIdx).toBe(9);
+    expect(state.sessionsScrollOffset).toBe(2);
+  });
+
+  it('supports horizontal agent transcript inspection without mutating vertical scroll', () => {
+    const bus = createBus();
+    let state = makeState({
+      focusedPane: 'agent',
+      agentLines: [{ type: 'text', content: 'A very long transcript line that should require horizontal scrolling to inspect fully.' }],
+      agentScrollOffset: 4,
+      agentHorizontalScrollOffset: 0,
+      agentAutoScroll: false,
+    });
+    let bindings: Record<string, () => void> = {};
+
+    const app = {
+      update: vi.fn((updater: AppState | ((prev: Readonly<AppState>) => AppState)) => {
+        state = typeof updater === 'function' ? updater(state) : updater;
+      }),
+      keys: vi.fn((nextBindings: Record<string, () => void>) => {
+        bindings = nextBindings;
+      }),
+      view: vi.fn(),
+      start: vi.fn(() => Promise.resolve()),
+      stop: vi.fn(() => Promise.resolve()),
+    };
+    mockCreateNodeApp.mockReturnValue(app);
+
+    Object.defineProperty(process.stdout, 'columns', { value: 120, configurable: true });
+
+    void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
+
+    bindings['.']();
+    expect(state.agentHorizontalScrollOffset).toBeGreaterThan(0);
+    expect(state.agentScrollOffset).toBe(4);
+
+    bindings[',']();
+    expect(state.agentHorizontalScrollOffset).toBe(0);
+  });
+
   it('renders both the sessions panel and quetz log in running mode', () => {
     const bus = createBus();
     let viewFn!: (state: AppState) => unknown;
@@ -161,6 +314,7 @@ describe('mountApp', () => {
       width: expect.any(Number),
       height: expect.any(Number),
       effort: '',
+      horizontalScrollOffset: expect.any(Number),
     }));
     expect(mockSessionsPanel).toHaveBeenCalledWith(expect.objectContaining({
       width: expect.any(Number),

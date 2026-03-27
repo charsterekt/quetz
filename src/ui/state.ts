@@ -35,7 +35,11 @@ export interface SessionCompleteState {
 }
 
 export type VictoryData = QuetzEvent['loop:victory'];
-export type FailureData = QuetzEvent['loop:failure'];
+export type FailureData = QuetzEvent['loop:failure'] & {
+  issueId?: string;
+  elapsed?: string;
+  failedChecks?: string;
+};
 
 export interface AppState {
   mode: ScreenMode;
@@ -48,6 +52,7 @@ export interface AppState {
   agentEffort: string;
   agentLines: AgentLine[];
   agentScrollOffset: number;
+  agentHorizontalScrollOffset: number;
   agentAutoScroll: boolean;
   sessionComplete: SessionCompleteState | null;
   completedSessions: CompletedSession[];
@@ -78,6 +83,7 @@ export const INITIAL_STATE: AppState = {
   agentEffort: '',
   agentLines: [],
   agentScrollOffset: 0,
+  agentHorizontalScrollOffset: 0,
   agentAutoScroll: true,
   sessionComplete: null,
   completedSessions: [],
@@ -136,13 +142,14 @@ function buildCompletedSession(
   state: AppState,
   issueId: string,
   duration: string,
-  extras: Partial<Pick<CompletedSession, 'prNumber'>>,
+  outcome: CompletedSession['outcome'],
+  extras: Partial<Pick<CompletedSession, 'prNumber'>> = {},
 ): CompletedSession {
   return {
     id: issueId,
     title: state.currentIssueTitle || issueId,
     duration,
-    outcome: 'merged',
+    outcome,
     lines: [...state.agentLines],
     ...extras,
   };
@@ -188,6 +195,9 @@ export function wireState(
         return {
           ...s,
           elapsed,
+          sessionComplete: s.sessionComplete
+            ? { ...s.sessionComplete, elapsed }
+            : s.sessionComplete,
           bgStatus: buildBgStatus(s.issueId, s.phase, elapsed),
         };
       });
@@ -225,6 +235,7 @@ export function wireState(
       issueCount: { current: p.iteration, total: p.total },
       agentLines: [],
       agentScrollOffset: 0,
+      agentHorizontalScrollOffset: 0,
       agentAutoScroll: true,
       sessionComplete: null,
       prNumber: null,
@@ -275,7 +286,16 @@ export function wireState(
   };
 
   const onPrFound = (p: QuetzEvent['loop:pr_found']) => {
-    update(s => ({ ...s, prNumber: p.number }));
+    const elapsed = formatElapsed(Math.floor((Date.now() - sessionStartTime) / 1000));
+    update(s => ({
+      ...s,
+      prNumber: p.number,
+      sessionComplete: {
+        issueId: s.issueId,
+        prNumber: p.number,
+        elapsed,
+      },
+    }));
   };
 
   const onVictory = (p: QuetzEvent['loop:victory']) => {
@@ -285,14 +305,34 @@ export function wireState(
 
   const onFailure = (p: QuetzEvent['loop:failure']) => {
     stopElapsedTimer();
-    update(s => ({ ...s, mode: 'failure', failureData: p, bgStatus: '' }));
+    const elapsed = formatElapsed(Math.floor((Date.now() - sessionStartTime) / 1000));
+    update(s => {
+      const issueId = s.issueId || s.agentIssueId;
+      const prNumber = p.prNumber ?? s.sessionComplete?.prNumber;
+      const failureData: FailureData = {
+        ...p,
+        issueId: issueId || undefined,
+        elapsed,
+        failedChecks: p.reason === 'CI failed' ? p.detail : undefined,
+        prNumber,
+      };
+      return {
+        ...s,
+        mode: 'failure',
+        failureData,
+        completedSessions: issueId
+          ? [...s.completedSessions, buildCompletedSession(s, issueId, elapsed, 'failed', { prNumber })]
+          : s.completedSessions,
+        bgStatus: '',
+      };
+    });
   };
 
   const onMerged = (p: QuetzEvent['loop:merged']) => {
     stopElapsedTimer();
     const elapsed = formatElapsed(Math.floor((Date.now() - sessionStartTime) / 1000));
     update(s => {
-      const session = buildCompletedSession(s, p.issueId, elapsed, { prNumber: p.prNumber });
+      const session = buildCompletedSession(s, p.issueId, elapsed, 'merged', { prNumber: p.prNumber });
       return {
         ...s,
         completedSessions: [...s.completedSessions, session],
@@ -306,7 +346,7 @@ export function wireState(
     stopElapsedTimer();
     const elapsed = formatElapsed(Math.floor((Date.now() - sessionStartTime) / 1000));
     update(s => {
-      const session = buildCompletedSession(s, p.issueId, elapsed, {});
+      const session = buildCompletedSession(s, p.issueId, elapsed, 'merged');
       return {
         ...s,
         completedSessions: [...s.completedSessions, session],
@@ -320,7 +360,7 @@ export function wireState(
     stopElapsedTimer();
     const elapsed = formatElapsed(Math.floor((Date.now() - sessionStartTime) / 1000));
     update(s => {
-      const session = buildCompletedSession(s, p.issueId, elapsed, {});
+      const session = buildCompletedSession(s, p.issueId, elapsed, 'merged');
       return {
         ...s,
         completedSessions: [...s.completedSessions, session],

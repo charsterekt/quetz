@@ -175,14 +175,14 @@ export async function main(): Promise<void> {
         const onSigint = () => { void cleanupTui(true); };
         process.once('SIGINT', onSigint);
 
-        // Run the loop. On success, auto-exit. On error, stay alive so the user
-        // can read the highlighted failure before pressing q to quit.
+        // Keep outcome screens mounted until the user explicitly quits so the
+        // final state can be reviewed in the TUI.
         let userQuit = false;
         const exitSignal = new Promise<void>(resolve => {
           runLoop({ model, effort, timeout, localCommits, amend, simulate }, bus)
             .then(r => {
               loopResult = r;
-              if (r.exitCode === 0) resolve();
+              if (r.reason === 'no_issues') resolve();
             })
             .catch(() => { loopResult = { exitCode: 1, reason: 'error' }; resolve(); });
           quitPromise.then(() => { userQuit = true; resolve(); });
