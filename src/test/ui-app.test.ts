@@ -7,6 +7,7 @@ import { mountApp } from '../ui/App.js';
 import { AgentPanel } from '../ui/components/AgentPanel.js';
 import { SessionsPanel } from '../ui/components/SessionsPanel.js';
 import { LogPanel } from '../ui/components/LogPanel.js';
+import { Footer } from '../ui/components/Footer.js';
 
 const { mockCreateNodeApp } = vi.hoisted(() => ({
   mockCreateNodeApp: vi.fn(),
@@ -15,6 +16,7 @@ const { mockCreateNodeApp } = vi.hoisted(() => ({
 const mockAgentPanel = vi.mocked(AgentPanel);
 const mockSessionsPanel = vi.mocked(SessionsPanel);
 const mockLogPanel = vi.mocked(LogPanel);
+const mockFooter = vi.mocked(Footer);
 
 vi.mock('@rezi-ui/node', () => ({
   createNodeApp: mockCreateNodeApp,
@@ -244,11 +246,11 @@ describe('mountApp', () => {
     }
 
     expect(state.selectedSessionIdx).toBe(8);
-    expect(state.sessionsScrollOffset).toBe(1);
+    expect(state.sessionsScrollOffset).toBe(2);
 
     bindings.down();
     expect(state.selectedSessionIdx).toBe(9);
-    expect(state.sessionsScrollOffset).toBe(2);
+    expect(state.sessionsScrollOffset).toBe(3);
   });
 
   it('supports horizontal agent transcript inspection without mutating vertical scroll', () => {
@@ -311,18 +313,115 @@ describe('mountApp', () => {
     expect(mockSessionsPanel).toHaveBeenCalledTimes(1);
     expect(mockLogPanel).toHaveBeenCalledTimes(1);
     expect(mockAgentPanel).toHaveBeenCalledWith(expect.objectContaining({
-      width: expect.any(Number),
+      width: 72,
       height: expect.any(Number),
       effort: '',
       horizontalScrollOffset: expect.any(Number),
     }));
     expect(mockSessionsPanel).toHaveBeenCalledWith(expect.objectContaining({
-      width: expect.any(Number),
+      width: 48,
       height: expect.any(Number),
     }));
     expect(mockLogPanel).toHaveBeenCalledWith(expect.objectContaining({
-      width: expect.any(Number),
+      width: 48,
       height: expect.any(Number),
+    }));
+    expect(mockFooter).toHaveBeenCalledWith(expect.objectContaining({
+      mode: 'running',
+      focusedPane: 'agent',
+      hasHistory: false,
+    }));
+  });
+
+  it('keeps both panes usable on narrow terminals', () => {
+    const bus = createBus();
+    let viewFn!: (state: AppState) => unknown;
+
+    Object.defineProperty(process.stdout, 'columns', { value: 50, configurable: true });
+    Object.defineProperty(process.stdout, 'rows', { value: 40, configurable: true });
+
+    const app = {
+      update: vi.fn(),
+      keys: vi.fn(),
+      view: vi.fn((fn: (state: AppState) => unknown) => {
+        viewFn = fn;
+      }),
+      start: vi.fn(() => Promise.resolve()),
+      stop: vi.fn(() => Promise.resolve()),
+    };
+    mockCreateNodeApp.mockReturnValue(app);
+
+    void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
+    viewFn(makeState({ mode: 'running' }));
+
+    expect(mockAgentPanel).toHaveBeenCalledWith(expect.objectContaining({ width: 30 }));
+    expect(mockSessionsPanel).toHaveBeenCalledWith(expect.objectContaining({ width: 20 }));
+    expect(mockLogPanel).toHaveBeenCalledWith(expect.objectContaining({ width: 20 }));
+  });
+
+  it('keeps the shared footer mounted for outcome and detail screens', () => {
+    const bus = createBus();
+    let viewFn!: (state: AppState) => unknown;
+
+    Object.defineProperty(process.stdout, 'columns', { value: 120, configurable: true });
+    Object.defineProperty(process.stdout, 'rows', { value: 40, configurable: true });
+
+    const app = {
+      update: vi.fn(),
+      keys: vi.fn(),
+      view: vi.fn((fn: (state: AppState) => unknown) => {
+        viewFn = fn;
+      }),
+      start: vi.fn(() => Promise.resolve()),
+      stop: vi.fn(() => Promise.resolve()),
+    };
+    mockCreateNodeApp.mockReturnValue(app);
+
+    void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
+
+    viewFn(makeState({
+      mode: 'victory',
+      phase: 'completed',
+      issueId: 'bd-777',
+      issueCount: { current: 3, total: 3 },
+      prNumber: 77,
+      elapsed: '0m 09s',
+      completedSessions: [makeSession('bd-777', 'Keep footer visible')],
+    }));
+    viewFn(makeState({
+      mode: 'failure',
+      phase: 'error',
+      issueId: 'bd-778',
+      issueCount: { current: 2, total: 3 },
+      prNumber: 78,
+      elapsed: '0m 12s',
+      completedSessions: [makeSession('bd-778', 'Keep footer visible', 'failed')],
+    }));
+    viewFn(makeState({
+      mode: 'session_detail',
+      phase: 'pr_polling',
+      issueId: 'bd-779',
+      prNumber: 79,
+      elapsed: '0m 15s',
+      focusedPane: 'sessions',
+      completedSessions: [makeSession('bd-779', 'Inspect session detail')],
+      viewingSession: makeSession('bd-779', 'Inspect session detail'),
+    }));
+
+    expect(mockFooter).toHaveBeenCalledWith(expect.objectContaining({
+      mode: 'victory',
+      phase: 'completed',
+      hasHistory: true,
+    }));
+    expect(mockFooter).toHaveBeenCalledWith(expect.objectContaining({
+      mode: 'failure',
+      phase: 'error',
+      hasHistory: true,
+    }));
+    expect(mockFooter).toHaveBeenCalledWith(expect.objectContaining({
+      mode: 'session_detail',
+      focusedPane: 'sessions',
+      hasHistory: true,
     }));
   });
 });

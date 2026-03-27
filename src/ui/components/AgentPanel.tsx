@@ -94,7 +94,7 @@ export const AgentPanel = defineWidget<AgentPanelProps>((props, ctx) => {
       : 'session complete';
     const spin = SPINNER_FRAMES[spinnerIdx];
 
-    content = ui.column({ flex: 1, height: 'full', py: 1, px: 2, gap: 0, style: { bg: CONTENT_BG } }, [
+    content = ui.column({ flex: 1, height: 'full', py: 0, px: 2, gap: 0, style: { bg: CONTENT_BG } }, [
       ui.text(sliceViewportText('---- agent session complete ----', 0, contentWidth), { style: { fg: fg(c.muted) } }),
       ui.text(sliceViewportText(prText, 0, contentWidth), { style: { fg: fg(c.brand) } }),
       ui.text(sliceViewportText(`waiting for merge...  ${spin}  (${sessionComplete.elapsed})`, 0, contentWidth), {
@@ -114,7 +114,7 @@ export const AgentPanel = defineWidget<AgentPanelProps>((props, ctx) => {
     );
 
     content = ui.column(
-      { flex: 1, height: 'full', overflow: 'hidden', py: 1, px: 2, gap: 0, style: { bg: CONTENT_BG } },
+      { flex: 1, height: 'full', overflow: 'hidden', py: 0, px: 2, gap: 0, style: { bg: CONTENT_BG } },
       lineNodes.length > 0 ? lineNodes : [ui.text('', {})]
     );
   }

@@ -10,12 +10,10 @@ function fg(hex: string) {
   return rgb(r, g, b);
 }
 
-const FOOTER_BG = rgb(15, 15, 15);
 const CARD_BG = rgb(10, 10, 10);
 
 interface FailureCardProps {
   data: FailureData | null;
-  version: string;
   key?: string;
 }
 
@@ -39,7 +37,7 @@ function spacer(size: number) {
   return ui.spacer({ size });
 }
 
-export function FailureCard({ data, version }: FailureCardProps) {
+export function FailureCard({ data }: FailureCardProps) {
   const termCols = process.stdout.columns ?? 120;
   const cardWidth = Math.round(termCols * 0.49);
 
@@ -52,35 +50,6 @@ export function FailureCard({ data, version }: FailureCardProps) {
   const subtitle = prNumber
     ? `ci checks failed on pr #${prNumber} — the serpent was stopped`
     : `${reason.toLowerCase()} — the serpent was stopped`;
-
-  const footerParts = ['● ci failed'];
-  if (prNumber !== undefined) footerParts.push(`pr: #${prNumber}`);
-  if (issueId) footerParts.push(`issue: ${issueId}`);
-  footerParts.push('exit code 1');
-  const footerLeft = footerParts.join('  |  ');
-
-  const failureFooter = ui.box(
-    {
-      border: 'single',
-      borderTop: true,
-      borderBottom: false,
-      borderLeft: false,
-      borderRight: false,
-      borderStyle: { fg: fg(c.border) },
-      style: { bg: FOOTER_BG },
-      px: 3,
-      width: 'full',
-    },
-    [
-      ui.row({ justify: 'between', width: 'full', items: 'center' }, [
-        ui.text(footerLeft, { style: { fg: fg(c.error), bold: true } }),
-        ui.row({ items: 'center' }, [
-          ui.text('q quit', { style: { fg: fg(c.error), bold: true } }),
-          ui.text(`  ◆ v${version}`, { style: { fg: fg(c.muted) } }),
-        ]),
-      ]),
-    ]
-  );
 
   const statsRows: ReturnType<typeof ui.row>[] = [];
   if (failedChecks) {
@@ -162,6 +131,5 @@ export function FailureCard({ data, version }: FailureCardProps) {
       card,
       ui.column({ flex: 1, height: 'full' }, []),
     ]),
-    failureFooter,
   ]);
 }

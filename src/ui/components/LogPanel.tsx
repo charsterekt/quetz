@@ -58,7 +58,7 @@ export function LogPanel({ lines, scrollOffset, autoScroll, width, height }: Log
     ),
     ui.row({ flex: 1, height: 'full', width: 'full' }, [
       ui.column(
-        { flex: 1, overflow: 'hidden', py: 1, px: 2, gap: 0, style: { bg: CONTENT_BG } },
+        { flex: 1, overflow: 'hidden', py: 0, px: 2, gap: 0, style: { bg: CONTENT_BG } },
         lineNodes
       ),
       Scrollbar({

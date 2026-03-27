@@ -241,6 +241,8 @@ export function wireState(
       prNumber: null,
       phase: 'idle',
       elapsed: '0m 00s',
+      victoryData: null,
+      failureData: null,
       bgStatus: buildBgStatus(p.id, 'idle', '0m 00s'),
     }));
   };
@@ -300,7 +302,17 @@ export function wireState(
 
   const onVictory = (p: QuetzEvent['loop:victory']) => {
     stopElapsedTimer();
-    update(s => ({ ...s, mode: 'victory', victoryData: p, bgStatus: '' }));
+    update(s => {
+      const issueId = s.sessionComplete?.issueId ?? s.issueId;
+      const elapsed = s.sessionComplete?.elapsed ?? s.elapsed;
+      return {
+        ...s,
+        mode: 'victory',
+        phase: 'completed',
+        victoryData: p,
+        bgStatus: buildBgStatus(issueId, 'completed', elapsed),
+      };
+    });
   };
 
   const onFailure = (p: QuetzEvent['loop:failure']) => {
@@ -319,11 +331,21 @@ export function wireState(
       return {
         ...s,
         mode: 'failure',
+        phase: 'error',
+        elapsed,
+        prNumber: prNumber ?? s.prNumber,
+        sessionComplete: issueId
+          ? {
+              issueId,
+              ...(prNumber != null ? { prNumber } : {}),
+              elapsed,
+            }
+          : s.sessionComplete,
         failureData,
         completedSessions: issueId
           ? [...s.completedSessions, buildCompletedSession(s, issueId, elapsed, 'failed', { prNumber })]
           : s.completedSessions,
-        bgStatus: '',
+        bgStatus: buildBgStatus(issueId, 'error', elapsed),
       };
     });
   };
@@ -335,6 +357,8 @@ export function wireState(
       const session = buildCompletedSession(s, p.issueId, elapsed, 'merged', { prNumber: p.prNumber });
       return {
         ...s,
+        phase: 'completed',
+        elapsed,
         completedSessions: [...s.completedSessions, session],
         sessionComplete: { issueId: p.issueId, prNumber: p.prNumber, elapsed },
         bgStatus: buildBgStatus(p.issueId, 'completed', elapsed),
@@ -349,6 +373,8 @@ export function wireState(
       const session = buildCompletedSession(s, p.issueId, elapsed, 'merged');
       return {
         ...s,
+        phase: 'completed',
+        elapsed,
         completedSessions: [...s.completedSessions, session],
         sessionComplete: { issueId: p.issueId, elapsed },
         bgStatus: buildBgStatus(p.issueId, 'completed', elapsed),
@@ -363,6 +389,8 @@ export function wireState(
       const session = buildCompletedSession(s, p.issueId, elapsed, 'merged');
       return {
         ...s,
+        phase: 'completed',
+        elapsed,
         completedSessions: [...s.completedSessions, session],
         sessionComplete: { issueId: p.issueId, elapsed },
         bgStatus: buildBgStatus(p.issueId, 'completed', elapsed),

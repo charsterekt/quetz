@@ -1,4 +1,4 @@
-// SessionDetail component — spec §7.8, §5.2
+// SessionDetail component - spec sections 7.8 and 5.2
 // Full-screen session log view (Screen 5), entered via enter on sessions panel
 
 import { ui, rgb } from '@rezi-ui/core';
@@ -11,9 +11,8 @@ function fg(hex: string) {
   return rgb(r, g, b);
 }
 
-const HEADER_BG = rgb(15, 15, 15);   // #0F0F0F
-const INFO_BG = rgb(13, 13, 13);     // #0D0D0D
-const CONTENT_BG = rgb(10, 10, 10); // #0A0A0A
+const INFO_BG = rgb(13, 13, 13);
+const CONTENT_BG = rgb(10, 10, 10);
 
 // Chrome rows: header (~6) + info bar (~2) + footer (~2)
 const CHROME_ROWS = 10;
@@ -21,8 +20,6 @@ const CHROME_ROWS = 10;
 interface SessionDetailProps {
   session: CompletedSession;
   scrollOffset: number;
-  bgStatus: string;
-  version: string;
   key?: string;
 }
 
@@ -40,7 +37,7 @@ function renderLine(line: AgentLine, i: number) {
   });
 }
 
-export function SessionDetail({ session, scrollOffset, bgStatus, version }: SessionDetailProps) {
+export function SessionDetail({ session, scrollOffset }: SessionDetailProps) {
   const termRows = process.stdout.rows ?? 40;
   const visibleRows = Math.max(1, termRows - CHROME_ROWS);
 
@@ -49,7 +46,6 @@ export function SessionDetail({ session, scrollOffset, bgStatus, version }: Sess
     ? visibleLines.map((line, i) => renderLine(line, i))
     : [ui.text('no log lines', { style: { fg: fg(c.dim) } })];
 
-  // Right side of info bar
   const rightItems: ReturnType<typeof ui.text>[] = [];
   if (session.prNumber != null) {
     rightItems.push(ui.text(`pr #${session.prNumber}  `, { style: { fg: fg(c.dim) } }));
@@ -85,35 +81,11 @@ export function SessionDetail({ session, scrollOffset, bgStatus, version }: Sess
     ]
   );
 
-  const rightStatus = bgStatus
-    ? `bg: ${bgStatus}  |  ◆ v${version}`
-    : `◆ v${version}`;
-
-  const detailFooter = ui.box(
-    {
-      border: 'single',
-      borderTop: true,
-      borderBottom: false,
-      borderLeft: false,
-      borderRight: false,
-      borderStyle: { fg: fg(c.border) },
-      style: { bg: HEADER_BG },
-      px: 4,
-      width: 'full',
-    },
-    [
-      ui.row({ justify: 'between', width: 'full', items: 'center' }, [
-        ui.text(`← esc  back to main  |  session: ${session.id}`, { style: { fg: fg(c.muted) } }),
-        ui.text(rightStatus, { style: { fg: fg(c.accent), bold: true } }),
-      ]),
-    ]
-  );
-
   return ui.column({ width: 'full', height: 'full', style: { bg: CONTENT_BG } }, [
     infoBar,
     ui.row({ flex: 1, height: 'full', width: 'full' }, [
       ui.column(
-        { flex: 1, overflow: 'hidden', py: 2, px: 4, gap: 0, style: { bg: CONTENT_BG } },
+        { flex: 1, overflow: 'hidden', py: 0, px: 3, gap: 0, style: { bg: CONTENT_BG } },
         lineNodes
       ),
       Scrollbar({
@@ -123,6 +95,5 @@ export function SessionDetail({ session, scrollOffset, bgStatus, version }: Sess
         height: visibleRows,
       }),
     ]),
-    detailFooter,
   ]);
 }

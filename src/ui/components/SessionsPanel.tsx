@@ -67,7 +67,7 @@ export function SessionsPanel({ sessions, selectedIdx, isFocused, scrollOffset, 
       ]
     ),
     ui.column(
-      { flex: 1, overflow: 'hidden', py: 1, px: 2, gap: 0, style: { bg: CONTENT_BG } },
+      { flex: 1, overflow: 'hidden', py: 0, px: 2, gap: 0, style: { bg: CONTENT_BG } },
       listContent as ReturnType<typeof ui.text>[]
     ),
   ]);

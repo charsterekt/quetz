@@ -1,4 +1,4 @@
-// Root Rezi TUI — spec §11, adapted for actual Rezi createNodeApp API
+// Root Rezi TUI - spec section 11, adapted for the Rezi node app API
 
 import { ui, rgb } from '@rezi-ui/core';
 import { createNodeApp } from '@rezi-ui/node';
@@ -17,9 +17,21 @@ import { FailureCard } from './components/FailureCard.js';
 
 function bgColor(hex: string) { const [r, g, b] = hexToRgb(hex); return rgb(r, g, b); }
 
+function rightRailWidth(termCols: number): number {
+  return Math.max(20, Math.min(Math.round(termCols * 0.4), termCols - 24));
+}
+
+function bodyRowCount(termRows: number): number {
+  return Math.max(10, termRows - 6);
+}
+
+function sessionPanelRows(bodyRows: number): number {
+  return Math.max(6, Math.round(bodyRows * 0.27));
+}
+
 function visibleSessionRows(termRows: number): number {
-  const bodyRows = Math.max(10, termRows - 6);
-  const sessionsRows = Math.max(6, Math.round(bodyRows * 0.282));
+  const bodyRows = bodyRowCount(termRows);
+  const sessionsRows = sessionPanelRows(bodyRows);
   return Math.max(1, sessionsRows - 2);
 }
 
@@ -57,7 +69,7 @@ function agentLineText(line: AgentLine): string {
 }
 
 function maxAgentHorizontalOffset(state: AppState, termCols: number): number {
-  const rightCols = Math.max(20, Math.min(38, termCols - 24));
+  const rightCols = rightRailWidth(termCols);
   const leftCols = Math.max(1, termCols - rightCols);
   const contentWidth = Math.max(1, leftCols - 6);
   const longestLine = state.agentLines.reduce((max, line) => Math.max(max, agentLineText(line).length), 0);
@@ -87,10 +99,8 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     initialState: INITIAL_STATE,
   });
 
-  // Wire QuetzBus events → state updates
   const cleanupWire = wireState(bus, app.update);
 
-  // Key bindings
   app.keys({
     q: () => onQuit(),
     'ctrl+c': () => onQuit(),
@@ -183,7 +193,6 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
       if (s.completedSessions.length === 0) return s;
 
       const selectedSessionIdx = currentSessionSelection(s);
-
       const nextState = syncSessionViewport({
         ...s,
         focusedPane: 'sessions',
@@ -233,9 +242,9 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
 
     '[': () => app.update(s => {
       const rows = process.stdout.rows ?? 40;
-      const bodyRows = rows - 8;
-      const sessionsRows = Math.round(bodyRows * 0.24);
-      const logVisibleRows = Math.max(1, bodyRows - sessionsRows - 2);
+      const bodyRows = bodyRowCount(rows);
+      const sessionsRows = sessionPanelRows(bodyRows);
+      const logVisibleRows = Math.max(1, bodyRows - sessionsRows - 3);
       const currentOffset = s.logAutoScroll
         ? Math.max(0, s.logLines.length - logVisibleRows)
         : s.logScrollOffset;
@@ -244,9 +253,9 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
 
     ']': () => app.update(s => {
       const rows = process.stdout.rows ?? 40;
-      const bodyRows = rows - 8;
-      const sessionsRows = Math.round(bodyRows * 0.24);
-      const logVisibleRows = Math.max(1, bodyRows - sessionsRows - 2);
+      const bodyRows = bodyRowCount(rows);
+      const sessionsRows = sessionPanelRows(bodyRows);
+      const logVisibleRows = Math.max(1, bodyRows - sessionsRows - 3);
       const currentOffset = s.logAutoScroll
         ? Math.max(0, s.logLines.length - logVisibleRows)
         : s.logScrollOffset;
@@ -254,51 +263,54 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     }),
   });
 
-  // View: renders based on current state
   app.view((state: AppState) => {
     const rootBg = bgColor(c.bg);
     const termCols = process.stdout.columns ?? 120;
     const termRows = process.stdout.rows ?? 40;
-    const rightCols = Math.max(20, Math.min(38, termCols - 24));
+    const rightCols = rightRailWidth(termCols);
     const leftCols = Math.max(1, termCols - rightCols);
-    const bodyRows = Math.max(10, termRows - 6);
-    const sessionsRows = Math.max(6, Math.round(bodyRows * 0.282));
-    const logRows = Math.max(4, bodyRows - sessionsRows);
+    const bodyRows = bodyRowCount(termRows);
+    const sessionsRows = sessionPanelRows(bodyRows);
+    const logRows = Math.max(4, bodyRows - sessionsRows - 1);
+    const footerNode = Footer({
+      mode: state.mode,
+      focusedPane: state.focusedPane,
+      hasHistory: state.completedSessions.length > 0,
+      phase: state.phase,
+      issueId: state.issueId,
+      issueCount: state.issueCount,
+      prNumber: state.prNumber,
+      elapsed: state.elapsed,
+      version,
+    });
 
     if (state.mode === 'victory' && !state.viewingSession) {
       return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
         Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus }),
         VictoryCard({ data: state.victoryData, version }),
+        footerNode,
       ]);
     }
 
     if (state.mode === 'failure' && !state.viewingSession) {
       return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
         Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus }),
-        FailureCard({ data: state.failureData, version }),
+        FailureCard({ data: state.failureData }),
+        footerNode,
       ]);
     }
 
     if (state.mode === 'session_detail' && state.viewingSession) {
       return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
         Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus }),
-        SessionDetail({
-          session: state.viewingSession,
-          scrollOffset: state.sessionLogScrollOffset,
-          bgStatus: state.bgStatus,
-          version,
-        }),
+        SessionDetail({ session: state.viewingSession, scrollOffset: state.sessionLogScrollOffset }),
+        footerNode,
       ]);
     }
 
-    // Screens 1 & 2: running / polling
     return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
-      // Header
       Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus }),
-
-      // Body: agent panel (left) + right column
       ui.row({ width: 'full', flex: 1 }, [
-        // Agent panel
         AgentPanel({
           width: leftCols,
           height: bodyRows,
@@ -312,7 +324,6 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
           autoScroll: state.agentAutoScroll,
           sessionComplete: state.sessionComplete,
         }),
-        // Right column: sessions + log
         ui.column({ width: rightCols, height: 'full' }, [
           SessionsPanel({
             sessions: state.completedSessions,
@@ -332,13 +343,10 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
           }),
         ]),
       ]),
-
-      // Footer
-      Footer({ phase: state.phase, issueId: state.issueId, issueCount: state.issueCount, prNumber: state.prNumber, elapsed: state.elapsed, version }),
+      footerNode,
     ]);
   });
 
-  // Start the app and keep the promise so teardown cannot race startup.
   const startPromise = app.start();
   let unmounted = false;
 

@@ -50,6 +50,7 @@ describe('wireState', () => {
       duration: '1m 05s',
       outcome: 'merged',
     });
+    expect(state.phase).toBe('completed');
     expect(state.sessionComplete).toEqual({ issueId: 'bd-101', elapsed: '1m 05s' });
     expect(state.bgStatus).toBe('bd-101  |  session complete  |  1m 05s');
 
@@ -142,6 +143,7 @@ describe('wireState', () => {
 
     expect(state.completedSessions).toHaveLength(1);
     expect(state.completedSessions[0].title).toBe('Use human title in sessions panel');
+    expect(state.phase).toBe('completed');
 
     cleanup();
   });
@@ -181,6 +183,39 @@ describe('wireState', () => {
       duration: '0m 08s',
       outcome: 'failed',
     });
+    expect(state.phase).toBe('error');
+    expect(state.bgStatus).toBe('bd-404  |  error  |  0m 08s');
+
+    cleanup();
+  });
+
+  it('keeps completed status context visible after the loop reaches victory', () => {
+    const bus = createBus();
+    let state = cloneState();
+    const cleanup = wireState(bus, updater => {
+      state = updater(state);
+    });
+
+    bus.emit('loop:issue_pickup', {
+      id: 'bd-505',
+      title: 'Keep outcome footer context',
+      priority: 1,
+      type: 'bug',
+      iteration: 3,
+      total: 3,
+    });
+    vi.advanceTimersByTime(9_000);
+    bus.emit('loop:merged', { issueId: 'bd-505', prNumber: 77, remaining: 0 });
+    bus.emit('loop:victory', {
+      issuesCompleted: 3,
+      totalTime: '9m 00s',
+      prsMerged: 3,
+      mode: 'pr',
+    });
+
+    expect(state.mode).toBe('victory');
+    expect(state.phase).toBe('completed');
+    expect(state.bgStatus).toBe('bd-505  |  session complete  |  0m 09s');
 
     cleanup();
   });

@@ -1,6 +1,7 @@
 import { ui, rgb } from '@rezi-ui/core';
 import { c, hexToRgb } from '../theme.js';
 import type { QuetzPhase } from '../../events.js';
+import type { FocusPane, ScreenMode } from '../state.js';
 
 function fg(hex: string) {
   const [r, g, b] = hexToRgb(hex);
@@ -22,6 +23,9 @@ const PHASE_LABELS: Record<QuetzPhase, string> = {
 };
 
 interface FooterProps {
+  mode: ScreenMode;
+  focusedPane: FocusPane;
+  hasHistory: boolean;
   phase: QuetzPhase;
   issueId: string;
   issueCount: { current: number; total: number };
@@ -30,7 +34,39 @@ interface FooterProps {
   version: string;
 }
 
-export function Footer({ phase, issueId, issueCount, prNumber, elapsed, version }: FooterProps) {
+function controlsText(mode: ScreenMode, focusedPane: FocusPane, hasHistory: boolean, version: string): string {
+  const quitHint = 'q / ctrl+c quit';
+
+  if (mode === 'session_detail') {
+    return `esc back  ↑↓ detail  ${quitHint}  ◆ v${version}`;
+  }
+
+  if (mode === 'victory' || mode === 'failure') {
+    return hasHistory
+      ? `${quitHint}  h history  ◆ v${version}`
+      : `${quitHint}  ◆ v${version}`;
+  }
+
+  if (focusedPane === 'sessions') {
+    return `${quitHint}  ←→ panes  ↑↓ sessions  enter open  [ ] log  ◆ v${version}`;
+  }
+
+  return hasHistory
+    ? `${quitHint}  h history  ←→ panes  ↑↓ agent  , . line  [ ] log  ◆ v${version}`
+    : `${quitHint}  ←→ panes  ↑↓ agent  , . line  [ ] log  ◆ v${version}`;
+}
+
+export function Footer({
+  mode,
+  focusedPane,
+  hasHistory,
+  phase,
+  issueId,
+  issueCount,
+  prNumber,
+  elapsed,
+  version,
+}: FooterProps) {
   const leftColor =
     phase === 'error' ? fg(c.error) :
     phase === 'pr_polling' ? fg(c.accent) :
@@ -41,7 +77,7 @@ export function Footer({ phase, issueId, issueCount, prNumber, elapsed, version 
   const phaseLabel = PHASE_LABELS[phase] ?? phase;
   const leftPrefix = `◆ issue ${issueCount.current}/${issueCount.total}  |  ${issueId}  |  ${phaseLabel}  |  `;
   const leftSuffix = `  |  ${elapsed}`;
-  const right = `q quit  ↑↓ agent  , . line  [ ] log  ◆ v${version}`;
+  const right = controlsText(mode, focusedPane, hasHistory, version);
 
   return ui.box(
     {

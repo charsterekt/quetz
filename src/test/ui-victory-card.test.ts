@@ -38,8 +38,6 @@ describe('VictoryCard', () => {
     });
 
     const labels = textMock.mock.calls.map(call => call[0]);
-    expect(labels).toContain('◆ all done  |  exit code 0');
-    expect(labels).toContain('q quit');
     expect(labels).toContain('commit_ready');
     expect(labels).toContain('abc1234');
     expect(labels).toContain('the serpent prepares a final commit.');

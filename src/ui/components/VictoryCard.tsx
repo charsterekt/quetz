@@ -10,8 +10,7 @@ function fg(hex: string) {
   return rgb(r, g, b);
 }
 
-const FOOTER_BG = rgb(15, 15, 15); // #0F0F0F
-const CARD_BG = rgb(10, 10, 10);   // #0A0A0A
+const CARD_BG = rgb(10, 10, 10);
 
 interface VictoryCardProps {
   data: VictoryData | null;
@@ -61,29 +60,6 @@ export function VictoryCard({ data, version }: VictoryCardProps) {
   const nextRunText = isAmendMode
     ? (data?.commitMsg ? `latest: ${data.commitMsg}` : 'push when ready to land the final commit')
     : 'run quetz again to continue a new session';
-
-  const victoryFooter = ui.box(
-    {
-      border: 'single',
-      borderTop: true,
-      borderBottom: false,
-      borderLeft: false,
-      borderRight: false,
-      borderStyle: { fg: fg(c.border) },
-      style: { bg: FOOTER_BG },
-      px: 3,
-      width: 'full',
-    },
-    [
-      ui.row({ justify: 'between', width: 'full', items: 'center' }, [
-        ui.text('◆ all done  |  exit code 0', { style: { fg: fg(c.brand), bold: true } }),
-        ui.row({ items: 'center' }, [
-          ui.text('q quit', { style: { fg: fg(c.brand), bold: true } }),
-          ui.text(`  ◆ v${version}`, { style: { fg: fg(c.muted) } }),
-        ]),
-      ]),
-    ]
-  );
 
   const card = ui.box(
     {
@@ -139,6 +115,5 @@ export function VictoryCard({ data, version }: VictoryCardProps) {
       card,
       ui.column({ flex: 1, height: 'full' }, []),
     ]),
-    victoryFooter,
   ]);
 }
