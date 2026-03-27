@@ -1,14 +1,21 @@
+import { EventEmitter } from 'events';
+import { PassThrough } from 'stream';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createBus } from '../events.js';
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn(),
 }));
+vi.mock('child_process', () => ({
+  spawn: vi.fn(),
+}));
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { spawn } from 'child_process';
 import { spawnAgent } from '../agent.js';
 
 const mockQuery = vi.mocked(query);
+const mockSpawn = vi.mocked(spawn);
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -24,6 +31,38 @@ function mockQueryResult(messages: any[]): any {
     for (const msg of messages) yield msg;
   }
   return gen();
+}
+
+function createMockCodexProcess(exitCode: number = 0) {
+  const stdout = new PassThrough();
+  const stderr = new PassThrough();
+  const stdin = new PassThrough();
+  const child = new EventEmitter() as EventEmitter & {
+    stdout: PassThrough;
+    stderr: PassThrough;
+    stdin: PassThrough;
+    kill: ReturnType<typeof vi.fn>;
+  };
+
+  child.stdout = stdout;
+  child.stderr = stderr;
+  child.stdin = stdin;
+  child.kill = vi.fn(() => {
+    child.emit('close', exitCode);
+    return true;
+  });
+
+  return {
+    child,
+    finish(code: number = exitCode) {
+      stdout.end();
+      stderr.end();
+      child.emit('close', code);
+    },
+    stdout,
+    stderr,
+    stdin,
+  };
 }
 
 describe('spawnAgent', () => {
@@ -424,5 +463,124 @@ describe('spawnAgent', () => {
       name: 'CustomMcpTool',
       summary: 'search term',
     }));
+  });
+
+  it('dispatches Codex runs through codex exec JSON mode', async () => {
+    const proc = createMockCodexProcess();
+    mockSpawn.mockReturnValue(proc.child as never);
+    const bus = createBus();
+
+    const run = spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex', {
+      profile: 'ci',
+    });
+
+    proc.stdout.write('{"type":"thread.started","thread_id":"abc"}\n');
+    proc.stdout.write('{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Done"}}\n');
+    proc.finish(0);
+
+    await expect(run).resolves.toBe(0);
+    expect(mockSpawn).toHaveBeenCalledWith(
+      'codex',
+      [
+        'exec',
+        '--json',
+        '--color',
+        'never',
+        '--cd',
+        '/tmp',
+        '--model',
+        'gpt-5-codex',
+        '--profile',
+        'ci',
+        '--dangerously-bypass-approvals-and-sandbox',
+      ],
+      expect.objectContaining({
+        cwd: '/tmp',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+    );
+    expect(proc.stdin.read()?.toString()).toBe('do stuff');
+  });
+
+  it('uses a read-only Codex sandbox in simulate mode', async () => {
+    const proc = createMockCodexProcess();
+    mockSpawn.mockReturnValue(proc.child as never);
+    const bus = createBus();
+
+    const run = spawnAgent('inspect only', '/repo', 30, 'gpt-5-codex', bus, 'medium', true, 'codex');
+
+    proc.stdout.write('{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Done"}}\n');
+    proc.finish(0);
+
+    await expect(run).resolves.toBe(0);
+    expect(mockSpawn).toHaveBeenCalledWith(
+      'codex',
+      expect.arrayContaining(['--sandbox', 'read-only']),
+      expect.any(Object)
+    );
+    expect(mockSpawn.mock.calls[0][1]).not.toContain('--dangerously-bypass-approvals-and-sandbox');
+  });
+
+  it('normalizes Codex command_execution items into tool events', async () => {
+    const bus = createBus();
+    const startHandler = vi.fn();
+    const doneHandler = vi.fn();
+    bus.on('agent:tool_start', startHandler);
+    bus.on('agent:tool_done', doneHandler);
+
+    const proc = createMockCodexProcess();
+    mockSpawn.mockReturnValue(proc.child as never);
+
+    const run = spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex');
+
+    proc.stdout.write('{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"\\"C:\\\\\\\\windows\\\\\\\\system32\\\\\\\\windowspowershell\\\\\\\\v1.0\\\\\\\\powershell.exe\\" -Command \\"Get-ChildItem -Name\\"","status":"in_progress"}}\n');
+    proc.stdout.write('{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"\\"C:\\\\\\\\windows\\\\\\\\system32\\\\\\\\windowspowershell\\\\\\\\v1.0\\\\\\\\powershell.exe\\" -Command \\"Get-ChildItem -Name\\"","aggregated_output":"src","exit_code":0,"status":"completed"}}\n');
+    proc.finish(0);
+
+    await expect(run).resolves.toBe(0);
+    expect(startHandler).toHaveBeenCalledWith({ index: 0, name: 'Bash' });
+    expect(doneHandler).toHaveBeenCalledWith({ index: 0, name: 'Bash', summary: 'Get-ChildItem -Name' });
+  });
+
+  it('emits Codex agent_message items through agent:text', async () => {
+    const bus = createBus();
+    const textHandler = vi.fn();
+    bus.on('agent:text', textHandler);
+
+    const proc = createMockCodexProcess();
+    mockSpawn.mockReturnValue(proc.child as never);
+
+    const run = spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex');
+
+    proc.stdout.write('{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"OK"}}\n');
+    proc.finish(0);
+
+    await expect(run).resolves.toBe(0);
+    expect(textHandler).toHaveBeenCalledWith({ text: 'OK' });
+  });
+
+  it('rejects when Codex emits invalid JSONL', async () => {
+    const proc = createMockCodexProcess();
+    mockSpawn.mockReturnValue(proc.child as never);
+
+    const run = spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', undefined, 'medium', false, 'codex');
+
+    proc.stdout.write('not-json\n');
+    proc.finish(0);
+
+    await expect(run).rejects.toThrow('invalid JSONL');
+  });
+
+  it('rejects when Codex exits non-zero', async () => {
+    const proc = createMockCodexProcess();
+    mockSpawn.mockReturnValue(proc.child as never);
+    const bus = createBus();
+
+    const run = spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex');
+
+    proc.stderr.write('boom');
+    proc.finish(1);
+
+    await expect(run).rejects.toThrow('Codex exited with code 1');
   });
 });

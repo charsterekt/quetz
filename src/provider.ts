@@ -46,7 +46,7 @@ export const PROVIDER_DESCRIPTORS: Record<AgentProvider, ProviderDescriptor> = {
     defaultModel: 'gpt-5-codex',
     capabilities: {
       supportsEffort: true,
-      runtimeImplemented: false,
+      runtimeImplemented: true,
     },
     cli: {
       command: 'codex',
