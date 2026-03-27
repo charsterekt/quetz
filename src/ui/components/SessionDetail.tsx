@@ -104,7 +104,7 @@ export function SessionDetail({ session, scrollOffset, bgStatus, version }: Sess
     [
       ui.row({ justify: 'between', width: 'full', items: 'center' }, [
         ui.text(`← esc  back to main  |  session: ${session.id}`, { style: { fg: fg(c.muted) } }),
-        ui.text(rightStatus, { style: { fg: fg(c.accent) } }),
+        ui.text(rightStatus, { style: { fg: fg(c.accent), bold: true } }),
       ]),
     ]
   );

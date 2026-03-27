@@ -1,9 +1,13 @@
-// Compact QUETZ logo copied from the current quetz.pen design.
+// Block-pixel QUETZ logo adapted from quetz.pen for terminal width limits.
 
 export const LOGO_LINES = [
   ' ███    █   █  ████  █████  ████',
+  ' ███    █   █  ████  █████  ████',
+  '█   █   █   █  █       █      █',
   '█   █   █   █  █       █      █',
   '█ ██    █   █  ███     █     █ ',
+  '█ ██    █   █  ███     █     █ ',
+  ' ██ █    ███   ████    █    ████',
   ' ██ █    ███   ████    █    ████',
 ];
 

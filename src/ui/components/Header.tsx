@@ -78,8 +78,8 @@ export const Header = defineWidget<HeaderProps>((props, ctx) => {
       borderBottom: true,
       borderStyle: { fg: fg(c.border) },
       style: { bg: headerBg },
-      px: 2,
-      py: 0,
+      px: 3,
+      py: 1,
       width: 'full',
     },
     [ui.row({ justify: 'between', width: 'full', items: 'center' }, [logoCol, rightCol])]

@@ -76,53 +76,60 @@ export function VictoryCard({ data, version }: VictoryCardProps) {
     },
     [
       ui.row({ justify: 'between', width: 'full', items: 'center' }, [
-        ui.text('* all done  |  exit code 0', { style: { fg: fg(c.brand) } }),
-        ui.text(`q quit  * v${version}`, { style: { fg: fg(c.muted) } }),
+        ui.text('◆ all done  |  exit code 0', { style: { fg: fg(c.brand), bold: true } }),
+        ui.row({ items: 'center' }, [
+          ui.text('q quit', { style: { fg: fg(c.brand), bold: true } }),
+          ui.text(`  ◆ v${version}`, { style: { fg: fg(c.muted) } }),
+        ]),
       ]),
     ]
   );
 
-  const card = ui.column(
+  const card = ui.box(
     {
       width: cardWidth,
+      border: 'single',
+      borderStyle: { fg: fg(c.accent) },
       style: { bg: CARD_BG },
-      px: 3,
-      py: 2,
+      px: 4,
+      py: 3,
     },
     [
-      ui.text('[ all issues resolved ]', { style: { fg: fg(c.accent), bold: true } }),
-      ui.text('the feathered serpent completes its journey', { style: { fg: fg(c.dim) } }),
-      spacer(2),
-      ui.text('      ~*~*~*~*~*~*~*~*~*~*~*~*~*~>', { style: { fg: fg(c.brand) } }),
-      ui.text(serpentRow4, { style: { fg: fg(c.text), bold: true } }),
-      ui.text('      ~*~*~*~*~*~*~*~*~*~*~*~*~*~>', { style: { fg: fg(c.cyan) } }),
-      ui.text('              |||||', { style: { fg: fg(c.muted) } }),
-      ui.text('            ~~|||||~~', { style: { fg: fg(c.muted) } }),
-      ui.text('              ~~~~~', { style: { fg: fg(c.cyan) } }),
-      spacer(2),
-      divider(),
-      spacer(1),
-      ui.row({ justify: 'between', width: 'full', items: 'center' }, [
-        ui.text('issues_completed', { style: { fg: fg(c.dim) } }),
-        ui.text(String(issuesCompleted), { style: { fg: fg(c.brand), bold: true } }),
+      ui.column({ width: 'full', gap: 0 }, [
+        ui.text('[ all issues resolved ]', { style: { fg: fg(c.accent), bold: true } }),
+        ui.text('the feathered serpent completes its journey', { style: { fg: fg(c.dim) } }),
+        spacer(2),
+        ui.text('      ~*~*~*~*~*~*~*~*~*~*~*~*~*~>', { style: { fg: fg(c.brand) } }),
+        ui.text(serpentRow4, { style: { fg: fg(c.text), bold: true } }),
+        ui.text('      ~*~*~*~*~*~*~*~*~*~*~*~*~*~>', { style: { fg: fg(c.cyan) } }),
+        ui.text('              |||||', { style: { fg: fg(c.muted) } }),
+        ui.text('            ~~|||||~~', { style: { fg: fg(c.muted) } }),
+        ui.text('              ~~~~~', { style: { fg: fg(c.cyan) } }),
+        spacer(2),
+        divider(),
+        spacer(1),
+        ui.row({ justify: 'between', width: 'full', items: 'center' }, [
+          ui.text('issues_completed', { style: { fg: fg(c.dim) } }),
+          ui.text(String(issuesCompleted), { style: { fg: fg(c.brand), bold: true } }),
+        ]),
+        ui.row({ justify: 'between', width: 'full', items: 'center' }, [
+          ui.text('total_time', { style: { fg: fg(c.dim) } }),
+          ui.text(totalTime, { style: { fg: fg(c.brand), bold: true } }),
+        ]),
+        ui.row({ justify: 'between', width: 'full', items: 'center' }, [
+          ui.text(primaryStatLabel, { style: { fg: fg(c.dim) } }),
+          ui.text(primaryStatValue, { style: { fg: fg(c.brand), bold: true } }),
+        ]),
+        ui.row({ justify: 'between', width: 'full', items: 'center' }, [
+          ui.text('session_date', { style: { fg: fg(c.dim) } }),
+          ui.text(sessionDate, { style: { fg: fg(c.dim) } }),
+        ]),
+        spacer(1),
+        divider(),
+        spacer(2),
+        ui.text(restingText, { style: { fg: fg(c.brand), bold: true } }),
+        ui.text(nextRunText, { style: { fg: fg(c.muted) } }),
       ]),
-      ui.row({ justify: 'between', width: 'full', items: 'center' }, [
-        ui.text('total_time', { style: { fg: fg(c.dim) } }),
-        ui.text(totalTime, { style: { fg: fg(c.brand), bold: true } }),
-      ]),
-      ui.row({ justify: 'between', width: 'full', items: 'center' }, [
-        ui.text(primaryStatLabel, { style: { fg: fg(c.dim) } }),
-        ui.text(primaryStatValue, { style: { fg: fg(c.brand), bold: true } }),
-      ]),
-      ui.row({ justify: 'between', width: 'full', items: 'center' }, [
-        ui.text('session_date', { style: { fg: fg(c.dim) } }),
-        ui.text(sessionDate, { style: { fg: fg(c.dim) } }),
-      ]),
-      spacer(1),
-      divider(),
-      spacer(2),
-      ui.text(restingText, { style: { fg: fg(c.brand), bold: true } }),
-      ui.text(nextRunText, { style: { fg: fg(c.muted) } }),
     ]
   );
 
