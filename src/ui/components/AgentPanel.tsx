@@ -135,9 +135,9 @@ export const AgentPanel = defineWidget<AgentPanelProps>((props, ctx) => {
       : '';
 
     content = ui.column(
-      { flex: 1, height: 'full', py: 0, px: 2, gap: 1, justify: 'center', style: { bg: CONTENT_BG } },
+      { flex: 1, height: 'full', py: 0, px: 2, gap: 0, style: { bg: CONTENT_BG } },
       [
-        ui.spinner({ variant: 'dots2', label, style: { fg: fg(c.brand) } }),
+        ui.spinner({ variant: 'dots2', label: `waiting...  ${label}`, style: { fg: fg(c.brand) } }),
         ...(detail ? [ui.text(detail, { style: { fg: fg(c.muted) } })] : []),
       ]
     );
