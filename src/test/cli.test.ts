@@ -156,6 +156,39 @@ describe('main', () => {
     expect(mockRunLoop).not.toHaveBeenCalled();
   });
 
+  it('prints known models for all providers', async () => {
+    process.argv = ['node', 'quetz', 'models'];
+
+    await expect(main()).rejects.toMatchObject({ code: 0 });
+
+    expect(stdoutText()).toContain('claude: Claude Code');
+    expect(stdoutText()).toContain('known:   haiku, sonnet, opus');
+    expect(stdoutText()).toContain('codex: Codex CLI');
+    expect(stdoutText()).toContain('known:   gpt-5-codex, gpt-5, gpt-5.1');
+    expect(mockRunLoop).not.toHaveBeenCalled();
+  });
+
+  it('prints known models for one provider', async () => {
+    process.argv = ['node', 'quetz', 'models', '--provider', 'codex'];
+
+    await expect(main()).rejects.toMatchObject({ code: 0 });
+
+    expect(stdoutText()).toContain('codex: Codex CLI');
+    expect(stdoutText()).not.toContain('claude: Claude Code');
+    expect(stdoutText()).toContain('default: gpt-5-codex');
+  });
+
+  it('fails fast on an invalid provider for models', async () => {
+    process.argv = ['node', 'quetz', 'models', '--provider', 'bad'];
+
+    await expect(main()).rejects.toMatchObject({ code: 1 });
+
+    const stderrOutput = stderrSpy.mock.calls
+      .map((call: Parameters<typeof process.stderr.write>) => String(call[0]))
+      .join('');
+    expect(stderrOutput).toContain('invalid --provider');
+  });
+
   it('still accepts --thinking-level as a compatibility alias', async () => {
     const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
     mockCreateBus.mockReturnValue(bus as never);

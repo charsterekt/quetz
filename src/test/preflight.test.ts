@@ -20,13 +20,19 @@ const mockExistsSync = vi.mocked(fs.existsSync);
 
 let originalApiKey: string | undefined;
 let originalAuthToken: string | undefined;
+let originalOpenAiApiKey: string | undefined;
+let originalCodexApiKey: string | undefined;
 
 beforeEach(() => {
   vi.clearAllMocks();
   originalApiKey = process.env['ANTHROPIC_API_KEY'];
   originalAuthToken = process.env['ANTHROPIC_AUTH_TOKEN'];
+  originalOpenAiApiKey = process.env['OPENAI_API_KEY'];
+  originalCodexApiKey = process.env['CODEX_API_KEY'];
   delete process.env['ANTHROPIC_API_KEY'];
   delete process.env['ANTHROPIC_AUTH_TOKEN'];
+  delete process.env['OPENAI_API_KEY'];
+  delete process.env['CODEX_API_KEY'];
 });
 
 afterEach(() => {
@@ -39,6 +45,16 @@ afterEach(() => {
     process.env['ANTHROPIC_AUTH_TOKEN'] = originalAuthToken;
   } else {
     delete process.env['ANTHROPIC_AUTH_TOKEN'];
+  }
+  if (originalOpenAiApiKey !== undefined) {
+    process.env['OPENAI_API_KEY'] = originalOpenAiApiKey;
+  } else {
+    delete process.env['OPENAI_API_KEY'];
+  }
+  if (originalCodexApiKey !== undefined) {
+    process.env['CODEX_API_KEY'] = originalCodexApiKey;
+  } else {
+    delete process.env['CODEX_API_KEY'];
   }
 });
 
@@ -75,6 +91,7 @@ describe('checkClaudeCode (via runPreflight)', () => {
       if (String(cmd).includes('bd --version')) return 'bd 1.0.0\n';
       if (String(cmd).includes('bd ready')) return '[]\n';
       if (String(cmd).includes('claude --version')) return 'claude 1.0.0\n';
+      if (String(cmd).includes('codex --version')) throw new Error('not found');
       return '';
     });
   });
@@ -82,6 +99,7 @@ describe('checkClaudeCode (via runPreflight)', () => {
   it('throws PreflightError when claude is not installed', async () => {
     mockExecSync.mockImplementation((cmd: string) => {
       if (String(cmd).includes('claude --version')) throw new Error('not found');
+      if (String(cmd).includes('codex --version')) throw new Error('not found');
       if (String(cmd).includes('gh --version')) return 'gh version 2.0.0\n';
       if (String(cmd).includes('gh auth status')) return 'Logged in\n';
       if (String(cmd).includes('bd --version')) return 'bd 1.0.0\n';
@@ -124,5 +142,22 @@ describe('checkClaudeCode (via runPreflight)', () => {
       .map(call => String(call[0]))
       .filter(cmd => cmd.includes('claude'));
     expect(claudeCalls.every(cmd => !cmd.includes('--print'))).toBe(true);
+  });
+
+  it('accepts Codex as the selected provider when installed and authenticated', () => {
+    process.env['OPENAI_API_KEY'] = 'sk-openai-test';
+    mockExistsSync.mockReturnValue(false);
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (String(cmd).includes('gh --version')) return 'gh version 2.0.0\n';
+      if (String(cmd).includes('gh auth status')) return 'Logged in\n';
+      if (String(cmd).includes('bd --version')) return 'bd 1.0.0\n';
+      if (String(cmd).includes('bd ready')) return '[]\n';
+      if (String(cmd).includes('claude --version')) throw new Error('not found');
+      if (String(cmd).includes('codex --version')) return 'codex 1.0.0\n';
+      return '';
+    });
+
+    const result = runPreflight('codex');
+    expect(result.preferredProvider).toBe('codex');
   });
 });

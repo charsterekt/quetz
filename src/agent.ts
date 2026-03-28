@@ -1,3 +1,5 @@
+import { spawn } from 'child_process';
+import * as readline from 'readline';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type {
   Options,
@@ -5,13 +7,15 @@ import type {
   SDKResultMessage,
   SettingSource,
 } from '@anthropic-ai/claude-agent-sdk';
-import type { ClaudeProviderConfig } from './config.js';
+import type { ClaudeProviderConfig, CodexProviderConfig } from './config.js';
 import type { QuetzBus } from './events.js';
 import { getProviderDescriptor, type AgentEffortLevel, type AgentProvider } from './provider.js';
 
 const SIMULATE_ALLOWED_TOOLS = ['Read', 'Glob', 'Grep'];
 const DEFAULT_CLAUDE_SETTING_SOURCES: SettingSource[] = ['user', 'project', 'local'];
 const SIMULATE_SETTING_SOURCES: SettingSource[] = [];
+
+type ProviderConfig = ClaudeProviderConfig | CodexProviderConfig;
 
 export interface RunAgentOptions {
   provider: AgentProvider;
@@ -22,7 +26,7 @@ export interface RunAgentOptions {
   bus?: QuetzBus;
   effort?: AgentEffortLevel;
   simulate?: boolean;
-  providerConfig?: ClaudeProviderConfig;
+  providerConfig?: ProviderConfig;
 }
 
 export function runAgent({
@@ -63,7 +67,17 @@ export function runAgent({
         timeoutMinutes,
       });
     case 'codex':
-      throw new Error('Codex runtime support has not landed yet.');
+      return runCodexExec({
+        prompt,
+        cwd,
+        model,
+        bus,
+        simulate,
+        providerConfig,
+        abortController,
+        timer,
+        timeoutMinutes,
+      });
   }
 }
 
@@ -76,7 +90,7 @@ export function spawnAgent(
   effort?: AgentEffortLevel,
   simulate: boolean = false,
   provider: AgentProvider = 'claude',
-  providerConfig?: ClaudeProviderConfig
+  providerConfig?: ProviderConfig
 ): Promise<number> {
   return runAgent({
     provider,
@@ -98,7 +112,19 @@ interface ClaudeQueryOptions {
   bus?: QuetzBus;
   effort?: AgentEffortLevel;
   simulate: boolean;
-  providerConfig?: ClaudeProviderConfig;
+  providerConfig?: ProviderConfig;
+  abortController: AbortController;
+  timer: ReturnType<typeof setTimeout>;
+  timeoutMinutes: number;
+}
+
+interface CodexExecOptions {
+  prompt: string;
+  cwd: string;
+  model: string;
+  bus?: QuetzBus;
+  simulate: boolean;
+  providerConfig?: ProviderConfig;
   abortController: AbortController;
   timer: ReturnType<typeof setTimeout>;
   timeoutMinutes: number;
@@ -119,7 +145,7 @@ async function runClaudeQuery({
   try {
     const settingSources = simulate
       ? SIMULATE_SETTING_SOURCES
-      : normalizeClaudeSettingSources(providerConfig?.settingSources);
+      : normalizeClaudeSettingSources((providerConfig as ClaudeProviderConfig | undefined)?.settingSources);
 
     const options: Options = simulate
       ? {
@@ -182,6 +208,130 @@ async function runClaudeQuery({
   }
 }
 
+async function runCodexExec({
+  prompt,
+  cwd,
+  model,
+  bus,
+  simulate,
+  providerConfig,
+  abortController,
+  timer,
+  timeoutMinutes,
+}: CodexExecOptions): Promise<number> {
+  const codexConfig = providerConfig as CodexProviderConfig | undefined;
+  const args = ['exec', '--json', '--color', 'never', '--cd', cwd, '--model', model];
+
+  if (codexConfig?.profile) {
+    args.push('--profile', codexConfig.profile);
+  }
+
+  if (simulate) {
+    args.push('--sandbox', 'read-only');
+  } else {
+    args.push('--dangerously-bypass-approvals-and-sandbox');
+  }
+
+  return new Promise<number>((resolve, reject) => {
+    const child = spawn('codex', args, {
+      cwd,
+      shell: process.platform === 'win32',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let settled = false;
+    let stderr = '';
+    let nextToolIndex = 0;
+    const toolIndexes = new Map<string, number>();
+
+    const stdoutLines = readline.createInterface({
+      input: child.stdout,
+      crlfDelay: Infinity,
+    });
+
+    const cleanup = () => {
+      abortController.signal.removeEventListener('abort', onAbort);
+      stdoutLines.close();
+    };
+
+    const finishResolve = (exitCode: number) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      clearTimeout(timer);
+      resolve(exitCode);
+    };
+
+    const finishReject = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      clearTimeout(timer);
+      reject(err);
+    };
+
+    const toolIndexFor = (itemId: string): number => {
+      const existing = toolIndexes.get(itemId);
+      if (existing !== undefined) return existing;
+      const index = nextToolIndex++;
+      toolIndexes.set(itemId, index);
+      return index;
+    };
+
+    const onAbort = () => {
+      child.kill();
+    };
+
+    stdoutLines.on('line', line => {
+      if (!line.trim()) return;
+
+      let event: CodexEvent;
+      try {
+        event = JSON.parse(line) as CodexEvent;
+      } catch {
+        finishReject(new Error(`Codex emitted invalid JSONL: ${line}`));
+        return;
+      }
+
+      handleCodexEvent(event, toolIndexFor, bus);
+    });
+
+    child.stderr.setEncoding('utf-8');
+    child.stderr.on('data', (chunk: string | Buffer) => {
+      const data = typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
+      stderr += data;
+      if (bus) bus.emit('agent:stderr', { data });
+      else process.stderr.write(data);
+    });
+
+    child.on('error', err => {
+      finishReject(new Error(`Agent process error: ${err.message}`));
+    });
+
+    child.on('close', code => {
+      if (abortController.signal.aborted) {
+        finishReject(new Error(`Agent timed out after ${timeoutMinutes} minutes`));
+        return;
+      }
+
+      if (code === 0) {
+        finishResolve(0);
+        return;
+      }
+
+      const detail = stderr.trim();
+      finishReject(
+        new Error(
+          `Agent process error: Codex exited with code ${code ?? 'unknown'}${detail ? `: ${detail}` : ''}`
+        )
+      );
+    });
+
+    abortController.signal.addEventListener('abort', onAbort, { once: true });
+    child.stdin.end(prompt);
+  });
+}
+
 function normalizeClaudeSettingSources(settingSources?: string[]): SettingSource[] {
   if (!Array.isArray(settingSources) || settingSources.length === 0) {
     return [...DEFAULT_CLAUDE_SETTING_SOURCES];
@@ -196,6 +346,31 @@ interface BlockState {
   inputChunks: string[];
 }
 
+interface CodexEvent {
+  type: string;
+  item?: CodexItem;
+}
+
+type CodexItem =
+  | {
+      id: string;
+      type: 'agent_message';
+      text?: string;
+    }
+  | {
+      id: string;
+      type: 'command_execution';
+      command?: string;
+      aggregated_output?: string;
+      exit_code?: number | null;
+      status?: string;
+    }
+  | {
+      id: string;
+      type: string;
+      [key: string]: unknown;
+    };
+
 function renderStreamEvent(event: any, blocks: Map<number, BlockState>, bus?: QuetzBus): void {
   switch (event.type) {
     case 'content_block_start': {
@@ -204,7 +379,7 @@ function renderStreamEvent(event: any, blocks: Map<number, BlockState>, bus?: Qu
           name: event.content_block.name,
           inputChunks: [],
         });
-        if (bus) bus.emit('agent:tool_start', { index: event.index, name: event.content_block.name });
+        emitToolStart(event.index, event.content_block.name, bus);
       }
       break;
     }
@@ -214,8 +389,7 @@ function renderStreamEvent(event: any, blocks: Map<number, BlockState>, bus?: Qu
         const block = blocks.get(event.index);
         if (block) block.inputChunks.push(delta.partial_json);
       } else if (delta?.type === 'text_delta' && delta.text) {
-        if (bus) bus.emit('agent:text', { text: delta.text });
-        else process.stdout.write(delta.text);
+        emitAgentText(delta.text, bus);
       }
       break;
     }
@@ -230,13 +404,61 @@ function renderStreamEvent(event: any, blocks: Map<number, BlockState>, bus?: Qu
           input = {};
         }
         const summary = formatToolSummary(block.name, input);
-        if (bus) bus.emit('agent:tool_done', { index: event.index, name: block.name, summary });
-        else process.stdout.write(`  [${block.name}] ${summary}\n`);
+        emitToolDone(event.index, block.name, summary, bus);
         blocks.delete(event.index);
       }
       break;
     }
   }
+}
+
+function handleCodexEvent(
+  event: CodexEvent,
+  toolIndexFor: (itemId: string) => number,
+  bus?: QuetzBus
+): void {
+  if (!event.item) return;
+
+  if (event.type === 'item.started' && event.item.type === 'command_execution') {
+    emitToolStart(toolIndexFor(event.item.id), 'Bash', bus);
+    return;
+  }
+
+  if (event.type !== 'item.completed') return;
+
+  switch (event.item.type) {
+    case 'agent_message': {
+      const item = event.item as Extract<CodexItem, { type: 'agent_message' }>;
+      if (item.text) emitAgentText(item.text, bus);
+      return;
+    }
+    case 'command_execution': {
+      const item = event.item as Extract<CodexItem, { type: 'command_execution' }>;
+      emitToolDone(
+        toolIndexFor(item.id),
+        'Bash',
+        summarizeCodexCommand(item.command ?? ''),
+        bus
+      );
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+function emitAgentText(text: string, bus?: QuetzBus): void {
+  if (bus) bus.emit('agent:text', { text });
+  else process.stdout.write(text);
+}
+
+function emitToolStart(index: number, name: string, bus?: QuetzBus): void {
+  if (bus) bus.emit('agent:tool_start', { index, name });
+}
+
+function emitToolDone(index: number, name: string, summary: string, bus?: QuetzBus): void {
+  if (bus) bus.emit('agent:tool_done', { index, name, summary });
+  else process.stdout.write(`  [${name}] ${summary}\n`);
 }
 
 function formatToolSummary(name: string, input: Record<string, unknown>): string {
@@ -256,6 +478,22 @@ function formatToolSummary(name: string, input: Record<string, unknown>): string
       return firstValue ? truncate(String(firstValue), 50) : '';
     }
   }
+}
+
+function summarizeCodexCommand(command: string): string {
+  const commandFlagMatch = command.match(/-Command\s+/i);
+  if (commandFlagMatch) {
+    let summary = command.slice(commandFlagMatch.index! + commandFlagMatch[0].length).trim();
+    if (
+      (summary.startsWith('"') && summary.endsWith('"')) ||
+      (summary.startsWith('\'') && summary.endsWith('\''))
+    ) {
+      summary = summary.slice(1, -1);
+    }
+    return truncate(summary, 60);
+  }
+
+  return truncate(command, 60);
 }
 
 function shortPath(filePath: string): string {

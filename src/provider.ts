@@ -20,6 +20,8 @@ export interface ProviderDescriptor {
   id: AgentProvider;
   displayName: string;
   defaultModel: string;
+  knownModels: string[];
+  modelNote?: string;
   capabilities: ProviderCapabilities;
   cli: ProviderCliDescriptor;
 }
@@ -29,6 +31,8 @@ export const PROVIDER_DESCRIPTORS: Record<AgentProvider, ProviderDescriptor> = {
     id: 'claude',
     displayName: 'Claude Code',
     defaultModel: 'sonnet',
+    knownModels: ['haiku', 'sonnet', 'opus'],
+    modelNote: 'Quetz passes model names straight through to Claude Code.',
     capabilities: {
       supportsEffort: true,
       runtimeImplemented: true,
@@ -44,9 +48,11 @@ export const PROVIDER_DESCRIPTORS: Record<AgentProvider, ProviderDescriptor> = {
     id: 'codex',
     displayName: 'Codex CLI',
     defaultModel: 'gpt-5-codex',
+    knownModels: ['gpt-5-codex', 'gpt-5', 'gpt-5.1'],
+    modelNote: 'Codex CLI can also target other account-enabled Responses API models.',
     capabilities: {
       supportsEffort: true,
-      runtimeImplemented: false,
+      runtimeImplemented: true,
     },
     cli: {
       command: 'codex',
@@ -72,4 +78,24 @@ export function getProviderDescriptor(provider: AgentProvider): ProviderDescript
 export function formatProviderModel(provider: AgentProvider, model: string): string {
   const descriptor = getProviderDescriptor(provider);
   return `${descriptor.id} ${model}`.trim();
+}
+
+export function renderModelListing(provider?: AgentProvider): string {
+  const providers = provider ? [provider] : [...AGENT_PROVIDERS];
+  const blocks = providers.map(id => {
+    const descriptor = getProviderDescriptor(id);
+    const lines = [
+      `${descriptor.id}: ${descriptor.displayName}`,
+      `  default: ${descriptor.defaultModel}`,
+      `  known:   ${descriptor.knownModels.join(', ')}`,
+    ];
+
+    if (descriptor.modelNote) {
+      lines.push(`  note:    ${descriptor.modelNote}`);
+    }
+
+    return lines.join('\n');
+  });
+
+  return `${blocks.join('\n\n')}\n`;
 }

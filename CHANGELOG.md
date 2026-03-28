@@ -7,15 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-03-28
+
 ### Added
-- Provider-neutral agent configuration and runtime descriptors, including shared `provider`, `model`, and `effort` plumbing plus provider-scoped config blocks for Claude and Codex groundwork.
+- First-class Codex runtime support via `codex exec --json`, including streamed event normalization, timeout handling, and provider-aware runtime selection across supported loop modes.
+- Provider-neutral agent configuration and runtime descriptors, including shared `provider`, `model`, and `effort` plumbing plus provider-scoped config blocks for Claude and Codex.
+- `quetz models` and `quetz models --provider <provider>` to print known model names and defaults for each supported provider.
+- Explicit preflight provider checklist output in `quetz init`, showing shared CLI checks plus provider-by-provider `✓`/`✗` readiness.
 
 ### Changed
 - Quetz loop, CLI, preflight, init flow, and TUI metadata now carry provider-aware labels instead of assuming Claude-specific runtime vocabulary.
+- Agent/session log rails now restore lifecycle cues for ready-work fetches, git reset, prompt assembly, PR discovery, merge polling, merge success, and commit/amend completion.
+- The agent panel now shows startup loader text in the natural top-left log area before the first streamed agent output arrives, improving clarity during slower Codex startup.
+- README image asset refreshed to the current project artwork.
 - README and sample config now describe provider selection explicitly.
 
 ### Fixed
 - Victory and failure screens now advertise the existing `enter` / `esc` session-detail navigation in the footer instead of leaving it hidden.
+- Outcome-screen history navigation now stays locked to the completed state instead of drifting back into the live layout after victory or failure.
 
 ## [0.6.4] - 2026-03-27
 
@@ -83,6 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Built-in fake issues for `--mock` / `--simulate` modes (`mock-data.ts`)
 - Exit codes: 0 clean, 1 runtime failure, 2 config error, 3 preflight failure
 
+[0.7.6]: https://github.com/dkchar/quetz/releases/tag/v0.7.6
 [0.6.4]: https://github.com/dkchar/quetz/releases/tag/v0.6.4
 [0.6.3]: https://github.com/dkchar/quetz/releases/tag/v0.6.3
 [0.5.3]: https://github.com/dkchar/quetz/releases/tag/v0.5.3

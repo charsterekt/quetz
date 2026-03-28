@@ -148,6 +148,34 @@ describe('wireState', () => {
     cleanup();
   });
 
+  it('adds merge and amend cues back into the log rail', () => {
+    const bus = createBus();
+    let state = cloneState();
+    const cleanup = wireState(bus, updater => {
+      state = updater(state);
+    });
+
+    bus.emit('loop:issue_pickup', {
+      id: 'bd-606',
+      title: 'Restore merge cues',
+      priority: 1,
+      type: 'bug',
+      iteration: 1,
+      total: 2,
+    });
+    bus.emit('loop:pr_found', {
+      number: 19,
+      title: 'fix: restore merge cues',
+      url: 'https://example.test/pr/19',
+    });
+    bus.emit('loop:merged', { issueId: 'bd-606', prNumber: 19, remaining: 1 });
+
+    expect(state.logLines.map(line => line.text)).toContain('PR #19 found');
+    expect(state.logLines.map(line => line.text)).toContain('MERGED PR #19  bd-606');
+
+    cleanup();
+  });
+
   it('records failed runs in completed session history with failed outcome', () => {
     const bus = createBus();
     let state = cloneState();
