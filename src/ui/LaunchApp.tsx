@@ -24,24 +24,6 @@ const SUCCESS_FG = '#0DBC79';
 const WARNING_FG = '#FF8400';
 const DANGER_FG = '#FF5C33';
 const HERO_SUBTITLE = '// autonomous_code_agent';
-const HERO_LOGO_LINES = [
-  '████████████████████████░░',
-  '████████████████████████░░',
-  '████████░░      ████████░░                                                              ████████░░',
-  '████████░░      ████████░░                                                              ████████░░',
-  '████████░░      ████████░░  ████████░░      ████████░░  ████████████████████████░░  ████████████████████░░  ████████████████████████░░',
-  '████████░░      ████████░░  ████████░░      ████████░░  ████████████████████████░░  ████████████████████░░  ████████████████████████░░',
-  '████████░░      ████████░░  ████████░░      ████████░░  ████████░░      ████████░░      ████████░░                      ████████░░',
-  '████████░░      ████████░░  ████████░░      ████████░░  ████████░░      ████████░░      ████████░░                      ████████░░',
-  '████████░░      ████████░░  ████████░░      ████████░░  ████████████████████████░░      ████████░░                  ████████░░',
-  '████████░░      ████████░░  ████████░░      ████████░░  ████████████████████████░░      ████████░░                  ████████░░',
-  '████████████████████████░░  ████████░░      ████████░░  ████████░░                      ████████░░              ████████░░',
-  '████████████████████████░░  ████████░░      ████████░░  ████████░░                      ████████░░              ████████░░',
-  '████████████████████████░░  ████████████████████████░░  ████████████████████████░░      ████████████████░░  ████████████████████████░░',
-  '████████████████████████░░  ████████████████████████░░  ████████████████████████░░      ████████████████░░  ████████████████████████░░',
-  '        ████████░░',
-  '        ████████░░',
-];
 const BUTTON_FOCUS = {
   indicator: 'underline' as const,
   style: { fg: fg('#FAFAFA'), bold: true },
@@ -52,6 +34,18 @@ const FIELD_FOCUS = {
   ringVariant: 'single' as const,
   style: { fg: fg(SUCCESS_FG), bold: true },
   contentStyle: { bold: true },
+};
+const LARGE_DIGITS: Record<string, readonly string[]> = {
+  '0': ['███', '█ █', '█ █', '█ █', '███'],
+  '1': [' ██', '██ ', ' ██', ' ██', '███'],
+  '2': ['███', '  █', '███', '█  ', '███'],
+  '3': ['███', '  █', '███', '  █', '███'],
+  '4': ['█ █', '█ █', '███', '  █', '  █'],
+  '5': ['███', '█  ', '███', '  █', '███'],
+  '6': ['███', '█  ', '███', '█ █', '███'],
+  '7': ['███', '  █', '  █', '  █', '  █'],
+  '8': ['███', '█ █', '███', '█ █', '███'],
+  '9': ['███', '█ █', '███', '  █', '███'],
 };
 
 export type LaunchBeadsMode = 'all' | 'epic';
@@ -204,6 +198,20 @@ function toneBackground(tone: LaunchTone): string {
   }
 }
 
+function renderLargeNumber(value: number): string[] {
+  const digits = String(Math.max(0, value)).split('');
+  const rows = Array.from({ length: 5 }, () => '');
+
+  for (const digit of digits) {
+    const pattern = LARGE_DIGITS[digit] ?? [digit, digit, digit, digit, digit];
+    for (let index = 0; index < rows.length; index += 1) {
+      rows[index] += `${rows[index] ? ' ' : ''}${pattern[index]}`;
+    }
+  }
+
+  return rows;
+}
+
 function launchChip(
   id: string,
   label: string,
@@ -260,27 +268,15 @@ function launchSection(title: string, children: any[]) {
   return ui.column({ width: 'full', gap: 1 }, [labelText(title), ...children]);
 }
 
-function simulateToggle(active: boolean, onPress: () => void) {
-  return ui.box(
-    {
-      border: 'single',
-      borderStyle: { fg: fg(c.border) },
-      style: { bg: bg(SURFACE_BG) },
-      px: 1,
-      py: 0,
-    },
-    [
-      ui.button({
-        id: 'launch-simulate',
-        label: active ? '●' : '○',
-        px: 0,
-        dsVariant: 'ghost',
-        focusConfig: BUTTON_FOCUS,
-        style: { fg: fg(c.dim) },
-        onPress,
-      }),
-    ],
-  );
+function simulateToggle(active: boolean, onChange: (checked: boolean) => void) {
+  return ui.checkbox({
+    id: 'launch-simulate',
+    checked: active,
+    dsTone: 'warning',
+    dsSize: 'lg',
+    focusConfig: FIELD_FOCUS,
+    onChange,
+  });
 }
 
 export function mountLaunchApp({ version, initialSelection, issueCounts }: MountLaunchOptions): LaunchAppHandle {
@@ -312,11 +308,12 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const width = panelWidth(termCols, stacked);
     const panelGap = stacked ? 2 : 3;
     const baseContentWidth = stacked ? width : (width * 2) + panelGap;
-    const heroLogoWidth = Math.max(...HERO_LOGO_LINES.map(line => line.length));
-    const logoLines: readonly string[] = termCols >= heroLogoWidth + 4 ? HERO_LOGO_LINES : LOGO_LINES;
+    const logoLines: readonly string[] = LOGO_LINES;
     const logoWidth = Math.max(...logoLines.map(line => line.length));
     const contentWidth = Math.min(termCols - 4, Math.max(baseContentWidth, logoWidth));
     const modelLabelWidth = Math.max(30, width - 12);
+    const issueCount = state.simulate ? state.issueCounts.simulate : state.issueCounts.live;
+    const issueCountLines = renderLargeNumber(issueCount);
 
     const providerOptions = [
       { value: 'claude', label: 'claude' },
@@ -370,10 +367,10 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
           launchSection('model', [
             ui.select({
               id: 'launch-model',
+              accessibleLabel: 'Model',
               value: state.model,
               options: buildModelOptions(state.provider, state.model, modelLabelWidth),
-              dsVariant: 'outline',
-              dsSize: 'sm',
+              dsSize: 'lg',
               focusConfig: FIELD_FOCUS,
               onChange: value => app.update(prev => ({ ...prev, model: value })),
             }),
@@ -436,12 +433,13 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
             }),
             ui.input({
               id: 'launch-epic-id',
+              accessibleLabel: 'Epic ID',
               value: state.epicId,
               disabled: state.beadsMode !== 'epic',
               placeholder: 'enter_epic_id...',
               focusable: state.beadsMode === 'epic',
               focusConfig: FIELD_FOCUS,
-              dsSize: 'sm',
+              dsSize: 'lg',
               style: { bg: bg(SURFACE_BG), fg: fg(c.text), dim: state.beadsMode !== 'epic' },
               onInput: value => app.update(prev => ({ ...prev, epicId: value })),
             }),
@@ -462,7 +460,9 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
                     ui.text('[!]', { style: { fg: fg(DANGER_FG), bold: true } }),
                     ui.text('simulate', { style: { fg: fg(DANGER_FG), bold: true } }),
                   ]),
-                  simulateToggle(state.simulate, () => app.update(prev => ({ ...prev, simulate: !prev.simulate }))),
+                  simulateToggle(state.simulate, checked =>
+                    app.update(prev => ({ ...prev, simulate: checked }))
+                  ),
                 ]),
                 ui.text(
                   state.simulate
@@ -474,9 +474,15 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
             ],
           ),
           ui.row({ items: 'end', gap: 2 }, [
-            ui.text(String(state.simulate ? state.issueCounts.simulate : state.issueCounts.live), {
-              style: { fg: fg(WARNING_FG), bold: true },
-            }),
+            ui.column(
+              { gap: 0 },
+              issueCountLines.map((line, index) =>
+                ui.text(line, {
+                  key: `issue-count-${index}`,
+                  style: { fg: fg(WARNING_FG), bold: true },
+                }),
+              ),
+            ),
             ui.text('total_issues', { style: { fg: fg(c.dim) } }),
           ]),
         ]),
@@ -485,7 +491,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
 
     const panelRow = stacked
       ? ui.column({ gap: 2, items: 'center' }, [leftPanel, rightPanel])
-      : ui.row({ gap: panelGap, items: 'start', justify: 'center' }, [leftPanel, rightPanel]);
+      : ui.row({ gap: panelGap, items: 'stretch', justify: 'center' }, [leftPanel, rightPanel]);
 
     const logoBlock = ui.column(
       { width: logoWidth, gap: 0 },
@@ -523,8 +529,8 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
                 {
                   border: 'none',
                   style: { bg: bg(SUCCESS_FG) },
-                  px: 3,
-                  py: 0,
+                  px: 5,
+                  py: 1,
                 },
                 [
                   ui.button({
@@ -540,7 +546,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
               ),
             ]),
             ui.row({ width: 'full', justify: 'center' }, [
-              ui.text('← esc quit  |  ↑↓ navigate  |  ↵ select', {
+              ui.text('q quit  |  tab navigate  |  enter/space select', {
                 style: { fg: fg(c.muted) },
               }),
             ]),

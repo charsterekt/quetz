@@ -12,6 +12,7 @@ const {
   selectMock,
   textareaMock,
   inputMock,
+  checkboxMock,
   buttonMock,
 } = vi.hoisted(() => ({
   mockCreateNodeApp: vi.fn(),
@@ -22,6 +23,7 @@ const {
   selectMock: vi.fn((props: Record<string, unknown>) => props),
   textareaMock: vi.fn((props: Record<string, unknown>) => props),
   inputMock: vi.fn((props: Record<string, unknown>) => props),
+  checkboxMock: vi.fn((props: Record<string, unknown>) => props),
   buttonMock: vi.fn((props: Record<string, unknown>) => props),
 }));
 
@@ -39,6 +41,7 @@ vi.mock('@rezi-ui/core', () => ({
     select: selectMock,
     textarea: textareaMock,
     input: inputMock,
+    checkbox: checkboxMock,
     button: buttonMock,
   },
 }));
@@ -51,6 +54,12 @@ function createAppMock(overrides: Record<string, unknown> = {}) {
     stop: vi.fn(() => Promise.resolve()),
     ...overrides,
   };
+}
+
+function renderedIssueCountLines(): string[] {
+  return textMock.mock.calls
+    .filter(([, props]) => Boolean((props as { key?: string } | undefined)?.key?.startsWith('issue-count-')))
+    .map(([content]) => content);
 }
 
 const baseSelection: LaunchSelection = {
@@ -98,9 +107,9 @@ describe('mountLaunchApp', () => {
     expect(renderedText).toContain('// autonomous_code_agent');
     expect(renderedText).toContain('v0.7.6');
     expect(renderedText).toContain('thinking');
-    expect(renderedText).toContain('14');
+    expect(renderedIssueCountLines()).toEqual([' ██ █ █', '██  █ █', ' ██ ███', ' ██   █', '███   █']);
     expect(renderedText).toContain('total_issues');
-    expect(renderedText).toContain('← esc quit  |  ↑↓ navigate  |  ↵ select');
+    expect(renderedText).toContain('q quit  |  tab navigate  |  enter/space select');
     expect(renderedText).not.toContain('Screen 0 - Entry');
     expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-start',
@@ -124,6 +133,8 @@ describe('mountLaunchApp', () => {
     }));
     expect(selectMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-model',
+      accessibleLabel: 'Model',
+      dsSize: 'lg',
       value: 'sonnet',
     }));
     expect(textareaMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -132,6 +143,13 @@ describe('mountLaunchApp', () => {
     }));
     expect(inputMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-epic-id',
+      accessibleLabel: 'Epic ID',
+      dsSize: 'lg',
+    }));
+    expect(checkboxMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'launch-simulate',
+      checked: false,
+      dsSize: 'lg',
     }));
   });
 
@@ -206,8 +224,7 @@ describe('mountLaunchApp', () => {
     });
 
     const renderedText = textMock.mock.calls.map(([content]) => content);
-    expect(renderedText).toContain('3');
-    expect(renderedText).not.toContain('14');
+    expect(renderedIssueCountLines()).toEqual(['███', '  █', '███', '  █', '███']);
     expect(renderedText).toContain('dry_run - mock issues and restricted tools');
   });
 });
