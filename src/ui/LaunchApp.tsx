@@ -78,12 +78,36 @@ export interface LaunchAppHandle {
   unmount: () => Promise<void>;
 }
 
-function buildModelOptions(provider: AgentProvider, model: string) {
+function formatModelLabel(provider: AgentProvider, model: string): string {
+  if (provider === 'claude') {
+    switch (model) {
+      case 'haiku':
+        return 'claude-haiku-4-20250514';
+      case 'sonnet':
+        return 'claude-sonnet-4-20250514';
+      case 'opus':
+        return 'claude-opus-4-20250514';
+      default:
+        return model;
+    }
+  }
+
+  return model;
+}
+
+function paddedLabel(label: string, targetWidth: number): string {
+  return label.padEnd(Math.max(label.length, targetWidth), ' ');
+}
+
+function buildModelOptions(provider: AgentProvider, model: string, targetWidth: number) {
   const descriptor = getProviderDescriptor(provider);
-  const options = descriptor.knownModels.map(value => ({ value, label: value }));
+  const options = descriptor.knownModels.map(value => ({
+    value,
+    label: paddedLabel(formatModelLabel(provider, value), targetWidth),
+  }));
 
   if (model && !descriptor.knownModels.includes(model)) {
-    options.unshift({ value: model, label: `${model} (custom)` });
+    options.unshift({ value: model, label: paddedLabel(`${model} (custom)`, targetWidth) });
   }
 
   return options;
@@ -96,7 +120,7 @@ function normalizeInitialState(initialSelection: LaunchSelection, issueCounts: L
   return {
     provider,
     model: initialSelection.model ?? descriptor.defaultModel,
-    effort: initialSelection.effort ?? '',
+    effort: initialSelection.effort ?? 'medium',
     customPrompt: initialSelection.customPrompt ?? '',
     beadsMode: initialSelection.beadsMode,
     epicId: initialSelection.epicId ?? '',
@@ -131,10 +155,10 @@ type LaunchTone = 'success' | 'warning' | 'danger';
 
 function panelWidth(termCols: number, stacked: boolean): number {
   if (stacked) {
-    return Math.max(48, Math.min(termCols - 8, 76));
+    return Math.max(56, Math.min(termCols - 8, 88));
   }
 
-  return Math.max(50, Math.min(Math.floor((termCols - 18) / 2), 60));
+  return Math.max(58, Math.min(Math.floor((termCols - 20) / 2), 78));
 }
 
 function labelText(label: string) {
@@ -176,8 +200,8 @@ function launchChip(
     {
       border: 'single',
       borderStyle: { fg: fg(selected ? selectedFg : c.border) },
-      style: { bg: bg(selected ? toneBackground(tone) : c.bg) },
-      px: 1,
+      style: { bg: bg(selected ? toneBackground(tone) : SURFACE_BG) },
+      px: 2,
       py: 0,
     },
     [
@@ -244,15 +268,15 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const panelGap = stacked ? 2 : 3;
     const contentWidth = stacked ? width : (width * 2) + panelGap;
     const logoWidth = Math.max(...LOGO_LINES.map(line => line.length));
+    const modelLabelWidth = Math.max(30, width - 12);
+    const promptPlaceholder = paddedLabel('enter additional instructions...', Math.max(32, width - 14));
+    const epicPlaceholder = paddedLabel('enter_epic_id...', Math.max(20, width - 16));
 
     const providerOptions = [
       { value: 'claude', label: 'claude' },
       { value: 'codex', label: 'codex' },
     ];
-    const effortOptions = [
-      { value: '', label: 'default' },
-      ...AGENT_EFFORT_LEVELS.map(value => ({ value, label: value })),
-    ];
+    const effortOptions = AGENT_EFFORT_LEVELS.map(value => ({ value, label: value }));
     const runModeOptions = [
       { value: 'pr', label: 'pr' },
       { value: 'commit', label: 'commit' },
@@ -294,13 +318,12 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
           ui.select({
             id: 'launch-model',
             value: state.model,
-            options: buildModelOptions(state.provider, state.model),
+            options: buildModelOptions(state.provider, state.model, modelLabelWidth),
             dsVariant: 'outline',
-            dsSize: 'sm',
             focusConfig: FIELD_FOCUS,
             onChange: value => app.update(prev => ({ ...prev, model: value })),
           }),
-          labelText('effort'),
+          labelText('thinking'),
           stacked
             ? ui.column(
                 { gap: 1 },
@@ -321,8 +344,8 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
           ui.textarea({
             id: 'launch-custom-prompt',
             value: state.customPrompt,
-            rows: 3,
-            placeholder: 'enter additional instructions...',
+            rows: 4,
+            placeholder: promptPlaceholder,
             focusConfig: FIELD_FOCUS,
             style: { bg: bg(SURFACE_BG), fg: fg(c.text) },
             onInput: value => app.update(prev => ({ ...prev, customPrompt: value })),
@@ -357,7 +380,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
             id: 'launch-epic-id',
             value: state.epicId,
             disabled: state.beadsMode !== 'epic',
-            placeholder: 'enter_epic_id...',
+            placeholder: epicPlaceholder,
             focusable: state.beadsMode === 'epic',
             focusConfig: FIELD_FOCUS,
             style: { bg: bg(SURFACE_BG), fg: fg(c.text), dim: state.beadsMode !== 'epic' },
@@ -390,7 +413,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
                 ui.text(
                   state.simulate
                     ? 'dry_run - mock issues and restricted tools'
-                    : 'live_run - repo issues and real changes',
+                    : 'dry_run - no changes will be made',
                   { style: { fg: fg(c.dim) } },
                 ),
               ]),
