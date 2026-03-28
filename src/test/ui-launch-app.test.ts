@@ -128,6 +128,7 @@ describe('mountLaunchApp', () => {
     }));
     expect(textareaMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-custom-prompt',
+      rows: 3,
     }));
     expect(inputMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-epic-id',
@@ -207,6 +208,6 @@ describe('mountLaunchApp', () => {
     const renderedText = textMock.mock.calls.map(([content]) => content);
     expect(renderedText).toContain('3');
     expect(renderedText).not.toContain('14');
-    expect(renderedText).toContain('dry_run — mock issues and restricted tools');
+    expect(renderedText).toContain('dry_run - mock issues and restricted tools');
   });
 });
