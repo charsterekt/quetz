@@ -3,7 +3,7 @@ import { createNodeApp } from '@rezi-ui/node';
 
 import { AGENT_EFFORT_LEVELS, getProviderDescriptor, type AgentEffortLevel, type AgentProvider } from '../provider.js';
 import { c, hexToRgb } from './theme.js';
-import { LOGO_LINES } from './logo.js';
+import { LOGO_LINES, LOGO_TAGLINE } from './logo.js';
 
 function fg(hex: string) {
   const [r, g, b] = hexToRgb(hex);
@@ -105,15 +105,15 @@ function toSelection(state: LaunchState): LaunchSelection {
 }
 
 function heroSubtitle(): string {
-  return '// feathered_serpent_dev_loop_one';
+  return `// ${LOGO_TAGLINE}`;
 }
 
 function panelWidth(termCols: number, stacked: boolean): number {
   if (stacked) {
-    return Math.max(44, Math.min(termCols - 6, 78));
+    return Math.max(46, Math.min(termCols - 8, 78));
   }
 
-  return Math.max(42, Math.min(Math.floor((termCols - 10) / 2), 58));
+  return Math.max(48, Math.min(Math.floor((termCols - 14) / 2), 58));
 }
 
 export function mountLaunchApp({ version, initialSelection, issueCounts }: MountLaunchOptions): LaunchAppHandle {
@@ -142,7 +142,10 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const termCols = process.stdout.columns ?? 120;
     const stacked = termCols < 112;
     const width = panelWidth(termCols, stacked);
-    const liveIssueCount = state.simulate ? state.issueCounts.simulate : state.issueCounts.live;
+    const panelGap = stacked ? 1 : 4;
+    const contentWidth = stacked ? width : (width * 2) + panelGap;
+    const logoWidth = Math.max(...LOGO_LINES.map(line => line.length));
+    const liveIssueCount = state.issueCounts.live;
     const issueCountLabel = 'total_issues';
 
     const providerOptions = [
@@ -218,7 +221,6 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
           }),
           ui.field({
             label: 'custom_prompt',
-            hint: 'Launch-screen shell for additive prompt wiring.',
             children: ui.textarea({
               id: 'launch-custom-prompt',
               value: state.customPrompt,
@@ -257,7 +259,6 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
           }),
           ui.field({
             label: 'beads_mode',
-            hint: 'Epic scope selection is staged here for the launch flow.',
             children: ui.radioGroup({
               id: 'launch-beads-mode',
               value: state.beadsMode,
@@ -316,55 +317,54 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
 
     const panelRow = stacked
       ? ui.column({ gap: 1, items: 'center' }, [leftPanel, rightPanel])
-      : ui.row({ gap: 2, items: 'start', justify: 'center' }, [leftPanel, rightPanel]);
+      : ui.row({ gap: panelGap, items: 'start', justify: 'center' }, [leftPanel, rightPanel]);
+
+    const logoBlock = ui.column({ gap: 0 }, [
+      ...LOGO_LINES.map((line, index) =>
+        ui.text(line, {
+          key: String(index),
+          style: { fg: fg(c.logo) },
+        }),
+      ),
+    ]);
 
     return ui.box(
       {
         width: 'full',
         height: 'full',
         style: { bg: bg(c.bg) },
-        px: 2,
+        px: 0,
         py: 1,
       },
       [
-        ui.column({ width: 'full', height: 'full', items: 'center', gap: 1 }, [
-          ui.row({ width: 'full', justify: 'start' }, [
-            ui.text('Screen 0 - Entry', { style: { fg: fg(c.muted) } }),
-          ]),
-          ui.column({ items: 'center', gap: 0 }, [
-            ...LOGO_LINES.map((line, index) =>
-              ui.text(line, {
-                key: String(index),
-                style: { fg: fg(c.logo), bold: true },
+        ui.column({ width: 'full', height: 'full', justify: 'center', items: 'center' }, [
+          ui.column({ width: contentWidth, gap: 2 }, [
+            ui.row({ width: 'full', justify: 'center' }, [
+              ui.box({ width: logoWidth }, [logoBlock]),
+            ]),
+            ui.row({ width: 'full', justify: 'center' }, [
+              ui.text(heroSubtitle(), { style: { fg: fg(c.dim) } }),
+            ]),
+            ui.row({ width: 'full', justify: 'center' }, [
+              ui.text(`v${version}`, { style: { fg: fg(c.muted) } }),
+            ]),
+            panelRow,
+            ui.row({ width: 'full', justify: 'center' }, [
+              ui.button({
+                id: 'launch-start',
+                label: '$ quetz start',
+                px: 4,
+                style: { fg: fg(c.bg), bg: fg(c.brand), bold: true },
+                pressedStyle: { fg: fg(c.bg), bg: fg(c.logo), bold: true },
+                onPress: () => settle(toSelection(state)),
               }),
-            ),
-            ui.text(heroSubtitle(), { style: { fg: fg(c.dim) } }),
-            ui.text(`v${version}`, { style: { fg: fg(c.muted) } }),
+            ]),
+            ui.row({ width: 'full', justify: 'center' }, [
+              ui.text('q quit  |  tab navigate  |  arrows adjust  |  enter select', {
+                style: { fg: fg(c.muted) },
+              }),
+            ]),
           ]),
-          ui.box(
-            {
-              border: 'single',
-              borderTop: false,
-              borderLeft: false,
-              borderRight: false,
-              borderBottom: true,
-              borderStyle: { fg: fg(c.border) },
-              width: Math.max(40, Math.min(termCols - 6, 100)),
-            },
-            [],
-          ),
-          panelRow,
-          ui.button({
-            id: 'launch-start',
-            label: '$ quetz start',
-            px: 3,
-            style: { fg: fg(c.bg), bg: fg(c.brand), bold: true },
-            pressedStyle: { fg: fg(c.bg), bg: fg(c.logo), bold: true },
-            onPress: () => settle(toSelection(state)),
-          }),
-          ui.text('q quit  |  tab navigate  |  arrows adjust  |  enter select', {
-            style: { fg: fg(c.muted) },
-          }),
         ]),
       ],
     );

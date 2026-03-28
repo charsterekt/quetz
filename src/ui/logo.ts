@@ -12,6 +12,8 @@ export const LOGO_LINES = [
   '    \u2588\u2588\u2588\u2588\u2591',
 ];
 
+export const LOGO_TAGLINE = 'the feathered serpent dev loop';
+
 export function logoSubtitle(version: string): string {
-  return `the feathered serpent dev loop  v${version}`;
+  return `${LOGO_TAGLINE}  v${version}`;
 }

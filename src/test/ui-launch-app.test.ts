@@ -104,10 +104,11 @@ describe('mountLaunchApp', () => {
     });
 
     const renderedText = textMock.mock.calls.map(([content]) => content);
-    expect(renderedText).toContain('// feathered_serpent_dev_loop_one');
+    expect(renderedText).toContain('// the feathered serpent dev loop');
     expect(renderedText).toContain('v0.7.6');
     expect(renderedText).toContain('14');
     expect(renderedText).toContain('total_issues');
+    expect(renderedText).not.toContain('Screen 0 - Entry');
     expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-start',
       label: '$ quetz start',
