@@ -9,8 +9,6 @@ const {
   boxMock,
   columnMock,
   rowMock,
-  selectMock,
-  textareaMock,
   inputMock,
   checkboxMock,
   buttonMock,
@@ -20,8 +18,6 @@ const {
   boxMock: vi.fn((_props: Record<string, unknown>, children: unknown) => ({ children })),
   columnMock: vi.fn((_props: Record<string, unknown>, children: unknown) => ({ children })),
   rowMock: vi.fn((_props: Record<string, unknown>, children: unknown) => ({ children })),
-  selectMock: vi.fn((props: Record<string, unknown>) => props),
-  textareaMock: vi.fn((props: Record<string, unknown>) => props),
   inputMock: vi.fn((props: Record<string, unknown>) => props),
   checkboxMock: vi.fn((props: Record<string, unknown>) => props),
   buttonMock: vi.fn((props: Record<string, unknown>) => props),
@@ -38,8 +34,6 @@ vi.mock('@rezi-ui/core', () => ({
     column: columnMock,
     row: rowMock,
     text: textMock,
-    select: selectMock,
-    textarea: textareaMock,
     input: inputMock,
     checkbox: checkboxMock,
     button: buttonMock,
@@ -49,17 +43,13 @@ vi.mock('@rezi-ui/core', () => ({
 function createAppMock(overrides: Record<string, unknown> = {}) {
   return {
     keys: vi.fn(),
+    onFocusChange: vi.fn(() => vi.fn()),
+    update: vi.fn(),
     view: vi.fn(),
     start: vi.fn(() => Promise.resolve()),
     stop: vi.fn(() => Promise.resolve()),
     ...overrides,
   };
-}
-
-function renderedIssueCountLines(): string[] {
-  return textMock.mock.calls
-    .filter(([, props]) => Boolean((props as { key?: string } | undefined)?.key?.startsWith('issue-count-')))
-    .map(([content]) => content);
 }
 
 const baseSelection: LaunchSelection = {
@@ -87,9 +77,18 @@ describe('mountLaunchApp', () => {
 
     void mountLaunchApp({
       version: '0.7.6',
-      initialSelection: baseSelection,
+      initialSelection: {
+        ...baseSelection,
+        model: 'claude-sonnet-4-20250514',
+      },
       issueCounts: { live: 14, simulate: 3 },
     });
+
+    expect(mockCreateNodeApp).toHaveBeenCalledWith(expect.objectContaining({
+      initialState: expect.objectContaining({
+        model: 'sonnet',
+      }),
+    }));
 
     viewFn({
       provider: 'claude',
@@ -101,16 +100,18 @@ describe('mountLaunchApp', () => {
       simulate: false,
       runMode: 'pr',
       issueCounts: { live: 14, simulate: 3 },
+      focusedId: null,
     });
 
     const renderedText = textMock.mock.calls.map(([content]) => content);
     expect(renderedText).toContain('// autonomous_code_agent');
     expect(renderedText).toContain('v0.7.6');
     expect(renderedText).toContain('thinking');
-    expect(renderedIssueCountLines()).toEqual([' ██ █ █', '██  █ █', ' ██ ███', ' ██   █', '███   █']);
+    expect(renderedText).toContain('14');
     expect(renderedText).toContain('total_issues');
     expect(renderedText).toContain('q quit  |  tab navigate  |  enter/space select');
     expect(renderedText).not.toContain('Screen 0 - Entry');
+
     expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-start',
       label: '$ quetz start',
@@ -124,27 +125,28 @@ describe('mountLaunchApp', () => {
       label: 'pr',
     }));
     expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'launch-effort-off',
-      label: 'off',
+      id: 'launch-model-sonnet',
+      label: 'sonnet',
+    }));
+    expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'launch-effort-max',
+      label: 'max*',
     }));
     expect(buttonMock).not.toHaveBeenCalledWith(expect.objectContaining({
-      id: 'launch-effort-max',
-      label: 'max',
+      id: 'launch-effort-off',
     }));
-    expect(selectMock).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'launch-model',
-      accessibleLabel: 'Model',
-      dsSize: 'lg',
-      value: 'sonnet',
-    }));
-    expect(textareaMock).toHaveBeenCalledWith(expect.objectContaining({
+
+    expect(inputMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-custom-prompt',
-      rows: 3,
+      accessibleLabel: 'Custom prompt',
+      placeholder: 'enter additional instructions...',
+      focusConfig: { indicator: 'none' },
     }));
     expect(inputMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-epic-id',
       accessibleLabel: 'Epic ID',
-      dsSize: 'lg',
+      placeholder: 'enter_epic_id...',
+      focusConfig: { indicator: 'none' },
     }));
     expect(checkboxMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-simulate',
@@ -177,6 +179,7 @@ describe('mountLaunchApp', () => {
       simulate: true,
       runMode: 'commit',
       issueCounts: { live: 14, simulate: 3 },
+      focusedId: null,
     });
 
     const startCall = buttonMock.mock.calls.find(([props]) => (props as { id?: string }).id === 'launch-start');
@@ -197,7 +200,7 @@ describe('mountLaunchApp', () => {
     });
   });
 
-  it('shows the simulate issue total and copy when simulate is enabled', () => {
+  it('shows the simulate issue total and simplified codex model label', () => {
     let viewFn!: (state: unknown) => unknown;
     mockCreateNodeApp.mockReturnValue(createAppMock({
       view: vi.fn((fn: (state: unknown) => unknown) => {
@@ -221,10 +224,15 @@ describe('mountLaunchApp', () => {
       simulate: true,
       runMode: 'pr',
       issueCounts: { live: 14, simulate: 3 },
+      focusedId: null,
     });
 
     const renderedText = textMock.mock.calls.map(([content]) => content);
-    expect(renderedIssueCountLines()).toEqual(['███', '  █', '███', '  █', '███']);
+    expect(renderedText).toContain('3');
     expect(renderedText).toContain('dry_run - mock issues and restricted tools');
+    expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'launch-model-gpt-5-codex',
+      label: 'codex',
+    }));
   });
 });

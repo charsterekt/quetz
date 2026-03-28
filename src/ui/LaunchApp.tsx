@@ -23,34 +23,27 @@ const DANGER_BG = '#241512';
 const SUCCESS_FG = '#0DBC79';
 const WARNING_FG = '#FF8400';
 const DANGER_FG = '#FF5C33';
+const FOCUS_FG = c.cyan;
 const HERO_SUBTITLE = '// autonomous_code_agent';
+
 const BUTTON_FOCUS = {
   indicator: 'underline' as const,
   style: { fg: fg('#FAFAFA'), bold: true },
   contentStyle: { bold: true, underline: true },
 };
-const FIELD_FOCUS = {
-  indicator: 'ring' as const,
-  ringVariant: 'single' as const,
-  style: { fg: fg(SUCCESS_FG), bold: true },
-  contentStyle: { bold: true },
+
+const CHIP_FOCUS = {
+  indicator: 'underline' as const,
+  style: { fg: fg('#FAFAFA'), bold: true },
+  contentStyle: { bold: true, underline: true },
 };
-const LARGE_DIGITS: Record<string, readonly string[]> = {
-  '0': ['███', '█ █', '█ █', '█ █', '███'],
-  '1': [' ██', '██ ', ' ██', ' ██', '███'],
-  '2': ['███', '  █', '███', '█  ', '███'],
-  '3': ['███', '  █', '███', '  █', '███'],
-  '4': ['█ █', '█ █', '███', '  █', '  █'],
-  '5': ['███', '█  ', '███', '  █', '███'],
-  '6': ['███', '█  ', '███', '█ █', '███'],
-  '7': ['███', '  █', '  █', '  █', '  █'],
-  '8': ['███', '█ █', '███', '█ █', '███'],
-  '9': ['███', '█ █', '███', '  █', '███'],
+
+const INLINE_INPUT_FOCUS = {
+  indicator: 'none' as const,
 };
 
 export type LaunchBeadsMode = 'all' | 'epic';
 export type LaunchRunMode = 'pr' | 'commit' | 'amend';
-type LaunchEffortValue = AgentEffortLevel | 'off';
 
 export interface LaunchSelection {
   provider: AgentProvider;
@@ -72,13 +65,14 @@ export interface LaunchIssueCounts {
 interface LaunchState {
   provider: AgentProvider;
   model: string;
-  effort: LaunchEffortValue;
+  effort: AgentEffortLevel;
   customPrompt: string;
   beadsMode: LaunchBeadsMode;
   epicId: string;
   simulate: boolean;
   runMode: LaunchRunMode;
   issueCounts: LaunchIssueCounts;
+  focusedId: string | null;
 }
 
 export interface MountLaunchOptions {
@@ -93,48 +87,62 @@ export interface LaunchAppHandle {
   unmount: () => Promise<void>;
 }
 
-function formatModelLabel(provider: AgentProvider, model: string): string {
+function canonicalizeLaunchModel(provider: AgentProvider, model: string): string {
+  const value = model.trim().toLowerCase();
+
   if (provider === 'claude') {
-    switch (model) {
-      case 'haiku':
-        return 'claude-haiku-4-20250514';
-      case 'sonnet':
-        return 'claude-sonnet-4-20250514';
-      case 'opus':
-        return 'claude-opus-4-20250514';
-      default:
-        return model;
-    }
+    if (value.includes('haiku')) return 'haiku';
+    if (value.includes('opus')) return 'opus';
+    if (value.includes('sonnet')) return 'sonnet';
+    return model;
   }
 
+  if (value.includes('codex')) return 'gpt-5-codex';
+  if (value.includes('gpt-5.1')) return 'gpt-5.1';
+  if (value.includes('gpt-5')) return 'gpt-5';
   return model;
 }
 
-function paddedLabel(label: string, targetWidth: number): string {
-  return label.padEnd(Math.max(label.length, targetWidth), ' ');
+function displayModelLabel(provider: AgentProvider, model: string): string {
+  const canonical = canonicalizeLaunchModel(provider, model);
+
+  switch (canonical) {
+    case 'gpt-5-codex':
+      return 'codex';
+    default:
+      return canonical;
+  }
 }
 
-function buildModelOptions(provider: AgentProvider, model: string, targetWidth: number) {
+function sanitizeIdSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]+/g, '-');
+}
+
+function buildModelChoices(provider: AgentProvider, currentModel: string) {
   const descriptor = getProviderDescriptor(provider);
-  const options = descriptor.knownModels.map(value => ({
+  const choices = descriptor.knownModels.map(value => ({
     value,
-    label: paddedLabel(formatModelLabel(provider, value), targetWidth),
+    label: displayModelLabel(provider, value),
   }));
 
-  if (model && !descriptor.knownModels.includes(model)) {
-    options.unshift({ value: model, label: paddedLabel(`${model} (custom)`, targetWidth) });
+  if (currentModel && !descriptor.knownModels.includes(currentModel)) {
+    choices.unshift({
+      value: currentModel,
+      label: `${displayModelLabel(provider, currentModel)}*`,
+    });
   }
 
-  return options;
+  return choices;
 }
 
 function normalizeInitialState(initialSelection: LaunchSelection, issueCounts: LaunchIssueCounts): LaunchState {
   const provider = initialSelection.provider;
   const descriptor = getProviderDescriptor(provider);
+  const model = canonicalizeLaunchModel(provider, initialSelection.model ?? descriptor.defaultModel);
 
   return {
     provider,
-    model: initialSelection.model ?? descriptor.defaultModel,
+    model,
     effort: initialSelection.effort ?? 'medium',
     customPrompt: initialSelection.customPrompt ?? '',
     beadsMode: initialSelection.beadsMode,
@@ -142,6 +150,7 @@ function normalizeInitialState(initialSelection: LaunchSelection, issueCounts: L
     simulate: initialSelection.simulate,
     runMode: initialSelection.amend ? 'amend' : (initialSelection.localCommits ? 'commit' : 'pr'),
     issueCounts,
+    focusedId: null,
   };
 }
 
@@ -152,7 +161,7 @@ function toSelection(state: LaunchState): LaunchSelection {
   return {
     provider: state.provider,
     model: state.model || undefined,
-    effort: state.effort === 'off' ? undefined : state.effort,
+    effort: state.effort,
     simulate: state.simulate,
     localCommits: state.runMode === 'commit',
     amend: state.runMode === 'amend',
@@ -198,18 +207,8 @@ function toneBackground(tone: LaunchTone): string {
   }
 }
 
-function renderLargeNumber(value: number): string[] {
-  const digits = String(Math.max(0, value)).split('');
-  const rows = Array.from({ length: 5 }, () => '');
-
-  for (const digit of digits) {
-    const pattern = LARGE_DIGITS[digit] ?? [digit, digit, digit, digit, digit];
-    for (let index = 0; index < rows.length; index += 1) {
-      rows[index] += `${rows[index] ? ' ' : ''}${pattern[index]}`;
-    }
-  }
-
-  return rows;
+function isFocusedId(focusedId: string | null, id: string): boolean {
+  return focusedId === id;
 }
 
 function launchChip(
@@ -235,7 +234,7 @@ function launchChip(
         label,
         px: 0,
         dsVariant: 'ghost',
-        focusConfig: BUTTON_FOCUS,
+        focusConfig: CHIP_FOCUS,
         style: { fg: fg(selected ? selectedFg : c.dim) },
         onPress,
       }),
@@ -251,10 +250,10 @@ function launchGroupRow(
   onSelect: (value: string) => void,
 ) {
   return ui.row(
-    { gap: 1 },
+    { gap: 1, wrap: true },
     options.map(option =>
       launchChip(
-        `${groupId}-${option.value}`,
+        `${groupId}-${sanitizeIdSegment(option.value)}`,
         option.label,
         selectedValue === option.value,
         tone,
@@ -268,13 +267,27 @@ function launchSection(title: string, children: any[]) {
   return ui.column({ width: 'full', gap: 1 }, [labelText(title), ...children]);
 }
 
+function fieldShell(children: any[], focused: boolean, disabled = false) {
+  return ui.box(
+    {
+      border: 'single',
+      borderStyle: { fg: fg(focused ? FOCUS_FG : c.border), bold: focused },
+      style: { bg: bg(SURFACE_BG), dim: disabled },
+      px: 1,
+      py: 1,
+      width: 'full',
+    },
+    children,
+  );
+}
+
 function simulateToggle(active: boolean, onChange: (checked: boolean) => void) {
   return ui.checkbox({
     id: 'launch-simulate',
     checked: active,
     dsTone: 'warning',
     dsSize: 'lg',
-    focusConfig: FIELD_FOCUS,
+    focusConfig: BUTTON_FOCUS,
     onChange,
   });
 }
@@ -302,6 +315,14 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     'ctrl+c': () => settle(null),
   });
 
+  const cleanupFocus = app.onFocusChange(info => {
+    app.update(prev => (
+      prev.focusedId === info.id
+        ? prev
+        : { ...prev, focusedId: info.id }
+    ));
+  });
+
   app.view((state: LaunchState) => {
     const termCols = process.stdout.columns ?? 120;
     const stacked = termCols < 112;
@@ -311,19 +332,18 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const logoLines: readonly string[] = LOGO_LINES;
     const logoWidth = Math.max(...logoLines.map(line => line.length));
     const contentWidth = Math.min(termCols - 4, Math.max(baseContentWidth, logoWidth));
-    const modelLabelWidth = Math.max(30, width - 12);
     const issueCount = state.simulate ? state.issueCounts.simulate : state.issueCounts.live;
-    const issueCountLines = renderLargeNumber(issueCount);
+    const modelChoices = buildModelChoices(state.provider, state.model);
 
     const providerOptions = [
       { value: 'claude', label: 'claude' },
       { value: 'codex', label: 'codex' },
     ];
-    const effortOptions: ReadonlyArray<{ value: LaunchEffortValue; label: string }> = [
-      { value: 'off', label: 'off' },
+    const effortOptions: ReadonlyArray<{ value: AgentEffortLevel; label: string }> = [
       { value: 'low', label: 'low' },
       { value: 'medium', label: 'medium' },
       { value: 'high', label: 'high' },
+      { value: 'max', label: 'max*' },
     ];
     const runModeOptions = [
       { value: 'pr', label: 'pr' },
@@ -353,8 +373,9 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
               app.update(prev => {
                 const provider = value as AgentProvider;
                 const descriptor = getProviderDescriptor(provider);
-                const nextModel = descriptor.knownModels.includes(prev.model)
-                  ? prev.model
+                const currentModel = canonicalizeLaunchModel(provider, prev.model);
+                const nextModel = descriptor.knownModels.includes(currentModel)
+                  ? currentModel
                   : descriptor.defaultModel;
                 return {
                   ...prev,
@@ -365,44 +386,30 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
             }),
           ]),
           launchSection('model', [
-            ui.select({
-              id: 'launch-model',
-              accessibleLabel: 'Model',
-              value: state.model,
-              options: buildModelOptions(state.provider, state.model, modelLabelWidth),
-              dsSize: 'lg',
-              focusConfig: FIELD_FOCUS,
-              onChange: value => app.update(prev => ({ ...prev, model: value })),
-            }),
+            launchGroupRow('launch-model', state.model, 'success', modelChoices, value =>
+              app.update(prev => ({ ...prev, model: value }))
+            ),
           ]),
           launchSection('thinking', [
-            stacked
-              ? ui.column(
-                  { gap: 1 },
-                  effortOptions.map(option =>
-                    launchChip(
-                      `launch-effort-${option.label}`,
-                      option.label,
-                      state.effort === option.value,
-                      'warning',
-                      () => app.update(prev => ({ ...prev, effort: option.value })),
-                    ),
-                  ),
-                )
-              : launchGroupRow('launch-effort', state.effort, 'warning', effortOptions, value =>
-                  app.update(prev => ({ ...prev, effort: value as LaunchEffortValue })),
-                ),
+            launchGroupRow('launch-effort', state.effort, 'warning', effortOptions, value =>
+              app.update(prev => ({ ...prev, effort: value as AgentEffortLevel }))
+            ),
           ]),
           launchSection('custom_prompt', [
-            ui.textarea({
-              id: 'launch-custom-prompt',
-              value: state.customPrompt,
-              rows: 3,
-              placeholder: 'enter additional instructions...',
-              focusConfig: FIELD_FOCUS,
-              style: { bg: bg(SURFACE_BG), fg: fg(c.text) },
-              onInput: value => app.update(prev => ({ ...prev, customPrompt: value })),
-            }),
+            fieldShell(
+              [
+                ui.input({
+                  id: 'launch-custom-prompt',
+                  accessibleLabel: 'Custom prompt',
+                  value: state.customPrompt,
+                  placeholder: 'enter additional instructions...',
+                  focusConfig: INLINE_INPUT_FOCUS,
+                  style: { fg: fg(c.text) },
+                  onInput: value => app.update(prev => ({ ...prev, customPrompt: value })),
+                }),
+              ],
+              isFocusedId(state.focusedId, 'launch-custom-prompt'),
+            ),
           ]),
         ]),
       ],
@@ -431,18 +438,23 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
               if (value !== 'all' && value !== 'epic') return;
               app.update(prev => ({ ...prev, beadsMode: value as LaunchBeadsMode }));
             }),
-            ui.input({
-              id: 'launch-epic-id',
-              accessibleLabel: 'Epic ID',
-              value: state.epicId,
-              disabled: state.beadsMode !== 'epic',
-              placeholder: 'enter_epic_id...',
-              focusable: state.beadsMode === 'epic',
-              focusConfig: FIELD_FOCUS,
-              dsSize: 'lg',
-              style: { bg: bg(SURFACE_BG), fg: fg(c.text), dim: state.beadsMode !== 'epic' },
-              onInput: value => app.update(prev => ({ ...prev, epicId: value })),
-            }),
+            fieldShell(
+              [
+                ui.input({
+                  id: 'launch-epic-id',
+                  accessibleLabel: 'Epic ID',
+                  value: state.epicId,
+                  disabled: state.beadsMode !== 'epic',
+                  placeholder: 'enter_epic_id...',
+                  focusable: state.beadsMode === 'epic',
+                  focusConfig: INLINE_INPUT_FOCUS,
+                  style: { fg: fg(c.text), dim: state.beadsMode !== 'epic' },
+                  onInput: value => app.update(prev => ({ ...prev, epicId: value })),
+                }),
+              ],
+              isFocusedId(state.focusedId, 'launch-epic-id'),
+              state.beadsMode !== 'epic',
+            ),
           ]),
           ui.box(
             {
@@ -473,15 +485,21 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
               ]),
             ],
           ),
-          ui.row({ items: 'end', gap: 2 }, [
-            ui.column(
-              { gap: 0 },
-              issueCountLines.map((line, index) =>
-                ui.text(line, {
-                  key: `issue-count-${index}`,
+          ui.row({ items: 'center', gap: 2 }, [
+            ui.box(
+              {
+                border: 'single',
+                borderStyle: { fg: fg(WARNING_FG) },
+                style: { bg: bg(PANEL_BG) },
+                px: 3,
+                py: 1,
+              },
+              [
+                ui.text(String(issueCount), {
+                  variant: 'heading',
                   style: { fg: fg(WARNING_FG), bold: true },
                 }),
-              ),
+              ],
             ),
             ui.text('total_issues', { style: { fg: fg(c.dim) } }),
           ]),
@@ -503,6 +521,47 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       ),
     );
 
+    const topBlock = ui.column({ width: contentWidth, gap: 1 }, [
+      ui.row({ width: 'full', justify: 'center' }, [logoBlock]),
+      ui.column({ width: 'full', gap: 1, items: 'center' }, [
+        ui.text(HERO_SUBTITLE, { style: { fg: fg(c.dim) } }),
+        ui.text(`v${version}`, { style: { fg: fg(c.muted) } }),
+      ]),
+      ui.row({ width: 'full', justify: 'center' }, [
+        ui.text('-'.repeat(Math.max(24, contentWidth)), { style: { fg: fg(c.border) } }),
+      ]),
+      panelRow,
+    ]);
+
+    const bottomBlock = ui.column({ width: contentWidth, gap: 1, items: 'center' }, [
+      ui.row({ width: 'full', justify: 'center' }, [
+        ui.box(
+          {
+            border: 'none',
+            style: { bg: bg(SUCCESS_FG) },
+            px: 5,
+            py: 1,
+          },
+          [
+            ui.button({
+              id: 'launch-start',
+              label: '$ quetz start',
+              px: 0,
+              dsVariant: 'ghost',
+              focusConfig: BUTTON_FOCUS,
+              style: { fg: fg(c.bg), bold: true },
+              onPress: () => settle(toSelection(state)),
+            }),
+          ],
+        ),
+      ]),
+      ui.row({ width: 'full', justify: 'center' }, [
+        ui.text('q quit  |  tab navigate  |  enter/space select', {
+          style: { fg: fg(c.muted) },
+        }),
+      ]),
+    ]);
+
     return ui.box(
       {
         border: 'none',
@@ -510,47 +569,12 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
         height: 'full',
         style: { bg: bg(c.bg) },
         px: 0,
-        py: 2,
+        py: 1,
       },
       [
-        ui.column({ width: 'full', height: 'full', justify: 'start', items: 'center' }, [
-          ui.column({ width: contentWidth, gap: 2 }, [
-            ui.row({ width: 'full', justify: 'center' }, [logoBlock]),
-            ui.column({ width: 'full', gap: 1, items: 'center' }, [
-              ui.text(HERO_SUBTITLE, { style: { fg: fg(c.dim) } }),
-              ui.text(`v${version}`, { style: { fg: fg(c.muted) } }),
-            ]),
-            ui.row({ width: 'full', justify: 'center' }, [
-              ui.text('─'.repeat(Math.max(24, contentWidth)), { style: { fg: fg(c.border) } }),
-            ]),
-            panelRow,
-            ui.row({ width: 'full', justify: 'center' }, [
-              ui.box(
-                {
-                  border: 'none',
-                  style: { bg: bg(SUCCESS_FG) },
-                  px: 5,
-                  py: 1,
-                },
-                [
-                  ui.button({
-                    id: 'launch-start',
-                    label: '$ quetz start',
-                    px: 0,
-                    dsVariant: 'ghost',
-                    focusConfig: BUTTON_FOCUS,
-                    style: { fg: fg(c.bg), bold: true },
-                    onPress: () => settle(toSelection(state)),
-                  }),
-                ],
-              ),
-            ]),
-            ui.row({ width: 'full', justify: 'center' }, [
-              ui.text('q quit  |  tab navigate  |  enter/space select', {
-                style: { fg: fg(c.muted) },
-              }),
-            ]),
-          ]),
+        ui.column({ width: 'full', height: 'full', justify: 'between', items: 'center' }, [
+          topBlock,
+          bottomBlock,
         ]),
       ],
     );
@@ -565,6 +589,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     unmount: async () => {
       if (unmounted) return;
       unmounted = true;
+      cleanupFocus();
       try {
         await ready;
       } catch {
