@@ -2,6 +2,7 @@ import { ui, rgb } from '@rezi-ui/core';
 import { createNodeApp } from '@rezi-ui/node';
 
 import { getProviderDescriptor, type AgentEffortLevel, type AgentProvider } from '../provider.js';
+import { LOGO_LINES } from './logo.js';
 import { c, hexToRgb } from './theme.js';
 
 function fg(hex: string) {
@@ -311,7 +312,9 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const width = panelWidth(termCols, stacked);
     const panelGap = stacked ? 2 : 3;
     const baseContentWidth = stacked ? width : (width * 2) + panelGap;
-    const logoWidth = Math.max(...HERO_LOGO_LINES.map(line => line.length));
+    const heroLogoWidth = Math.max(...HERO_LOGO_LINES.map(line => line.length));
+    const logoLines: readonly string[] = termCols >= heroLogoWidth + 4 ? HERO_LOGO_LINES : LOGO_LINES;
+    const logoWidth = Math.max(...logoLines.map(line => line.length));
     const contentWidth = Math.min(termCols - 4, Math.max(baseContentWidth, logoWidth));
     const modelLabelWidth = Math.max(30, width - 12);
 
@@ -486,7 +489,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
 
     const logoBlock = ui.column(
       { width: logoWidth, gap: 0 },
-      HERO_LOGO_LINES.map((line, index) =>
+      logoLines.map((line, index) =>
         ui.text(line, {
           key: String(index),
           style: { fg: fg(c.logo) },
