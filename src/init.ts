@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as readline from 'readline';
 import { execSync } from 'child_process';
 import chalk from 'chalk';
-import { runPreflight, type PreflightResult } from './preflight.js';
+import { runPreflight, type PreflightResult, type ProviderStatus } from './preflight.js';
 import { writeConfig, DEFAULTS } from './config.js';
 import { printLogo } from './display/quetz.js';
 import type { QuetzConfig } from './config.js';
@@ -151,16 +151,41 @@ function printLabelReminder(config: QuetzConfig): void {
   );
 }
 
+function formatProviderChecklistLine(status: ProviderStatus, preferredProvider: PreflightResult['preferredProvider']): string {
+  const descriptor = getProviderDescriptor(status.provider);
+  const selected = status.provider === preferredProvider ? ' (selected)' : '';
+
+  if (!status.installed) {
+    return `  ${chalk.red('✗')}  ${descriptor.displayName}: CLI not found${selected}`;
+  }
+
+  if (!status.authenticated) {
+    return `  ${chalk.red('✗')}  ${descriptor.displayName}: installed, not authenticated${selected}`;
+  }
+
+  if (!status.runtimeImplemented) {
+    return `  ${chalk.red('✗')}  ${descriptor.displayName}: authenticated, runtime unavailable${selected}`;
+  }
+
+  return `  ${chalk.green('✓')}  ${descriptor.displayName}: ready${selected}`;
+}
+
+export function formatPreflightChecklist(preflight: PreflightResult): string[] {
+  return [
+    `  ${chalk.green('✓')}  GitHub CLI authenticated`,
+    `  ${chalk.green('✓')}  Beads CLI ready`,
+    `  ${chalk.green('✓')}  Git remote origin -> ${preflight.owner}/${preflight.repo} (${preflight.defaultBranch})`,
+    ...preflight.providerStatuses.map(status => formatProviderChecklistLine(status, preflight.preferredProvider)),
+  ];
+}
+
 export async function runInit(projectRoot: string = process.cwd()): Promise<void> {
   printLogo();
 
   section('Preflight Checks');
   const preflight = runPreflight();
-  process.stdout.write(`  ${chalk.green('OK')}  All checks passed.\n`);
-  for (const status of preflight.providerStatuses) {
-    for (const warning of status.warnings) {
-      process.stdout.write(`  ${chalk.yellow('!')}  ${warning}\n`);
-    }
+  for (const line of formatPreflightChecklist(preflight)) {
+    process.stdout.write(`${line}\n`);
   }
 
   const rl = readline.createInterface({

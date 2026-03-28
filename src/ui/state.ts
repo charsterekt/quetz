@@ -2,6 +2,7 @@
 // Adapted from the spec's createSignal pattern to Rezi's app.update() model.
 
 import type { QuetzBus, QuetzEvent, QuetzPhase } from '../events.js';
+import { formatProviderModel, isAgentProvider } from '../provider.js';
 import { c } from './theme.js';
 
 export type ScreenMode = 'running' | 'polling' | 'session_detail' | 'victory' | 'failure';
@@ -163,16 +164,32 @@ function formatElapsed(totalSeconds: number): string {
   return `${m}m ${s.toString().padStart(2, '0')}s`;
 }
 
-function phaseLogLine(phase: QuetzPhase, elapsedSeconds: number): LogLine | null {
-  switch (phase) {
+function phaseLogLine(payload: QuetzEvent['loop:phase'], elapsedSeconds: number): LogLine | null {
+  switch (payload.phase) {
+    case 'fetching':
+      return { icon: '>', color: c.dim, text: 'FETCH ready work' };
+    case 'git_reset':
+      return { icon: '>', color: c.cyan, text: 'GIT reset mainline' };
+    case 'assembling':
+      return { icon: '>', color: c.dim, text: 'PROMPT assembling' };
     case 'agent_running':
-      return { icon: '·', color: c.dim, text: 'AGENT running' };
+      return {
+        icon: '.',
+        color: c.dim,
+        text: payload.agentModel
+          ? `AGENT running ${formatProviderModel(isAgentProvider(payload.agentProvider) ? payload.agentProvider : 'claude', payload.agentModel)}${payload.agentEffort ? ` ${payload.agentEffort}` : ''}`
+          : 'AGENT running',
+      };
     case 'completed':
-      return { icon: '✓', color: c.brand, text: `AGENT done  (${formatElapsed(elapsedSeconds)})` };
+      return { icon: '+', color: c.brand, text: `AGENT done  (${formatElapsed(elapsedSeconds)})` };
     case 'pr_detecting':
-      return { icon: '🔍', color: c.dim, text: 'PR search...' };
+      return { icon: '>', color: c.dim, text: 'PR search...' };
     case 'pr_polling':
-      return { icon: '⏳', color: c.accent, text: 'MERGE polling...' };
+      return { icon: '~', color: c.accent, text: 'MERGE polling...' };
+    case 'commit_verifying':
+      return { icon: '+', color: c.brand, text: 'COMMIT verifying...' };
+    case 'amend_verifying':
+      return { icon: '+', color: c.brand, text: 'AMEND verifying...' };
     default:
       return null;
   }
@@ -216,7 +233,7 @@ export function wireState(
   const onStart = (p: QuetzEvent['loop:start']) => {
     update(s => ({
       ...s,
-      logLines: [...s.logLines, { icon: '▶', color: c.brand, text: `START ${p.total} issues` }],
+      logLines: [...s.logLines, { icon: '>', color: c.brand, text: `START ${p.total} issues` }],
       issueCount: { current: 0, total: p.total },
     }));
   };
@@ -227,7 +244,7 @@ export function wireState(
       ...s,
       logLines: [
         ...s.logLines,
-        { icon: '→', color: c.cyan, text: `PICKUP ${p.id}  ${p.title}  [P${p.priority} ${p.type}]` },
+        { icon: '>', color: c.cyan, text: `PICKUP ${p.id}  ${p.title}  [P${p.priority} ${p.type}]` },
       ],
       issueId: p.id,
       agentIssueId: p.id,
@@ -251,7 +268,7 @@ export function wireState(
   };
 
   const onPhase = (p: QuetzEvent['loop:phase']) => {
-    const logLine = phaseLogLine(p.phase, elapsedSeconds);
+    const logLine = phaseLogLine(p, elapsedSeconds);
     update(s => {
       const next: Partial<AppState> = {
         phase: p.phase,
@@ -295,6 +312,7 @@ export function wireState(
     const elapsed = formatElapsed(Math.floor((Date.now() - sessionStartTime) / 1000));
     update(s => ({
       ...s,
+      logLines: [...s.logLines, { icon: '>', color: c.cyan, text: `PR #${p.number} found` }],
       prNumber: p.number,
       sessionComplete: {
         issueId: s.issueId,
@@ -311,6 +329,7 @@ export function wireState(
       const elapsed = s.sessionComplete?.elapsed ?? s.elapsed;
       return {
         ...s,
+        logLines: [...s.logLines, { icon: '+', color: c.brand, text: `VICTORY ${p.issuesCompleted} issues complete` }],
         mode: 'victory',
         phase: 'completed',
         focusedPane: 'agent',
@@ -337,6 +356,7 @@ export function wireState(
       };
       return {
         ...s,
+        logLines: [...s.logLines, { icon: 'x', color: c.error, text: `FAIL ${p.reason}` }],
         mode: 'failure',
         phase: 'error',
         focusedPane: 'agent',
@@ -367,6 +387,7 @@ export function wireState(
       const session = buildCompletedSession(s, p.issueId, elapsed, 'merged', { prNumber: p.prNumber });
       return {
         ...s,
+        logLines: [...s.logLines, { icon: '+', color: c.brand, text: `MERGED PR #${p.prNumber}  ${p.issueId}` }],
         phase: 'completed',
         elapsed,
         completedSessions: [...s.completedSessions, session],
@@ -383,6 +404,7 @@ export function wireState(
       const session = buildCompletedSession(s, p.issueId, elapsed, 'merged');
       return {
         ...s,
+        logLines: [...s.logLines, { icon: '+', color: c.brand, text: `COMMIT landed  ${p.issueId}` }],
         phase: 'completed',
         elapsed,
         completedSessions: [...s.completedSessions, session],
@@ -399,6 +421,7 @@ export function wireState(
       const session = buildCompletedSession(s, p.issueId, elapsed, 'merged');
       return {
         ...s,
+        logLines: [...s.logLines, { icon: '+', color: c.brand, text: `AMEND complete  ${p.issueId}` }],
         phase: 'completed',
         elapsed,
         completedSessions: [...s.completedSessions, session],

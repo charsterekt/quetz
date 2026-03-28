@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { CLAUDE_EFFORT_LEVELS, isClaudeEffortLevel } from './config.js';
-import { AGENT_PROVIDERS, isAgentProvider } from './provider.js';
+import { AGENT_PROVIDERS, isAgentProvider, renderModelListing } from './provider.js';
 
 export const EXIT_SUCCESS = 0;
 export const EXIT_FAILURE = 1;
@@ -33,6 +33,8 @@ export async function main(): Promise<void> {
     process.stdout.write('  run --model <model>          Override agent model (e.g. haiku, sonnet, opus)\n');
     process.stdout.write(`  run --effort <level>         Override agent effort (${CLAUDE_EFFORT_LEVELS.join('|')})\n`);
     process.stdout.write('  run --timeout <minutes>      Kill agent after this many minutes (default: 30)\n');
+    process.stdout.write(`  models --provider <provider> List known model names for one provider (${AGENT_PROVIDERS.join('|')})\n`);
+    process.stdout.write('  models                       List known model names for all providers\n');
     process.stdout.write('  status                       Show loop progress (issues ready/in-progress/done)\n');
     process.stdout.write('  validate                     Validate .quetzrc.yml\n');
     process.stdout.write('  config show                  Show resolved config with applied defaults\n');
@@ -77,6 +79,26 @@ export async function main(): Promise<void> {
         process.stderr.write('Unknown subcommand. Try: quetz config show\n');
         process.exit(EXIT_FAILURE);
       }
+      break;
+    }
+    case 'models': {
+      let provider: (typeof AGENT_PROVIDERS)[number] | undefined;
+      const providerIdx = args.indexOf('--provider');
+      if (providerIdx !== -1) {
+        const value = args[providerIdx + 1];
+        if (!value) {
+          process.stderr.write(`Error: --provider requires a value (${AGENT_PROVIDERS.join(', ')}).\n`);
+          process.exit(EXIT_FAILURE);
+        }
+        if (!isAgentProvider(value)) {
+          process.stderr.write(`Error: invalid --provider "${value}". Use ${AGENT_PROVIDERS.join(', ')}.\n`);
+          process.exit(EXIT_FAILURE);
+        }
+        provider = value;
+      }
+
+      process.stdout.write(renderModelListing(provider));
+      process.exit(EXIT_SUCCESS);
       break;
     }
     case 'run': {

@@ -36,6 +36,31 @@ export function sliceViewportText(text: string, start: number, width: number): s
   return `${hasLeft ? '…' : ''}${rawSlice.slice(0, available - 1)}…`;
 }
 
+function loadingLabel(phase: QuetzPhase, provider: string, model: string, effort: string): string {
+  switch (phase) {
+    case 'fetching':
+      return 'querying ready work';
+    case 'git_reset':
+      return 'syncing default branch';
+    case 'assembling':
+      return 'assembling prompt context';
+    case 'agent_running':
+      if (model) {
+        const providerLabel = formatProviderModel(isAgentProvider(provider) ? provider : 'claude', model);
+        return `starting ${providerLabel}${effort ? ` ${effort}` : ''}`;
+      }
+      return 'starting agent runtime';
+    case 'pr_detecting':
+      return 'searching for pull request';
+    case 'commit_verifying':
+      return 'verifying commit';
+    case 'amend_verifying':
+      return 'verifying amend';
+    default:
+      return 'preparing agent';
+  }
+}
+
 interface AgentPanelProps {
   width: number;
   height: number;
@@ -99,6 +124,23 @@ export const AgentPanel = defineWidget<AgentPanelProps>((props, ctx) => {
         style: { fg: fg(c.accent) },
       }),
     ]);
+  } else if (lines.length === 0) {
+    const label = sliceViewportText(loadingLabel(phase, provider, model, effort), 0, contentWidth);
+    const detail = model
+      ? sliceViewportText(
+          `${formatProviderModel(isAgentProvider(provider) ? provider : 'claude', model)}${effort ? `  ${effort}` : ''}`,
+          0,
+          contentWidth
+        )
+      : '';
+
+    content = ui.column(
+      { flex: 1, height: 'full', py: 0, px: 2, gap: 1, justify: 'center', style: { bg: CONTENT_BG } },
+      [
+        ui.spinner({ variant: 'dots2', label, style: { fg: fg(c.brand) } }),
+        ...(detail ? [ui.text(detail, { style: { fg: fg(c.muted) } })] : []),
+      ]
+    );
   } else {
     const visibleLines = autoScroll
       ? lines.slice(-visibleRows)

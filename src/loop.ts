@@ -151,6 +151,7 @@ export async function runLoop(
     // 1. Get next ready issue
     let issues: ReturnType<typeof getReadyIssues>;
     try {
+      if (bus) bus.emit('loop:phase', { phase: 'fetching', detail: 'bd ready' });
       issues = getReadyIssues();
     } catch (err) {
       if (bus) bus.emit('loop:failure', { reason: `bd ready failed: ${(err as Error).message}` });
@@ -264,6 +265,7 @@ export async function runLoop(
     }
 
     // 4. Assemble prompt
+    if (bus) bus.emit('loop:phase', { phase: 'assembling', detail: 'prompt context' });
     const bdPrime = simulate ? '' : getPrimeContext();
     const prompt = assemblePrompt(issueDetails, bdPrime, config, localCommits, amend, isFirstIssue, simulate);
 
