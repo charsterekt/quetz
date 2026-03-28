@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { listAllIssues } from './beads.js';
+import { countOpenIssues } from './beads.js';
 import { CLAUDE_EFFORT_LEVELS, DEFAULTS, isClaudeEffortLevel, loadConfig } from './config.js';
 import { MOCK_ISSUES } from './mock-data.js';
 import { AGENT_PROVIDERS, getProviderDescriptor, isAgentProvider, renderModelListing, type AgentProvider } from './provider.js';
@@ -11,20 +11,16 @@ export const EXIT_FAILURE = 1;
 export const EXIT_CONFIG_ERROR = 2;
 export const EXIT_PREFLIGHT_FAILURE = 3;
 
-function isOpenIssueStatus(status: string | undefined): boolean {
-  return status !== 'closed' && status !== 'done';
-}
-
 function getLaunchIssueCounts(): LaunchIssueCounts {
   try {
     return {
-      live: listAllIssues().filter(issue => isOpenIssueStatus(issue.status)).length,
-      simulate: MOCK_ISSUES.filter(issue => isOpenIssueStatus(issue.status)).length,
+      live: countOpenIssues(),
+      simulate: MOCK_ISSUES.filter(issue => issue.status === 'ready').length,
     };
   } catch {
     return {
       live: 0,
-      simulate: MOCK_ISSUES.filter(issue => isOpenIssueStatus(issue.status)).length,
+      simulate: MOCK_ISSUES.filter(issue => issue.status === 'ready').length,
     };
   }
 }

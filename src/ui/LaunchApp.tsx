@@ -15,8 +15,24 @@ function bg(hex: string) {
   return rgb(r, g, b);
 }
 
-const SURFACE_BG = '#161616';
-const FOCUS_NONE = { indicator: 'none' as const };
+const SURFACE_BG = '#1A1A1A';
+const SUCCESS_BG = '#222924';
+const WARNING_BG = '#291C0F';
+const DANGER_BG = '#24100B';
+const SUCCESS_FG = '#0DBC79';
+const WARNING_FG = '#FF8400';
+const DANGER_FG = '#FF5C33';
+const BUTTON_FOCUS = {
+  indicator: 'underline' as const,
+  style: { fg: fg('#FAFAFA'), bold: true },
+  contentStyle: { bold: true, underline: true },
+};
+const FIELD_FOCUS = {
+  indicator: 'ring' as const,
+  ringVariant: 'single' as const,
+  style: { fg: fg(SUCCESS_FG), bold: true },
+  contentStyle: { bold: true },
+};
 
 export type LaunchBeadsMode = 'all' | 'epic';
 export type LaunchRunMode = 'pr' | 'commit' | 'amend';
@@ -111,48 +127,84 @@ function heroSubtitle(): string {
   return `// ${LOGO_TAGLINE}`;
 }
 
+type LaunchTone = 'success' | 'warning' | 'danger';
+
 function panelWidth(termCols: number, stacked: boolean): number {
   if (stacked) {
-    return Math.max(46, Math.min(termCols - 8, 78));
+    return Math.max(48, Math.min(termCols - 8, 76));
   }
 
-  return Math.max(50, Math.min(Math.floor((termCols - 14) / 2), 58));
+  return Math.max(50, Math.min(Math.floor((termCols - 18) / 2), 60));
 }
 
 function labelText(label: string) {
-  return ui.text(label, { style: { fg: fg(c.text), bold: true } });
+  return ui.text(label, { style: { fg: fg(c.muted) } });
 }
 
-function launchButton(
+function toneForeground(tone: LaunchTone): string {
+  switch (tone) {
+    case 'success':
+      return SUCCESS_FG;
+    case 'warning':
+      return WARNING_FG;
+    case 'danger':
+      return DANGER_FG;
+  }
+}
+
+function toneBackground(tone: LaunchTone): string {
+  switch (tone) {
+    case 'success':
+      return SUCCESS_BG;
+    case 'warning':
+      return WARNING_BG;
+    case 'danger':
+      return DANGER_BG;
+  }
+}
+
+function launchChip(
   id: string,
   label: string,
   selected: boolean,
-  tone: 'success' | 'warning',
+  tone: LaunchTone,
   onPress: () => void,
 ) {
-  return ui.button({
-    id,
-    label,
-    px: 1,
-    dsVariant: 'outline',
-    dsTone: selected ? tone : 'default',
-    focusConfig: FOCUS_NONE,
-    style: selected ? { bold: true } : { fg: fg(c.dim) },
-    onPress,
-  });
+  const selectedFg = toneForeground(tone);
+
+  return ui.box(
+    {
+      border: 'single',
+      borderStyle: { fg: fg(selected ? selectedFg : c.border) },
+      style: { bg: bg(selected ? toneBackground(tone) : c.bg) },
+      px: 1,
+      py: 0,
+    },
+    [
+      ui.button({
+        id,
+        label,
+        px: 0,
+        dsVariant: 'ghost',
+        focusConfig: BUTTON_FOCUS,
+        style: { fg: fg(selected ? selectedFg : c.dim), bold: selected },
+        onPress,
+      }),
+    ],
+  );
 }
 
 function launchGroupRow(
   groupId: string,
   selectedValue: string,
-  tone: 'success' | 'warning',
+  tone: LaunchTone,
   options: ReadonlyArray<{ value: string; label: string }>,
   onSelect: (value: string) => void,
 ) {
   return ui.row(
     { gap: 1 },
     options.map(option =>
-      launchButton(
+      launchChip(
         `${groupId}-${option.value}`,
         option.label,
         selectedValue === option.value,
@@ -189,7 +241,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const termCols = process.stdout.columns ?? 120;
     const stacked = termCols < 112;
     const width = panelWidth(termCols, stacked);
-    const panelGap = stacked ? 2 : 4;
+    const panelGap = stacked ? 2 : 3;
     const contentWidth = stacked ? width : (width * 2) + panelGap;
     const logoWidth = Math.max(...LOGO_LINES.map(line => line.length));
 
@@ -215,7 +267,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       {
         border: 'single',
         borderStyle: { fg: fg(c.border) },
-        px: 1,
+        px: 2,
         py: 1,
         width,
       },
@@ -244,7 +296,8 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
             value: state.model,
             options: buildModelOptions(state.provider, state.model),
             dsVariant: 'outline',
-            focusConfig: FOCUS_NONE,
+            dsSize: 'sm',
+            focusConfig: FIELD_FOCUS,
             onChange: value => app.update(prev => ({ ...prev, model: value })),
           }),
           labelText('effort'),
@@ -252,7 +305,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
             ? ui.column(
                 { gap: 1 },
                 effortOptions.map(option =>
-                  launchButton(
+                  launchChip(
                     `launch-effort-${option.label}`,
                     option.label,
                     state.effort === option.value,
@@ -268,9 +321,9 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
           ui.textarea({
             id: 'launch-custom-prompt',
             value: state.customPrompt,
-            rows: 4,
+            rows: 3,
             placeholder: 'enter additional instructions...',
-            focusConfig: FOCUS_NONE,
+            focusConfig: FIELD_FOCUS,
             style: { bg: bg(SURFACE_BG), fg: fg(c.text) },
             onInput: value => app.update(prev => ({ ...prev, customPrompt: value })),
           }),
@@ -282,7 +335,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       {
         border: 'single',
         borderStyle: { fg: fg(c.border) },
-        px: 1,
+        px: 2,
         py: 1,
         width,
       },
@@ -305,48 +358,49 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
             value: state.epicId,
             disabled: state.beadsMode !== 'epic',
             placeholder: 'enter_epic_id...',
-            focusConfig: FOCUS_NONE,
+            focusable: state.beadsMode === 'epic',
+            focusConfig: FIELD_FOCUS,
             style: { bg: bg(SURFACE_BG), fg: fg(c.text), dim: state.beadsMode !== 'epic' },
             onInput: value => app.update(prev => ({ ...prev, epicId: value })),
           }),
           ui.box(
             {
               border: 'single',
-              borderStyle: { fg: fg(state.simulate ? c.accent : c.border) },
-              px: 1,
+              borderStyle: { fg: fg(state.simulate ? DANGER_FG : c.border) },
+              style: { bg: bg(state.simulate ? DANGER_BG : c.bg) },
+              px: 2,
               py: 1,
               width: 'full',
             },
             [
               ui.column({ width: 'full', gap: 1 }, [
                 ui.row({ width: 'full', justify: 'between', items: 'center' }, [
-                  ui.text('[!] simulate', {
-                    style: { fg: fg(state.simulate ? c.accent : c.text), bold: true },
-                  }),
-                  ui.button({
-                    id: 'launch-simulate',
-                    label: state.simulate ? 'on' : 'off',
-                    px: 1,
-                    dsVariant: 'outline',
-                    dsTone: state.simulate ? 'warning' : 'default',
-                    focusConfig: FOCUS_NONE,
-                    onPress: () => app.update(prev => ({ ...prev, simulate: !prev.simulate })),
-                  }),
+                  ui.row({ gap: 1 }, [
+                    ui.text('[!]', { style: { fg: fg(DANGER_FG), bold: true } }),
+                    ui.text('simulate', { style: { fg: fg(DANGER_FG), bold: true } }),
+                  ]),
+                  launchChip(
+                    'launch-simulate',
+                    state.simulate ? '●' : '○',
+                    state.simulate,
+                    'danger',
+                    () => app.update(prev => ({ ...prev, simulate: !prev.simulate })),
+                  ),
                 ]),
                 ui.text(
                   state.simulate
                     ? 'dry_run - mock issues and restricted tools'
-                    : 'dry_run - no changes will be made',
+                    : 'live_run - repo issues and real changes',
                   { style: { fg: fg(c.dim) } },
                 ),
               ]),
             ],
           ),
           ui.row({ items: 'end', gap: 1 }, [
-            ui.text(String(state.issueCounts.live), {
-              style: { fg: fg(state.simulate ? c.accent : c.brand), bold: true },
+            ui.text(String(state.simulate ? state.issueCounts.simulate : state.issueCounts.live), {
+              style: { fg: fg(WARNING_FG), bold: true },
             }),
-            ui.text('total_issues', { style: { fg: fg(c.muted) } }),
+            ui.text('total_issues', { style: { fg: fg(c.dim) } }),
           ]),
         ]),
       ],
@@ -385,17 +439,31 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
             ui.row({ width: 'full', justify: 'center' }, [
               ui.text(`v${version}`, { style: { fg: fg(c.muted) } }),
             ]),
+            ui.row({ width: 'full', justify: 'center' }, [
+              ui.text('─'.repeat(Math.max(24, contentWidth - 2)), { style: { fg: fg(c.border) } }),
+            ]),
             panelRow,
             ui.row({ width: 'full', justify: 'center' }, [
-              ui.button({
-                id: 'launch-start',
-                label: '$ quetz start',
-                px: 4,
-                dsVariant: 'solid',
-                dsTone: 'success',
-                focusConfig: FOCUS_NONE,
-                onPress: () => settle(toSelection(state)),
-              }),
+              ui.box(
+                {
+                  border: 'single',
+                  borderStyle: { fg: fg(SUCCESS_FG) },
+                  style: { bg: bg(SUCCESS_FG) },
+                  px: 3,
+                  py: 0,
+                },
+                [
+                  ui.button({
+                    id: 'launch-start',
+                    label: '$ quetz start',
+                    px: 0,
+                    dsVariant: 'ghost',
+                    focusConfig: BUTTON_FOCUS,
+                    style: { fg: fg(c.bg), bold: true },
+                    onPress: () => settle(toSelection(state)),
+                  }),
+                ],
+              ),
             ]),
             ui.row({ width: 'full', justify: 'center' }, [
               ui.text('q quit  |  tab navigate  |  arrows adjust  |  enter select', {

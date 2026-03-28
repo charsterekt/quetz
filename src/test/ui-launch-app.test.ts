@@ -79,7 +79,7 @@ describe('mountLaunchApp', () => {
     void mountLaunchApp({
       version: '0.7.6',
       initialSelection: baseSelection,
-      issueCounts: { live: 14, simulate: 4 },
+      issueCounts: { live: 14, simulate: 3 },
     });
 
     viewFn({
@@ -91,7 +91,7 @@ describe('mountLaunchApp', () => {
       epicId: '',
       simulate: false,
       runMode: 'pr',
-      issueCounts: { live: 14, simulate: 4 },
+      issueCounts: { live: 14, simulate: 3 },
     });
 
     const renderedText = textMock.mock.calls.map(([content]) => content);
@@ -135,7 +135,7 @@ describe('mountLaunchApp', () => {
     const handle = mountLaunchApp({
       version: '0.7.6',
       initialSelection: baseSelection,
-      issueCounts: { live: 14, simulate: 4 },
+      issueCounts: { live: 14, simulate: 3 },
     });
 
     viewFn({
@@ -147,7 +147,7 @@ describe('mountLaunchApp', () => {
       epicId: 'quetz-8z8',
       simulate: true,
       runMode: 'commit',
-      issueCounts: { live: 14, simulate: 4 },
+      issueCounts: { live: 14, simulate: 3 },
     });
 
     const startCall = buttonMock.mock.calls.find(([props]) => (props as { id?: string }).id === 'launch-start');
@@ -166,5 +166,37 @@ describe('mountLaunchApp', () => {
       beadsMode: 'epic',
       epicId: 'quetz-8z8',
     });
+  });
+
+  it('shows the simulate issue total and copy when simulate is enabled', () => {
+    let viewFn!: (state: unknown) => unknown;
+    mockCreateNodeApp.mockReturnValue(createAppMock({
+      view: vi.fn((fn: (state: unknown) => unknown) => {
+        viewFn = fn;
+      }),
+    }));
+
+    void mountLaunchApp({
+      version: '0.7.6',
+      initialSelection: baseSelection,
+      issueCounts: { live: 14, simulate: 3 },
+    });
+
+    viewFn({
+      provider: 'codex',
+      model: 'gpt-5-codex',
+      effort: 'high',
+      customPrompt: '',
+      beadsMode: 'all',
+      epicId: '',
+      simulate: true,
+      runMode: 'pr',
+      issueCounts: { live: 14, simulate: 3 },
+    });
+
+    const renderedText = textMock.mock.calls.map(([content]) => content);
+    expect(renderedText).toContain('3');
+    expect(renderedText).not.toContain('14');
+    expect(renderedText).toContain('dry_run - mock issues and restricted tools');
   });
 });

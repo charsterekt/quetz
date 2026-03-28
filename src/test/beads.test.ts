@@ -6,7 +6,15 @@ vi.mock('child_process', () => ({
 }));
 
 import * as childProcess from 'child_process';
-import { getReadyIssues, getIssueDetails, getPrimeContext, listAllIssues, enableMockMode, disableMockMode } from '../beads.js';
+import {
+  countOpenIssues,
+  getReadyIssues,
+  getIssueDetails,
+  getPrimeContext,
+  listAllIssues,
+  enableMockMode,
+  disableMockMode,
+} from '../beads.js';
 import { MOCK_ISSUES } from '../mock-data.js';
 
 const mockExecSync = vi.mocked(childProcess.execSync);
@@ -20,25 +28,39 @@ afterEach(() => {
 describe('getReadyIssues', () => {
   it('returns parsed array', () => {
     const issues = [{ id: 'bd-001', title: 'Fix bug', status: 'open', priority: 1 }];
-    mockExecSync.mockReturnValue(JSON.stringify(issues) as never);
+    mockExecFileSync.mockReturnValue(JSON.stringify(issues) as never);
     const result = getReadyIssues();
     expect(result).toEqual(issues);
-    expect(mockExecSync).toHaveBeenCalledWith('bd ready --json', expect.any(Object));
+    expect(mockExecFileSync).toHaveBeenCalledWith('bd', ['ready', '--json'], expect.any(Object));
   });
 
   it('returns empty array for empty response', () => {
-    mockExecSync.mockReturnValue('[]' as never);
+    mockExecFileSync.mockReturnValue('[]' as never);
     expect(getReadyIssues()).toEqual([]);
   });
 
   it('returns empty array when result is not an array', () => {
-    mockExecSync.mockReturnValue('{}' as never);
+    mockExecFileSync.mockReturnValue('{}' as never);
     expect(getReadyIssues()).toEqual([]);
   });
 
   it('throws on bd failure', () => {
-    mockExecSync.mockImplementation(() => { throw new Error('bd not found'); });
+    mockExecFileSync.mockImplementation(() => { throw new Error('bd not found'); });
     expect(() => getReadyIssues()).toThrow('bd command failed');
+  });
+});
+
+describe('countOpenIssues', () => {
+  it('returns the parsed open-issue count', () => {
+    mockExecFileSync.mockReturnValue(JSON.stringify({ count: 16 }) as never);
+    expect(countOpenIssues()).toBe(16);
+    expect(mockExecFileSync).toHaveBeenCalledWith('bd', ['count', '--status', 'open', '--json'], expect.any(Object));
+  });
+
+  it('returns ready mock issue count in mock mode', () => {
+    enableMockMode();
+    expect(countOpenIssues()).toBe(3);
+    expect(mockExecFileSync).not.toHaveBeenCalled();
   });
 });
 
@@ -87,7 +109,7 @@ describe('mock mode', () => {
   it('listAllIssues returns all mock issues including non-ready ones', () => {
     enableMockMode();
     const result = listAllIssues();
-    expect(mockExecSync).not.toHaveBeenCalled();
+    expect(mockExecFileSync).not.toHaveBeenCalled();
     expect(result).toEqual(MOCK_ISSUES);
     const statuses = result.map(i => i.status);
     expect(statuses).toContain('ready');
@@ -111,8 +133,8 @@ describe('mock mode', () => {
   it('disableMockMode restores bd calls', () => {
     enableMockMode();
     disableMockMode();
-    mockExecSync.mockReturnValue('[]' as never);
+    mockExecFileSync.mockReturnValue('[]' as never);
     getReadyIssues();
-    expect(mockExecSync).toHaveBeenCalledWith('bd ready --json', expect.any(Object));
+    expect(mockExecFileSync).toHaveBeenCalledWith('bd', ['ready', '--json'], expect.any(Object));
   });
 });
