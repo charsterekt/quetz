@@ -9,12 +9,9 @@ const {
   boxMock,
   columnMock,
   rowMock,
-  fieldMock,
-  radioGroupMock,
   selectMock,
   textareaMock,
   inputMock,
-  checkboxMock,
   buttonMock,
 } = vi.hoisted(() => ({
   mockCreateNodeApp: vi.fn(),
@@ -22,12 +19,9 @@ const {
   boxMock: vi.fn((_props: Record<string, unknown>, children: unknown) => ({ children })),
   columnMock: vi.fn((_props: Record<string, unknown>, children: unknown) => ({ children })),
   rowMock: vi.fn((_props: Record<string, unknown>, children: unknown) => ({ children })),
-  fieldMock: vi.fn((props: Record<string, unknown>) => props),
-  radioGroupMock: vi.fn((props: Record<string, unknown>) => props),
   selectMock: vi.fn((props: Record<string, unknown>) => props),
   textareaMock: vi.fn((props: Record<string, unknown>) => props),
   inputMock: vi.fn((props: Record<string, unknown>) => props),
-  checkboxMock: vi.fn((props: Record<string, unknown>) => props),
   buttonMock: vi.fn((props: Record<string, unknown>) => props),
 }));
 
@@ -42,12 +36,9 @@ vi.mock('@rezi-ui/core', () => ({
     column: columnMock,
     row: rowMock,
     text: textMock,
-    field: fieldMock,
-    radioGroup: radioGroupMock,
     select: selectMock,
     textarea: textareaMock,
     input: inputMock,
-    checkbox: checkboxMock,
     button: buttonMock,
   },
 }));
@@ -113,9 +104,24 @@ describe('mountLaunchApp', () => {
       id: 'launch-start',
       label: '$ quetz start',
     }));
-    expect(fieldMock).toHaveBeenCalledWith(expect.objectContaining({ label: 'provider' }));
-    expect(fieldMock).toHaveBeenCalledWith(expect.objectContaining({ label: 'custom_prompt' }));
-    expect(fieldMock).toHaveBeenCalledWith(expect.objectContaining({ label: 'epic_id' }));
+    expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'launch-provider-claude',
+      label: 'claude',
+    }));
+    expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'launch-run-mode-pr',
+      label: 'pr',
+    }));
+    expect(selectMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'launch-model',
+      value: 'sonnet',
+    }));
+    expect(textareaMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'launch-custom-prompt',
+    }));
+    expect(inputMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'launch-epic-id',
+    }));
   });
 
   it('returns the selected launch values when start is pressed', async () => {
