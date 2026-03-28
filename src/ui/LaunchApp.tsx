@@ -1,8 +1,7 @@
 import { ui, rgb } from '@rezi-ui/core';
 import { createNodeApp } from '@rezi-ui/node';
 
-import { AGENT_EFFORT_LEVELS, getProviderDescriptor, type AgentEffortLevel, type AgentProvider } from '../provider.js';
-import { LOGO_LINES, LOGO_TAGLINE } from './logo.js';
+import { getProviderDescriptor, type AgentEffortLevel, type AgentProvider } from '../provider.js';
 import { c, hexToRgb } from './theme.js';
 
 function fg(hex: string) {
@@ -16,12 +15,32 @@ function bg(hex: string) {
 }
 
 const SURFACE_BG = '#1A1A1A';
-const SUCCESS_BG = '#222924';
-const WARNING_BG = '#291C0F';
-const DANGER_BG = '#24100B';
+const PANEL_BG = '#0F0F0F';
+const SUCCESS_BG = '#16261D';
+const WARNING_BG = '#261B11';
+const DANGER_BG = '#241512';
 const SUCCESS_FG = '#0DBC79';
 const WARNING_FG = '#FF8400';
 const DANGER_FG = '#FF5C33';
+const HERO_SUBTITLE = '// autonomous_code_agent';
+const HERO_LOGO_LINES = [
+  '████████████████████████░░',
+  '████████████████████████░░',
+  '████████░░      ████████░░                                                              ████████░░',
+  '████████░░      ████████░░                                                              ████████░░',
+  '████████░░      ████████░░  ████████░░      ████████░░  ████████████████████████░░  ████████████████████░░  ████████████████████████░░',
+  '████████░░      ████████░░  ████████░░      ████████░░  ████████████████████████░░  ████████████████████░░  ████████████████████████░░',
+  '████████░░      ████████░░  ████████░░      ████████░░  ████████░░      ████████░░      ████████░░                      ████████░░',
+  '████████░░      ████████░░  ████████░░      ████████░░  ████████░░      ████████░░      ████████░░                      ████████░░',
+  '████████░░      ████████░░  ████████░░      ████████░░  ████████████████████████░░      ████████░░                  ████████░░',
+  '████████░░      ████████░░  ████████░░      ████████░░  ████████████████████████░░      ████████░░                  ████████░░',
+  '████████████████████████░░  ████████░░      ████████░░  ████████░░                      ████████░░              ████████░░',
+  '████████████████████████░░  ████████░░      ████████░░  ████████░░                      ████████░░              ████████░░',
+  '████████████████████████░░  ████████████████████████░░  ████████████████████████░░      ████████████████░░  ████████████████████████░░',
+  '████████████████████████░░  ████████████████████████░░  ████████████████████████░░      ████████████████░░  ████████████████████████░░',
+  '        ████████░░',
+  '        ████████░░',
+];
 const BUTTON_FOCUS = {
   indicator: 'underline' as const,
   style: { fg: fg('#FAFAFA'), bold: true },
@@ -36,6 +55,7 @@ const FIELD_FOCUS = {
 
 export type LaunchBeadsMode = 'all' | 'epic';
 export type LaunchRunMode = 'pr' | 'commit' | 'amend';
+type LaunchEffortValue = AgentEffortLevel | 'off';
 
 export interface LaunchSelection {
   provider: AgentProvider;
@@ -57,7 +77,7 @@ export interface LaunchIssueCounts {
 interface LaunchState {
   provider: AgentProvider;
   model: string;
-  effort: string;
+  effort: LaunchEffortValue;
   customPrompt: string;
   beadsMode: LaunchBeadsMode;
   epicId: string;
@@ -137,7 +157,7 @@ function toSelection(state: LaunchState): LaunchSelection {
   return {
     provider: state.provider,
     model: state.model || undefined,
-    effort: state.effort ? state.effort as AgentEffortLevel : undefined,
+    effort: state.effort === 'off' ? undefined : state.effort,
     simulate: state.simulate,
     localCommits: state.runMode === 'commit',
     amend: state.runMode === 'amend',
@@ -147,18 +167,14 @@ function toSelection(state: LaunchState): LaunchSelection {
   };
 }
 
-function heroSubtitle(): string {
-  return `// ${LOGO_TAGLINE}`;
-}
-
 type LaunchTone = 'success' | 'warning' | 'danger';
 
 function panelWidth(termCols: number, stacked: boolean): number {
   if (stacked) {
-    return Math.max(56, Math.min(termCols - 8, 88));
+    return Math.max(58, Math.min(termCols - 8, 90));
   }
 
-  return Math.max(58, Math.min(Math.floor((termCols - 20) / 2), 78));
+  return Math.max(60, Math.min(Math.floor((termCols - 14) / 2), 84));
 }
 
 function labelText(label: string) {
@@ -200,8 +216,8 @@ function launchChip(
     {
       border: 'single',
       borderStyle: { fg: fg(selected ? selectedFg : c.border) },
-      style: { bg: bg(selected ? toneBackground(tone) : SURFACE_BG) },
-      px: 2,
+      style: { bg: bg(selected ? toneBackground(tone) : PANEL_BG) },
+      px: 1,
       py: 0,
     },
     [
@@ -211,7 +227,7 @@ function launchChip(
         px: 0,
         dsVariant: 'ghost',
         focusConfig: BUTTON_FOCUS,
-        style: { fg: fg(selected ? selectedFg : c.dim), bold: selected },
+        style: { fg: fg(selected ? selectedFg : c.dim) },
         onPress,
       }),
     ],
@@ -239,6 +255,33 @@ function launchGroupRow(
   );
 }
 
+function launchSection(title: string, children: any[]) {
+  return ui.column({ width: 'full', gap: 1 }, [labelText(title), ...children]);
+}
+
+function simulateToggle(active: boolean, onPress: () => void) {
+  return ui.box(
+    {
+      border: 'single',
+      borderStyle: { fg: fg(c.border) },
+      style: { bg: bg(SURFACE_BG) },
+      px: 1,
+      py: 0,
+    },
+    [
+      ui.button({
+        id: 'launch-simulate',
+        label: active ? '●' : '○',
+        px: 0,
+        dsVariant: 'ghost',
+        focusConfig: BUTTON_FOCUS,
+        style: { fg: fg(c.dim) },
+        onPress,
+      }),
+    ],
+  );
+}
+
 export function mountLaunchApp({ version, initialSelection, issueCounts }: MountLaunchOptions): LaunchAppHandle {
   const app = createNodeApp<LaunchState>({
     initialState: normalizeInitialState(initialSelection, issueCounts),
@@ -258,6 +301,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
 
   app.keys({
     q: () => settle(null),
+    esc: () => settle(null),
     'ctrl+c': () => settle(null),
   });
 
@@ -266,17 +310,21 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const stacked = termCols < 112;
     const width = panelWidth(termCols, stacked);
     const panelGap = stacked ? 2 : 3;
-    const contentWidth = stacked ? width : (width * 2) + panelGap;
-    const logoWidth = Math.max(...LOGO_LINES.map(line => line.length));
+    const baseContentWidth = stacked ? width : (width * 2) + panelGap;
+    const logoWidth = Math.max(...HERO_LOGO_LINES.map(line => line.length));
+    const contentWidth = Math.min(termCols - 4, Math.max(baseContentWidth, logoWidth));
     const modelLabelWidth = Math.max(30, width - 12);
-    const promptPlaceholder = paddedLabel('enter additional instructions...', Math.max(32, width - 14));
-    const epicPlaceholder = paddedLabel('enter_epic_id...', Math.max(20, width - 16));
 
     const providerOptions = [
       { value: 'claude', label: 'claude' },
       { value: 'codex', label: 'codex' },
     ];
-    const effortOptions = AGENT_EFFORT_LEVELS.map(value => ({ value, label: value }));
+    const effortOptions: ReadonlyArray<{ value: LaunchEffortValue; label: string }> = [
+      { value: 'off', label: 'off' },
+      { value: 'low', label: 'low' },
+      { value: 'medium', label: 'medium' },
+      { value: 'high', label: 'high' },
+    ];
     const runModeOptions = [
       { value: 'pr', label: 'pr' },
       { value: 'commit', label: 'commit' },
@@ -291,65 +339,71 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       {
         border: 'single',
         borderStyle: { fg: fg(c.border) },
+        style: { bg: bg(PANEL_BG) },
         px: 2,
         py: 1,
         width,
       },
       [
-        ui.column({ width: 'full', gap: 1 }, [
-          ui.text('// model_configuration', { style: { fg: fg(c.muted) } }),
-          labelText('provider'),
-          launchGroupRow('launch-provider', state.provider, 'success', providerOptions, value => {
-            if (value !== 'claude' && value !== 'codex') return;
-            app.update(prev => {
-              const provider = value as AgentProvider;
-              const descriptor = getProviderDescriptor(provider);
-              const nextModel = descriptor.knownModels.includes(prev.model)
-                ? prev.model
-                : descriptor.defaultModel;
-              return {
-                ...prev,
-                provider,
-                model: nextModel,
-              };
-            });
-          }),
-          labelText('model'),
-          ui.select({
-            id: 'launch-model',
-            value: state.model,
-            options: buildModelOptions(state.provider, state.model, modelLabelWidth),
-            dsVariant: 'outline',
-            focusConfig: FIELD_FOCUS,
-            onChange: value => app.update(prev => ({ ...prev, model: value })),
-          }),
-          labelText('thinking'),
-          stacked
-            ? ui.column(
-                { gap: 1 },
-                effortOptions.map(option =>
-                  launchChip(
-                    `launch-effort-${option.label}`,
-                    option.label,
-                    state.effort === option.value,
-                    'warning',
-                    () => app.update(prev => ({ ...prev, effort: option.value })),
+        ui.column({ width: 'full', gap: 2 }, [
+          ui.text('// model_configuration', { style: { fg: fg(c.dim) } }),
+          launchSection('provider', [
+            launchGroupRow('launch-provider', state.provider, 'success', providerOptions, value => {
+              if (value !== 'claude' && value !== 'codex') return;
+              app.update(prev => {
+                const provider = value as AgentProvider;
+                const descriptor = getProviderDescriptor(provider);
+                const nextModel = descriptor.knownModels.includes(prev.model)
+                  ? prev.model
+                  : descriptor.defaultModel;
+                return {
+                  ...prev,
+                  provider,
+                  model: nextModel,
+                };
+              });
+            }),
+          ]),
+          launchSection('model', [
+            ui.select({
+              id: 'launch-model',
+              value: state.model,
+              options: buildModelOptions(state.provider, state.model, modelLabelWidth),
+              dsVariant: 'outline',
+              dsSize: 'sm',
+              focusConfig: FIELD_FOCUS,
+              onChange: value => app.update(prev => ({ ...prev, model: value })),
+            }),
+          ]),
+          launchSection('thinking', [
+            stacked
+              ? ui.column(
+                  { gap: 1 },
+                  effortOptions.map(option =>
+                    launchChip(
+                      `launch-effort-${option.label}`,
+                      option.label,
+                      state.effort === option.value,
+                      'warning',
+                      () => app.update(prev => ({ ...prev, effort: option.value })),
+                    ),
                   ),
+                )
+              : launchGroupRow('launch-effort', state.effort, 'warning', effortOptions, value =>
+                  app.update(prev => ({ ...prev, effort: value as LaunchEffortValue })),
                 ),
-              )
-            : launchGroupRow('launch-effort', state.effort, 'warning', effortOptions, value =>
-                app.update(prev => ({ ...prev, effort: value })),
-              ),
-          labelText('custom_prompt'),
-          ui.textarea({
-            id: 'launch-custom-prompt',
-            value: state.customPrompt,
-            rows: 4,
-            placeholder: promptPlaceholder,
-            focusConfig: FIELD_FOCUS,
-            style: { bg: bg(SURFACE_BG), fg: fg(c.text) },
-            onInput: value => app.update(prev => ({ ...prev, customPrompt: value })),
-          }),
+          ]),
+          launchSection('custom_prompt', [
+            ui.textarea({
+              id: 'launch-custom-prompt',
+              value: state.customPrompt,
+              rows: 3,
+              placeholder: 'enter additional instructions...',
+              focusConfig: FIELD_FOCUS,
+              style: { bg: bg(SURFACE_BG), fg: fg(c.text) },
+              onInput: value => app.update(prev => ({ ...prev, customPrompt: value })),
+            }),
+          ]),
         ]),
       ],
     );
@@ -358,39 +412,42 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       {
         border: 'single',
         borderStyle: { fg: fg(c.border) },
+        style: { bg: bg(PANEL_BG) },
         px: 2,
         py: 1,
         width,
       },
       [
-        ui.column({ width: 'full', gap: 1 }, [
-          ui.text('// run_mode', { style: { fg: fg(c.muted) } }),
-          labelText('mode'),
-          launchGroupRow('launch-run-mode', state.runMode, 'success', runModeOptions, value => {
-            if (value !== 'pr' && value !== 'commit' && value !== 'amend') return;
-            app.update(prev => ({ ...prev, runMode: value as LaunchRunMode }));
-          }),
-          labelText('beads_mode'),
-          launchGroupRow('launch-beads-mode', state.beadsMode, 'success', beadsOptions, value => {
-            if (value !== 'all' && value !== 'epic') return;
-            app.update(prev => ({ ...prev, beadsMode: value as LaunchBeadsMode }));
-          }),
-          labelText('epic_id'),
-          ui.input({
-            id: 'launch-epic-id',
-            value: state.epicId,
-            disabled: state.beadsMode !== 'epic',
-            placeholder: epicPlaceholder,
-            focusable: state.beadsMode === 'epic',
-            focusConfig: FIELD_FOCUS,
-            style: { bg: bg(SURFACE_BG), fg: fg(c.text), dim: state.beadsMode !== 'epic' },
-            onInput: value => app.update(prev => ({ ...prev, epicId: value })),
-          }),
+        ui.column({ width: 'full', gap: 2 }, [
+          ui.text('// run_mode', { style: { fg: fg(c.dim) } }),
+          launchSection('mode', [
+            launchGroupRow('launch-run-mode', state.runMode, 'success', runModeOptions, value => {
+              if (value !== 'pr' && value !== 'commit' && value !== 'amend') return;
+              app.update(prev => ({ ...prev, runMode: value as LaunchRunMode }));
+            }),
+          ]),
+          launchSection('beads_mode', [
+            launchGroupRow('launch-beads-mode', state.beadsMode, 'success', beadsOptions, value => {
+              if (value !== 'all' && value !== 'epic') return;
+              app.update(prev => ({ ...prev, beadsMode: value as LaunchBeadsMode }));
+            }),
+            ui.input({
+              id: 'launch-epic-id',
+              value: state.epicId,
+              disabled: state.beadsMode !== 'epic',
+              placeholder: 'enter_epic_id...',
+              focusable: state.beadsMode === 'epic',
+              focusConfig: FIELD_FOCUS,
+              dsSize: 'sm',
+              style: { bg: bg(SURFACE_BG), fg: fg(c.text), dim: state.beadsMode !== 'epic' },
+              onInput: value => app.update(prev => ({ ...prev, epicId: value })),
+            }),
+          ]),
           ui.box(
             {
               border: 'single',
-              borderStyle: { fg: fg(state.simulate ? DANGER_FG : c.border) },
-              style: { bg: bg(state.simulate ? DANGER_BG : c.bg) },
+              borderStyle: { fg: fg(DANGER_FG) },
+              style: { bg: bg(DANGER_BG) },
               px: 2,
               py: 1,
               width: 'full',
@@ -402,13 +459,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
                     ui.text('[!]', { style: { fg: fg(DANGER_FG), bold: true } }),
                     ui.text('simulate', { style: { fg: fg(DANGER_FG), bold: true } }),
                   ]),
-                  launchChip(
-                    'launch-simulate',
-                    state.simulate ? '●' : '○',
-                    state.simulate,
-                    'danger',
-                    () => app.update(prev => ({ ...prev, simulate: !prev.simulate })),
-                  ),
+                  simulateToggle(state.simulate, () => app.update(prev => ({ ...prev, simulate: !prev.simulate }))),
                 ]),
                 ui.text(
                   state.simulate
@@ -419,7 +470,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
               ]),
             ],
           ),
-          ui.row({ items: 'end', gap: 1 }, [
+          ui.row({ items: 'end', gap: 2 }, [
             ui.text(String(state.simulate ? state.issueCounts.simulate : state.issueCounts.live), {
               style: { fg: fg(WARNING_FG), bold: true },
             }),
@@ -435,7 +486,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
 
     const logoBlock = ui.column(
       { width: logoWidth, gap: 0 },
-      LOGO_LINES.map((line, index) =>
+      HERO_LOGO_LINES.map((line, index) =>
         ui.text(line, {
           key: String(index),
           style: { fg: fg(c.logo) },
@@ -450,27 +501,24 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
         height: 'full',
         style: { bg: bg(c.bg) },
         px: 0,
-        py: 1,
+        py: 2,
       },
       [
-        ui.column({ width: 'full', height: 'full', justify: 'center', items: 'center' }, [
+        ui.column({ width: 'full', height: 'full', justify: 'start', items: 'center' }, [
           ui.column({ width: contentWidth, gap: 2 }, [
             ui.row({ width: 'full', justify: 'center' }, [logoBlock]),
-            ui.row({ width: 'full', justify: 'center' }, [
-              ui.text(heroSubtitle(), { style: { fg: fg(c.dim) } }),
-            ]),
-            ui.row({ width: 'full', justify: 'center' }, [
+            ui.column({ width: 'full', gap: 1, items: 'center' }, [
+              ui.text(HERO_SUBTITLE, { style: { fg: fg(c.dim) } }),
               ui.text(`v${version}`, { style: { fg: fg(c.muted) } }),
             ]),
             ui.row({ width: 'full', justify: 'center' }, [
-              ui.text('─'.repeat(Math.max(24, contentWidth - 2)), { style: { fg: fg(c.border) } }),
+              ui.text('─'.repeat(Math.max(24, contentWidth)), { style: { fg: fg(c.border) } }),
             ]),
             panelRow,
             ui.row({ width: 'full', justify: 'center' }, [
               ui.box(
                 {
-                  border: 'single',
-                  borderStyle: { fg: fg(SUCCESS_FG) },
+                  border: 'none',
                   style: { bg: bg(SUCCESS_FG) },
                   px: 3,
                   py: 0,
@@ -489,7 +537,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
               ),
             ]),
             ui.row({ width: 'full', justify: 'center' }, [
-              ui.text('q quit  |  tab navigate  |  arrows adjust  |  enter select', {
+              ui.text('← esc quit  |  ↑↓ navigate  |  ↵ select', {
                 style: { fg: fg(c.muted) },
               }),
             ]),

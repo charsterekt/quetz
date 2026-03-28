@@ -95,11 +95,12 @@ describe('mountLaunchApp', () => {
     });
 
     const renderedText = textMock.mock.calls.map(([content]) => content);
-    expect(renderedText).toContain('// the feathered serpent dev loop');
+    expect(renderedText).toContain('// autonomous_code_agent');
     expect(renderedText).toContain('v0.7.6');
     expect(renderedText).toContain('thinking');
     expect(renderedText).toContain('14');
     expect(renderedText).toContain('total_issues');
+    expect(renderedText).toContain('← esc quit  |  ↑↓ navigate  |  ↵ select');
     expect(renderedText).not.toContain('Screen 0 - Entry');
     expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-start',
@@ -114,12 +115,12 @@ describe('mountLaunchApp', () => {
       label: 'pr',
     }));
     expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'launch-effort-max',
-      label: 'max',
+      id: 'launch-effort-off',
+      label: 'off',
     }));
     expect(buttonMock).not.toHaveBeenCalledWith(expect.objectContaining({
-      id: 'launch-effort-default',
-      label: 'default',
+      id: 'launch-effort-max',
+      label: 'max',
     }));
     expect(selectMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-model',
@@ -206,6 +207,6 @@ describe('mountLaunchApp', () => {
     const renderedText = textMock.mock.calls.map(([content]) => content);
     expect(renderedText).toContain('3');
     expect(renderedText).not.toContain('14');
-    expect(renderedText).toContain('dry_run - mock issues and restricted tools');
+    expect(renderedText).toContain('dry_run — mock issues and restricted tools');
   });
 });
