@@ -140,13 +140,11 @@ describe('mountLaunchApp', () => {
       id: 'launch-custom-prompt',
       accessibleLabel: 'Custom prompt',
       placeholder: 'enter additional instructions...',
-      focusConfig: { indicator: 'none' },
     }));
     expect(inputMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-epic-id',
       accessibleLabel: 'Epic ID',
       placeholder: 'enter_epic_id...',
-      focusConfig: { indicator: 'none' },
     }));
     expect(checkboxMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-simulate',
