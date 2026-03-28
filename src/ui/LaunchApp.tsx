@@ -143,7 +143,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const stacked = termCols < 112;
     const width = panelWidth(termCols, stacked);
     const liveIssueCount = state.simulate ? state.issueCounts.simulate : state.issueCounts.live;
-    const issueCountLabel = state.simulate ? 'mock_issues' : 'total_issues';
+    const issueCountLabel = 'total_issues';
 
     const providerOptions = [
       { value: 'claude', label: 'claude' },
@@ -297,8 +297,8 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
                 }),
                 ui.text(
                   state.simulate
-                    ? 'dry_run - mock issues and restricted tools'
-                    : 'dry_run - no changes will be made',
+                    ? 'dry_run — mock issues and restricted tools'
+                    : 'live_run — real repo changes may be made',
                   { style: { fg: fg(c.dim) } },
                 ),
               ]),
