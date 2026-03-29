@@ -266,17 +266,17 @@ function launchGroupRow(
 }
 
 function launchSection(title: string, children: any[]) {
-  return ui.column({ width: 'full', gap: 1 }, [labelText(title), ...children]);
+  return ui.column({ width: 'full', gap: 0 }, [labelText(title), ...children]);
 }
 
-function fieldShell(children: any[], focused: boolean, disabled = false, compact = false) {
+function fieldShell(children: any[], focused: boolean, disabled = false) {
   return ui.box(
     {
       border: 'single',
       borderStyle: { fg: fg(focused ? FOCUS_FG : c.border) },
       style: { bg: bg(SURFACE_BG), dim: disabled },
       px: 1,
-      py: compact ? 0 : 1,
+      py: 0,
       width: 'full',
     },
     children,
@@ -332,17 +332,11 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
 
   app.view((state: LaunchState) => {
     const termCols = process.stdout.columns ?? 120;
-    const termRows = process.stdout.rows ?? 40;
     const stacked = termCols < 112;
-    const compactLayout = termRows < 70;
-    const veryCompact = termRows < 38;
     const width = panelWidth(termCols, stacked);
-    const panelGap = stacked ? (compactLayout ? 1 : 2) : (compactLayout ? 2 : 3);
-    const panelPadY = compactLayout ? 0 : 1;
-    const sectionGap = veryCompact ? 0 : (compactLayout ? 1 : 2);
+    const panelGap = stacked ? 1 : 2;
     const baseContentWidth = stacked ? width : (width * 2) + panelGap;
-    const logoLines: readonly string[] =
-      veryCompact ? [] : (compactLayout && LOGO_LINES.length > 6 ? LOGO_LINES.slice(1, -1) : LOGO_LINES);
+    const logoLines = LOGO_LINES.length > 6 ? LOGO_LINES.slice(1, -1) : LOGO_LINES;
     const logoWidth = logoLines.length ? Math.max(...logoLines.map(line => line.length)) : 0;
     const contentWidth = Math.min(termCols - 4, Math.max(baseContentWidth, logoWidth));
     const issueCount = state.simulate ? state.issueCounts.simulate : state.issueCounts.live;
@@ -375,11 +369,11 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
         borderStyle: { fg: fg(c.border) },
         style: { bg: bg(PANEL_BG) },
         px: 2,
-        py: panelPadY,
+        py: 0,
         width,
       },
       [
-        ui.column({ width: 'full', gap: sectionGap }, [
+        ui.column({ width: 'full', gap: 1 }, [
           ui.text('// model_configuration', { style: { fg: fg(c.dim) } }),
           launchSection('provider', [
             launchGroupRow('launch-provider', state.provider, 'success', providerOptions, value => {
@@ -406,7 +400,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
                 borderStyle: { fg: fg(c.border) },
                 style: { bg: bg(SURFACE_BG) },
                 px: 1,
-                py: compactLayout ? 0 : 1,
+                py: 0,
                 width: 'full',
               },
               [
@@ -438,8 +432,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
                 }),
               ],
               isFocusedId(state.focusedId, 'launch-custom-prompt'),
-              false,
-              compactLayout,
+              false
             ),
           ]),
         ]),
@@ -452,11 +445,11 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
         borderStyle: { fg: fg(c.border) },
         style: { bg: bg(PANEL_BG) },
         px: 2,
-        py: panelPadY,
+        py: 0,
         width,
       },
       [
-        ui.column({ width: 'full', gap: sectionGap }, [
+        ui.column({ width: 'full', gap: 1 }, [
           ui.text('// run_mode', { style: { fg: fg(c.dim) } }),
           launchSection('mode', [
             launchGroupRow('launch-run-mode', state.runMode, 'success', runModeOptions, value => {
@@ -483,8 +476,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
                 }),
               ],
               isFocusedId(state.focusedId, 'launch-epic-id'),
-              state.beadsMode !== 'epic',
-              compactLayout,
+              state.beadsMode !== 'epic'
             ),
           ]),
           ui.box(
@@ -493,7 +485,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
               borderStyle: { fg: fg(simulateActive ? DANGER_FG : c.border) },
               style: { bg: bg(simulateActive ? DANGER_BG : SURFACE_BG) },
               px: 2,
-              py: panelPadY,
+              py: 0,
               width: 'full',
             },
             [
@@ -526,8 +518,8 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
                 border: 'single',
                 borderStyle: { fg: fg(WARNING_FG) },
                 style: { bg: bg(PANEL_BG) },
-                px: compactLayout ? 4 : 5,
-                py: compactLayout ? 0 : 1,
+                px: 4,
+                py: 0,
               },
               [
                 ui.text(String(issueCount), {
@@ -543,7 +535,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     );
 
     const panelRow = stacked
-      ? ui.column({ gap: compactLayout ? 1 : 2, items: 'center' }, [leftPanel, rightPanel])
+      ? ui.column({ gap: 1, items: 'center' }, [leftPanel, rightPanel])
       : ui.row({ gap: panelGap, items: 'stretch', justify: 'center' }, [leftPanel, rightPanel]);
 
     const logoBlock = ui.column(
@@ -556,9 +548,9 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       ),
     );
 
-    const topBlock = ui.column({ width: contentWidth, gap: veryCompact ? 0 : (compactLayout ? 1 : 2) }, [
+    const topBlock = ui.column({ width: contentWidth, gap: 1 }, [
       ...(logoLines.length ? [ui.row({ width: 'full', justify: 'center' }, [logoBlock])] : []),
-      ui.column({ width: 'full', gap: veryCompact ? 0 : (compactLayout ? 0 : 1), items: 'center' }, [
+      ui.column({ width: 'full', gap: 0, items: 'center' }, [
         ui.text(HERO_SUBTITLE, { style: { fg: fg(c.dim) } }),
         ui.text(`v${version}`, { style: { fg: fg(c.muted) } }),
       ]),
@@ -568,14 +560,14 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       panelRow,
     ]);
 
-    const bottomBlock = ui.column({ width: contentWidth, gap: compactLayout ? 0 : 1, items: 'center' }, [
+    const bottomBlock = ui.column({ width: contentWidth, gap: 1, items: 'center' }, [
       ui.row({ width: 'full', justify: 'center' }, [
         ui.box(
           {
             border: 'none',
             style: { bg: bg(SUCCESS_FG) },
             px: 5,
-            py: compactLayout ? 0 : 1,
+            py: 0,
           },
           [
             ui.button({
@@ -601,15 +593,13 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       {
         border: 'none',
         width: 'full',
-        height: 'full',
         style: { bg: bg(c.bg) },
         px: 0,
-        py: compactLayout ? 0 : 1,
+        py: 0,
       },
       [
-        ui.column({ width: 'full', height: 'full', items: 'center' }, [
+        ui.column({ width: 'full', items: 'center', gap: 1 }, [
           topBlock, 
-          ui.spacer({ flex: 1 }), 
           bottomBlock
         ]),
       ],
