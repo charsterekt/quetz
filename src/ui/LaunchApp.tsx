@@ -17,9 +17,9 @@ function bg(hex: string) {
 
 const SURFACE_BG = '#1A1A1A';
 const PANEL_BG = '#0F0F0F';
-const SUCCESS_BG = '#1A3D2A';
-const WARNING_BG = '#3D2A11';
-const DANGER_BG = '#3D1F18';
+const SUCCESS_BG = '#285943';
+const WARNING_BG = '#664923';
+const DANGER_BG = '#612F24';
 const SUCCESS_FG = '#0DBC79';
 const WARNING_FG = '#FF8400';
 const DANGER_FG = '#FF5C33';
@@ -329,7 +329,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const termCols = process.stdout.columns ?? 120;
     const termRows = process.stdout.rows ?? 40;
     const stacked = termCols < 112;
-    const compactLayout = termRows < 44;
+    const compactLayout = termRows < 48;
     const width = panelWidth(termCols, stacked);
     const panelGap = stacked ? (compactLayout ? 1 : 2) : (compactLayout ? 2 : 3);
     const panelPadY = compactLayout ? 0 : 1;
@@ -396,13 +396,25 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
             }),
           ]),
           launchSection('model', [
-            ui.select({
-              id: 'launch-model',
-              value: state.model,
-              options: modelChoices,
-              onChange: (value: string) => app.update(prev => ({ ...prev, model: value })),
-              dsSize: 'md',
-            }),
+            ui.box(
+              {
+                border: 'single',
+                borderStyle: { fg: fg(c.border) },
+                style: { bg: bg(SURFACE_BG) },
+                px: 1,
+                py: compactLayout ? 0 : 1,
+                width: 'full',
+              },
+              [
+                ui.select({
+                  id: 'launch-model',
+                  value: state.model,
+                  options: modelChoices,
+                  onChange: (value: string) => app.update(prev => ({ ...prev, model: value })),
+                  dsSize: 'md',
+                }),
+              ]
+            ),
           ]),
           launchSection('thinking', [
             launchGroupRow('launch-effort', state.effort, 'warning', effortOptions, value =>
@@ -585,13 +597,12 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       {
         border: 'none',
         width: 'full',
-        height: 'full',
         style: { bg: bg(c.bg) },
         px: 0,
         py: compactLayout ? 0 : 1,
       },
       [
-        ui.column({ width: 'full', height: 'full', justify: 'between', items: 'center' }, [
+        ui.column({ width: 'full', items: 'center', gap: compactLayout ? 1 : 2 }, [
           topBlock,
           bottomBlock,
         ]),
