@@ -338,7 +338,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const panelGap = stacked ? 1 : 2;
     const baseContentWidth = stacked ? width : (width * 2) + panelGap;
     const hideLogo = termRows < 35;
-    const logoLines = hideLogo ? [] : (LOGO_LINES.length > 6 ? LOGO_LINES.slice(1, -1) : LOGO_LINES);
+    const logoLines = hideLogo ? [] : LOGO_LINES;
     const logoWidth = logoLines.length ? Math.max(...logoLines.map(line => line.length)) : 0;
     const contentWidth = Math.min(termCols - 4, Math.max(baseContentWidth, logoWidth));
     const issueCount = state.simulate ? state.issueCounts.simulate : state.issueCounts.live;
@@ -375,7 +375,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
         width,
       },
       [
-        ui.column({ width: 'full', gap: 0 }, [ // Reduced gap to 0
+        ui.column({ width: 'full', gap: 0, justify: 'start' }, [ // Reduced gap to 0
           ui.text('// model_configuration', { style: { fg: fg(c.dim) } }),
           launchSection('provider', [
             launchGroupRow('launch-provider', state.provider, 'success', providerOptions, value => {
@@ -451,7 +451,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
         width,
       },
       [
-        ui.column({ width: 'full', gap: 0 }, [ // Reduced gap to 0
+        ui.column({ width: 'full', gap: 0, justify: 'start' }, [ // Reduced gap to 0
           ui.text('// run_mode', { style: { fg: fg(c.dim) } }),
           launchSection('mode', [
             launchGroupRow('launch-run-mode', state.runMode, 'success', runModeOptions, value => {
@@ -577,7 +577,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
           [
             ui.button({
               id: 'launch-start',
-              label: '    [ $ ]    ',
+              label: '$ quetz start',
               dsVariant: 'ghost',
               focusConfig: BUTTON_FOCUS,
               style: { fg: fg(SUCCESS_BG), bold: true },

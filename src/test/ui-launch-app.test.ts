@@ -123,7 +123,7 @@ describe('mountLaunchApp', () => {
 
     expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-start',
-      label: '    [ $ ]    ',
+      label: '$ quetz start',
     }));
     expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-provider-claude',
