@@ -12,6 +12,8 @@ const {
   inputMock,
   checkboxMock,
   buttonMock,
+  selectMock,
+  focusZoneMock,
 } = vi.hoisted(() => ({
   mockCreateNodeApp: vi.fn(),
   textMock: vi.fn((content: string) => ({ content })),
@@ -21,6 +23,8 @@ const {
   inputMock: vi.fn((props: Record<string, unknown>) => props),
   checkboxMock: vi.fn((props: Record<string, unknown>) => props),
   buttonMock: vi.fn((props: Record<string, unknown>) => props),
+  selectMock: vi.fn((props: Record<string, unknown>) => props),
+  focusZoneMock: vi.fn((_props: Record<string, unknown>, children: unknown) => ({ children })),
 }));
 
 vi.mock('@rezi-ui/node', () => ({
@@ -37,6 +41,8 @@ vi.mock('@rezi-ui/core', () => ({
     input: inputMock,
     checkbox: checkboxMock,
     button: buttonMock,
+    select: selectMock,
+    focusZone: focusZoneMock,
   },
 }));
 
@@ -109,7 +115,7 @@ describe('mountLaunchApp', () => {
     expect(renderedText).toContain('thinking');
     expect(renderedText).toContain('14');
     expect(renderedText).toContain('total_issues');
-    expect(renderedText).toContain('q quit  |  tab navigate  |  enter/space select');
+    expect(renderedText).toContain('q esc quit  |  ←→ navigate  |  tab switch  |  ↵ select');
     expect(renderedText).not.toContain('Screen 0 - Entry');
 
     expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -124,9 +130,9 @@ describe('mountLaunchApp', () => {
       id: 'launch-run-mode-pr',
       label: 'pr',
     }));
-    expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'launch-model-sonnet',
-      label: 'sonnet',
+    expect(selectMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'launch-model',
+      value: 'sonnet',
     }));
     expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-effort-max',
@@ -228,9 +234,9 @@ describe('mountLaunchApp', () => {
     const renderedText = textMock.mock.calls.map(([content]) => content);
     expect(renderedText).toContain('3');
     expect(renderedText).toContain('dry_run - mock issues and restricted tools');
-    expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'launch-model-gpt-5-codex',
-      label: 'codex',
+    expect(selectMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'launch-model',
+      value: 'gpt-5-codex',
     }));
   });
 });

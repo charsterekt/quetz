@@ -17,9 +17,9 @@ function bg(hex: string) {
 
 const SURFACE_BG = '#1A1A1A';
 const PANEL_BG = '#0F0F0F';
-const SUCCESS_BG = '#16261D';
-const WARNING_BG = '#261B11';
-const DANGER_BG = '#241512';
+const SUCCESS_BG = '#1A3D2A';
+const WARNING_BG = '#3D2A11';
+const DANGER_BG = '#3D1F18';
 const SUCCESS_FG = '#0DBC79';
 const WARNING_FG = '#FF8400';
 const DANGER_FG = '#FF5C33';
@@ -232,7 +232,7 @@ function launchChip(
         px: 0,
         dsVariant: 'ghost',
         focusConfig: CHIP_FOCUS,
-        style: { fg: fg(selected ? CHIP_SELECTED_FG : c.dim), bold: selected },
+        style: { fg: fg(selected ? selectedFg : c.dim), bold: selected },
         onPress,
       }),
     ],
@@ -246,17 +246,22 @@ function launchGroupRow(
   options: ReadonlyArray<{ value: string; label: string }>,
   onSelect: (value: string) => void,
 ) {
-  return ui.row(
-    { gap: 1, wrap: true },
-    options.map(option =>
-      launchChip(
-        `${groupId}-${sanitizeIdSegment(option.value)}`,
-        option.label,
-        selectedValue === option.value,
-        tone,
-        () => onSelect(option.value),
+  return ui.focusZone(
+    { id: `zone-${groupId}`, navigation: 'linear' },
+    [
+      ui.row(
+        { gap: 1, wrap: true },
+        options.map(option =>
+          launchChip(
+            `${groupId}-${sanitizeIdSegment(option.value)}`,
+            option.label,
+            selectedValue === option.value,
+            tone,
+            () => onSelect(option.value),
+          ),
+        ),
       ),
-    ),
+    ],
   );
 }
 
@@ -391,9 +396,13 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
             }),
           ]),
           launchSection('model', [
-            launchGroupRow('launch-model', state.model, 'success', modelChoices, value =>
-              app.update(prev => ({ ...prev, model: value }))
-            ),
+            ui.select({
+              id: 'launch-model',
+              value: state.model,
+              options: modelChoices,
+              onChange: (value: string) => app.update(prev => ({ ...prev, model: value })),
+              dsSize: 'md',
+            }),
           ]),
           launchSection('thinking', [
             launchGroupRow('launch-effort', state.effort, 'warning', effortOptions, value =>
@@ -566,7 +575,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
         ),
       ]),
       ui.row({ width: 'full', justify: 'center' }, [
-        ui.text('q quit  |  tab navigate  |  enter/space select', {
+        ui.text('q esc quit  |  ←→ navigate  |  tab switch  |  ↵ select', {
           style: { fg: fg(c.muted) },
         }),
       ]),
