@@ -14,6 +14,7 @@ const {
   buttonMock,
   selectMock,
   focusZoneMock,
+  spacerMock,
 } = vi.hoisted(() => ({
   mockCreateNodeApp: vi.fn(),
   textMock: vi.fn((content: string) => ({ content })),
@@ -25,6 +26,7 @@ const {
   buttonMock: vi.fn((props: Record<string, unknown>) => props),
   selectMock: vi.fn((props: Record<string, unknown>) => props),
   focusZoneMock: vi.fn((_props: Record<string, unknown>, children: unknown) => ({ children })),
+  spacerMock: vi.fn((props: Record<string, unknown>) => ({ spacer: true, ...props })),
 }));
 
 vi.mock('@rezi-ui/node', () => ({
@@ -43,6 +45,7 @@ vi.mock('@rezi-ui/core', () => ({
     button: buttonMock,
     select: selectMock,
     focusZone: focusZoneMock,
+    spacer: spacerMock,
   },
 }));
 

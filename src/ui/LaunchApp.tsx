@@ -325,6 +325,11 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     ));
   });
 
+  const onResize = () => {
+    app.update(prev => ({ ...prev }));
+  };
+  process.stdout.on('resize', onResize);
+
   app.view((state: LaunchState) => {
     const termCols = process.stdout.columns ?? 120;
     const termRows = process.stdout.rows ?? 40;
@@ -596,15 +601,17 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       {
         border: 'none',
         width: 'full',
-        height: veryCompact ? undefined : 'full',
+        height: 'full',
         style: { bg: bg(c.bg) },
         px: 0,
         py: compactLayout ? 0 : 1,
       },
       [
-        veryCompact 
-          ? ui.column({ width: 'full', items: 'center', gap: 1 }, [topBlock, bottomBlock])
-          : ui.column({ width: 'full', height: 'full', justify: 'between', items: 'center' }, [topBlock, bottomBlock]),
+        ui.column({ width: 'full', height: 'full', items: 'center' }, [
+          topBlock, 
+          ui.spacer({ flex: 1 }), 
+          bottomBlock
+        ]),
       ],
     );
   });
@@ -618,6 +625,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     unmount: async () => {
       if (unmounted) return;
       unmounted = true;
+      process.stdout.removeListener('resize', onResize);
       cleanupFocus();
       try {
         await ready;
