@@ -550,8 +550,11 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       ),
     );
 
-    const topBlock = ui.column({ width: contentWidth, gap: 0 }, [ // Reduced gap to 0
-      ...(logoLines.length ? [ui.row({ width: 'full', justify: 'center' }, [logoBlock])] : []),
+    const headerBlock = logoLines.length
+      ? ui.column({ width: 'full', items: 'center', pt: 1 }, [logoBlock])
+      : null;
+
+    const mainContent = ui.column({ width: contentWidth, gap: 1 }, [
       ui.column({ width: 'full', gap: 0, items: 'center' }, [
         ui.text(HERO_SUBTITLE, { style: { fg: fg(c.dim) } }),
         ui.text(`v${version}`, { style: { fg: fg(c.muted) } }),
@@ -562,7 +565,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       panelRow,
     ]);
 
-    const bottomBlock = ui.column({ width: contentWidth, gap: 0, items: 'center' }, [ // Reduced gap to 0
+    const footerBlock = ui.column({ width: 'full', gap: 1, items: 'center', pb: 1 }, [
       ui.row({ width: 'full', justify: 'center' }, [
         ui.box(
           {
@@ -574,11 +577,10 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
           [
             ui.button({
               id: 'launch-start',
-              label: '$ quetz start',
-              px: 0,
+              label: '    [ $ ]    ',
               dsVariant: 'ghost',
               focusConfig: BUTTON_FOCUS,
-              style: { fg: fg(c.bg), bold: true },
+              style: { fg: fg(SUCCESS_BG), bold: true },
               onPress: () => settle(toSelection(state)),
             }),
           ],
@@ -591,19 +593,18 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       ]),
     ]);
 
-    return ui.box(
+    return ui.column(
       {
-        border: 'none',
         width: 'full',
+        height: 'full',
         style: { bg: bg(c.bg) },
-        px: 0,
-        py: 0,
       },
       [
-        ui.column({ width: 'full', items: 'center', gap: 1 }, [
-          topBlock, 
-          bottomBlock
+        ...(headerBlock ? [headerBlock] : []),
+        ui.column({ width: 'full', flex: 1, items: 'center', justify: 'center' }, [
+          mainContent,
         ]),
+        footerBlock,
       ],
     );
   });
