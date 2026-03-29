@@ -329,17 +329,16 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const termCols = process.stdout.columns ?? 120;
     const termRows = process.stdout.rows ?? 40;
     const stacked = termCols < 112;
-    const compactLayout = termRows < 48;
+    const compactLayout = termRows < 70;
+    const veryCompact = termRows < 38;
     const width = panelWidth(termCols, stacked);
     const panelGap = stacked ? (compactLayout ? 1 : 2) : (compactLayout ? 2 : 3);
     const panelPadY = compactLayout ? 0 : 1;
-    const sectionGap = compactLayout ? 1 : 2;
+    const sectionGap = veryCompact ? 0 : (compactLayout ? 1 : 2);
     const baseContentWidth = stacked ? width : (width * 2) + panelGap;
     const logoLines: readonly string[] =
-      compactLayout && LOGO_LINES.length > 6
-        ? LOGO_LINES.slice(1, -1)
-        : LOGO_LINES;
-    const logoWidth = Math.max(...logoLines.map(line => line.length));
+      veryCompact ? [] : (compactLayout && LOGO_LINES.length > 6 ? LOGO_LINES.slice(1, -1) : LOGO_LINES);
+    const logoWidth = logoLines.length ? Math.max(...logoLines.map(line => line.length)) : 0;
     const contentWidth = Math.min(termCols - 4, Math.max(baseContentWidth, logoWidth));
     const issueCount = state.simulate ? state.issueCounts.simulate : state.issueCounts.live;
     const modelChoices = buildModelChoices(state.provider, state.model);
@@ -552,9 +551,9 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       ),
     );
 
-    const topBlock = ui.column({ width: contentWidth, gap: compactLayout ? 0 : 1 }, [
-      ui.row({ width: 'full', justify: 'center' }, [logoBlock]),
-      ui.column({ width: 'full', gap: compactLayout ? 0 : 1, items: 'center' }, [
+    const topBlock = ui.column({ width: contentWidth, gap: veryCompact ? 0 : (compactLayout ? 1 : 2) }, [
+      ...(logoLines.length ? [ui.row({ width: 'full', justify: 'center' }, [logoBlock])] : []),
+      ui.column({ width: 'full', gap: veryCompact ? 0 : (compactLayout ? 0 : 1), items: 'center' }, [
         ui.text(HERO_SUBTITLE, { style: { fg: fg(c.dim) } }),
         ui.text(`v${version}`, { style: { fg: fg(c.muted) } }),
       ]),
@@ -597,15 +596,15 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       {
         border: 'none',
         width: 'full',
+        height: veryCompact ? undefined : 'full',
         style: { bg: bg(c.bg) },
         px: 0,
         py: compactLayout ? 0 : 1,
       },
       [
-        ui.column({ width: 'full', items: 'center', gap: compactLayout ? 1 : 2 }, [
-          topBlock,
-          bottomBlock,
-        ]),
+        veryCompact 
+          ? ui.column({ width: 'full', items: 'center', gap: 1 }, [topBlock, bottomBlock])
+          : ui.column({ width: 'full', height: 'full', justify: 'between', items: 'center' }, [topBlock, bottomBlock]),
       ],
     );
   });
