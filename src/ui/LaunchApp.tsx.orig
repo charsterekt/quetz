@@ -332,13 +332,11 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
 
   app.view((state: LaunchState) => {
     const termCols = process.stdout.columns ?? 120;
-    const termRows = process.stdout.rows ?? 40;
     const stacked = termCols < 112;
     const width = panelWidth(termCols, stacked);
     const panelGap = stacked ? 1 : 2;
     const baseContentWidth = stacked ? width : (width * 2) + panelGap;
-    const hideLogo = termRows < 35;
-    const logoLines = hideLogo ? [] : (LOGO_LINES.length > 6 ? LOGO_LINES.slice(1, -1) : LOGO_LINES);
+    const logoLines = LOGO_LINES.length > 6 ? LOGO_LINES.slice(1, -1) : LOGO_LINES;
     const logoWidth = logoLines.length ? Math.max(...logoLines.map(line => line.length)) : 0;
     const contentWidth = Math.min(termCols - 4, Math.max(baseContentWidth, logoWidth));
     const issueCount = state.simulate ? state.issueCounts.simulate : state.issueCounts.live;
@@ -375,7 +373,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
         width,
       },
       [
-        ui.column({ width: 'full', gap: 0 }, [ // Reduced gap to 0
+        ui.column({ width: 'full', gap: 1 }, [
           ui.text('// model_configuration', { style: { fg: fg(c.dim) } }),
           launchSection('provider', [
             launchGroupRow('launch-provider', state.provider, 'success', providerOptions, value => {
@@ -451,7 +449,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
         width,
       },
       [
-        ui.column({ width: 'full', gap: 0 }, [ // Reduced gap to 0
+        ui.column({ width: 'full', gap: 1 }, [
           ui.text('// run_mode', { style: { fg: fg(c.dim) } }),
           launchSection('mode', [
             launchGroupRow('launch-run-mode', state.runMode, 'success', runModeOptions, value => {
@@ -550,7 +548,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       ),
     );
 
-    const topBlock = ui.column({ width: contentWidth, gap: 0 }, [ // Reduced gap to 0
+    const topBlock = ui.column({ width: contentWidth, gap: 1 }, [
       ...(logoLines.length ? [ui.row({ width: 'full', justify: 'center' }, [logoBlock])] : []),
       ui.column({ width: 'full', gap: 0, items: 'center' }, [
         ui.text(HERO_SUBTITLE, { style: { fg: fg(c.dim) } }),
@@ -562,7 +560,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       panelRow,
     ]);
 
-    const bottomBlock = ui.column({ width: contentWidth, gap: 0, items: 'center' }, [ // Reduced gap to 0
+    const bottomBlock = ui.column({ width: contentWidth, gap: 1, items: 'center' }, [
       ui.row({ width: 'full', justify: 'center' }, [
         ui.box(
           {

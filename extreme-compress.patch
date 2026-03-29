@@ -1,0 +1,39 @@
+--- src/ui/LaunchApp.tsx
++++ src/ui/LaunchApp.tsx
+@@ -329,10 +329,12 @@
+ 
+   app.view((state: LaunchState) => {
+     const termCols = process.stdout.columns ?? 120;
++    const termRows = process.stdout.rows ?? 40;
+     const stacked = termCols < 112;
+     const width = panelWidth(termCols, stacked);
+     const panelGap = stacked ? 1 : 2;
+     const baseContentWidth = stacked ? width : (width * 2) + panelGap;
+-    const logoLines = LOGO_LINES.length > 6 ? LOGO_LINES.slice(1, -1) : LOGO_LINES;
++    const hideLogo = termRows < 35;
++    const logoLines = hideLogo ? [] : (LOGO_LINES.length > 6 ? LOGO_LINES.slice(1, -1) : LOGO_LINES);
+     const logoWidth = logoLines.length ? Math.max(...logoLines.map(line => line.length)) : 0;
+     const contentWidth = Math.min(termCols - 4, Math.max(baseContentWidth, logoWidth));
+@@ -375,3 +377,3 @@
+       [
+-        ui.column({ width: 'full', gap: 1 }, [
++        ui.column({ width: 'full', gap: 0 }, [ // Reduced gap to 0
+           ui.text('// model_configuration', { style: { fg: fg(c.dim) } }),
+@@ -450,3 +452,3 @@
+       [
+-        ui.column({ width: 'full', gap: 1 }, [
++        ui.column({ width: 'full', gap: 0 }, [ // Reduced gap to 0
+           ui.text('// run_mode', { style: { fg: fg(c.dim) } }),
+@@ -548,5 +550,5 @@
+ 
+-    const topBlock = ui.column({ width: contentWidth, gap: 1 }, [
++    const topBlock = ui.column({ width: contentWidth, gap: 0 }, [ // Reduced gap to 0
+       ...(logoLines.length ? [ui.row({ width: 'full', justify: 'center' }, [logoBlock])] : []),
+       ui.column({ width: 'full', gap: 0, items: 'center' }, [
+         ui.text(HERO_SUBTITLE, { style: { fg: fg(c.dim) } }),
+@@ -559,5 +561,5 @@
+ 
+-    const bottomBlock = ui.column({ width: contentWidth, gap: 1, items: 'center' }, [
++    const bottomBlock = ui.column({ width: contentWidth, gap: 0, items: 'center' }, [ // Reduced gap to 0
+       ui.row({ width: 'full', justify: 'center' }, [
+         ui.box(
