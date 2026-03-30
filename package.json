@@ -1,6 +1,6 @@
 {
   "name": "@dkchar/quetz",
-  "version": "0.8.7",
+  "version": "0.8.8",
   "description": "The Feathered Serpent Dev Loop — a self-feeding issue resolution agentic loop.",
   "main": "dist/cli.js",
   "type": "commonjs",

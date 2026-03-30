@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.8] - 2026-03-31
+
+### Changed
+- `.gitignore` now excludes local `plandocs/` output and stray `*.patch` artifacts so transient planning and scratch patch files do not creep into the repo.
+
+### Fixed
+- Removed accidental local patch artifacts from the working tree before release packaging.
+
 ## [0.8.7] - 2026-03-30
 
 ### Added
