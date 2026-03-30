@@ -467,6 +467,37 @@ describe('mountApp', () => {
     expect(state.logScrollOffset).toBe(3);
   });
 
+  it('re-renders on terminal resize events so responsive UI state updates live', () => {
+    const bus = createBus();
+    let state = makeState({
+      completedSessions: Array.from({ length: 12 }, (_, i) => makeSession(`bd-${i + 1}`, `Issue ${i + 1}`)),
+      selectedSessionIdx: 11,
+      sessionsScrollOffset: 9,
+    });
+    let eventHandler!: (event: unknown) => void;
+
+    const app = createAppMock({
+      update: vi.fn((updater: AppState | ((prev: Readonly<AppState>) => AppState)) => {
+        state = typeof updater === 'function' ? updater(state) : updater;
+      }),
+      onEvent: vi.fn((handler: (event: unknown) => void) => {
+        eventHandler = handler;
+        return vi.fn();
+      }),
+    });
+    mockCreateNodeApp.mockReturnValue(app);
+
+    void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
+
+    eventHandler({
+      kind: 'engine',
+      event: { kind: 'resize', timeMs: 0, cols: 120, rows: 20 },
+    });
+
+    expect(app.update).toHaveBeenCalledWith(expect.any(Function));
+    expect(state.sessionsScrollOffset).toBeLessThanOrEqual(11);
+  });
+
   it('ignores enter while already viewing session detail and clamps keyboard log scrolling', () => {
     const bus = createBus();
     let state = makeState({

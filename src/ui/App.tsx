@@ -314,7 +314,19 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
   });
 
   const cleanupEvents = app.onEvent(ev => {
-    if (ev.kind !== 'engine' || ev.event.kind !== 'mouse' || ev.event.mouseKind !== 5) {
+    if (ev.kind !== 'engine') {
+      return;
+    }
+
+    if (ev.event.kind === 'resize') {
+      const rows = 'rows' in ev.event && typeof ev.event.rows === 'number'
+        ? ev.event.rows
+        : (process.stdout.rows ?? 40);
+      app.update(s => syncSessionViewport({ ...s }, rows));
+      return;
+    }
+
+    if (ev.event.kind !== 'mouse' || ev.event.mouseKind !== 5) {
       return;
     }
 

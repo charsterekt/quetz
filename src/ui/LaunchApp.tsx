@@ -323,10 +323,13 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     ));
   });
 
-  const onResize = () => {
+  const cleanupEvents = app.onEvent(ev => {
+    if (ev.kind !== 'engine' || ev.event.kind !== 'resize') {
+      return;
+    }
+
     app.update(prev => ({ ...prev }));
-  };
-  process.stdout.on('resize', onResize);
+  });
 
   app.view((state: LaunchState) => {
     const termCols = process.stdout.columns ?? 120;
@@ -644,8 +647,8 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     unmount: async () => {
       if (unmounted) return;
       unmounted = true;
-      process.stdout.removeListener('resize', onResize);
       cleanupFocus();
+      cleanupEvents();
       try {
         await ready;
       } catch {

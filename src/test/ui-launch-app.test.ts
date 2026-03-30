@@ -56,6 +56,7 @@ function createAppMock(overrides: Record<string, unknown> = {}) {
   return {
     keys: vi.fn(),
     onFocusChange: vi.fn(() => vi.fn()),
+    onEvent: vi.fn(() => vi.fn()),
     update: vi.fn(),
     view: vi.fn(),
     start: vi.fn(() => Promise.resolve()),
@@ -437,5 +438,29 @@ describe('mountLaunchApp', () => {
         Object.defineProperty(process.stdout, 'columns', colsDescriptor);
       }
     }
+  });
+
+  it('re-renders on terminal resize events', () => {
+    let resizeHandler!: (event: unknown) => void;
+    const appMock = createAppMock({
+      onEvent: vi.fn((handler: (event: unknown) => void) => {
+        resizeHandler = handler;
+        return vi.fn();
+      }),
+    });
+    mockCreateNodeApp.mockReturnValue(appMock);
+
+    void mountLaunchApp({
+      version: '0.7.6',
+      initialSelection: baseSelection,
+      issueCounts: { live: 14, simulate: 3 },
+    });
+
+    resizeHandler({
+      kind: 'engine',
+      event: { kind: 'resize', timeMs: 0, cols: 140, rows: 40 },
+    });
+
+    expect(appMock.update).toHaveBeenCalledWith(expect.any(Function));
   });
 });
