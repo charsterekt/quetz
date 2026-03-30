@@ -122,12 +122,12 @@ describe('mountLaunchApp', () => {
     });
 
     const renderedText = textMock.mock.calls.map(([content]) => content);
-    expect(renderedText).toContain('// autonomous_code_agent');
+    expect(renderedText).toContain('// the feathered serpent dev loop');
     expect(renderedText).toContain('v0.7.6');
     expect(renderedText).toContain('thinking');
     expect(renderedText).toContain('14');
     expect(renderedText).toContain('total_issues');
-    expect(renderedText).toContain('q esc quit  |  ←→ navigate  |  tab switch  |  ↵ select');
+    expect(renderedText).toContain('esc ctrl+c quit  |  ←→ navigate  |  tab switch  |  ↵ select');
     expect(renderedText).not.toContain('Screen 0 - Entry');
 
     expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -158,7 +158,7 @@ describe('mountLaunchApp', () => {
       id: 'launch-custom-prompt',
       accessibleLabel: 'Custom prompt',
       placeholder: 'enter additional instructions...',
-      rows: 3,
+      rows: 2,
       wordWrap: true,
       focusConfig: expect.objectContaining({ indicator: 'none' }),
     }));
@@ -284,8 +284,8 @@ describe('mountLaunchApp', () => {
     });
 
     expect(scrollbarMock).toHaveBeenCalledWith(expect.objectContaining({
-      visibleLines: 3,
-      height: 3,
+      visibleLines: 2,
+      height: 2,
     }));
     const renderedText = textMock.mock.calls.map(([content]) => content);
     expect(renderedText.some(text => typeof text === 'string' && text.startsWith('overflow: +'))).toBe(false);

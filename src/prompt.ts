@@ -20,6 +20,11 @@ Dependencies (already resolved):
 {{issue.dependencies}}
 {{/if}}
 
+{{#if customPrompt}}
+Additional run instructions:
+{{customPrompt}}
+{{/if}}
+
 Your task:
 {{#if simulate}}
 1. This is Quetz simulate mode. Keep the session strictly read-only.
@@ -61,6 +66,7 @@ export function assemblePrompt(
   amend: boolean = false,
   isFirstIssue: boolean = true,
   simulate: boolean = false,
+  customPrompt: string | undefined = undefined,
 ): string {
   const templateSource = config.agent.prompt ?? DEFAULT_TEMPLATE;
   const template = Handlebars.compile(templateSource, { noEscape: true });
@@ -84,5 +90,6 @@ export function assemblePrompt(
     amend,
     isFirstIssue,
     simulate,
+    customPrompt: customPrompt?.trim() || '',
   });
 }

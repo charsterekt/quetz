@@ -62,6 +62,12 @@ describe('assemblePrompt', () => {
     expect(prompt).toContain('quetz-xyz');
   });
 
+  it('includes launch custom prompt instructions when provided', () => {
+    const prompt = assemblePrompt(baseIssue, '', baseConfig, false, false, true, false, 'Follow repo naming rules.');
+    expect(prompt).toContain('Additional run instructions:');
+    expect(prompt).toContain('Follow repo naming rules.');
+  });
+
   it('uses custom prompt template from config', () => {
     const config = { ...baseConfig, agent: { timeout: 30, prompt: 'Custom: {{issue.id}}' } };
     const prompt = assemblePrompt(baseIssue, '', config);

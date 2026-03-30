@@ -154,6 +154,7 @@ export async function main(): Promise<void> {
       let localCommits = args.includes('--local-commits');
       let amend = args.includes('--amend');
       let simulate = args.includes('--simulate');
+      let customPrompt: string | undefined;
 
       if (amend && localCommits) {
         process.stderr.write('Error: --amend and --local-commits are mutually exclusive. Use one or the other.\n');
@@ -238,6 +239,7 @@ export async function main(): Promise<void> {
           simulate = launchSelection.simulate;
           localCommits = launchSelection.localCommits;
           amend = launchSelection.amend;
+          customPrompt = launchSelection.customPrompt;
         }
 
         let resolveQuit!: () => void;
@@ -290,7 +292,7 @@ export async function main(): Promise<void> {
 
         let userQuit = false;
         const exitSignal = new Promise<void>(resolve => {
-          runLoop({ provider, model, effort, timeout, localCommits, amend, simulate }, bus)
+          runLoop({ provider, model, effort, timeout, localCommits, amend, simulate, customPrompt }, bus)
             .then(result => {
               loopResult = result;
               loopTerminalResult = result;
@@ -312,7 +314,7 @@ export async function main(): Promise<void> {
         process.off('SIGINT', onSigint);
         await cleanupTui(userQuit || sigintRequested);
       } else {
-        const result = await runLoop({ provider, model, effort, timeout, localCommits, amend, simulate }, bus);
+        const result = await runLoop({ provider, model, effort, timeout, localCommits, amend, simulate, customPrompt }, bus);
         process.exit(result.exitCode);
       }
       break;

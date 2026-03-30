@@ -146,7 +146,7 @@ describe('runLoop normal', () => {
     expect(result.exitCode).toBe(0);
     expect(result.reason).toBe('victory');
     expect(mockGetIssueDetails).toHaveBeenCalledWith('quetz-abc');
-    expect(mockAssemblePrompt).toHaveBeenCalledWith(detailedIssue, '', baseConfig, false, false, true, false);
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(detailedIssue, '', baseConfig, false, false, true, false, undefined);
   });
 
   it('falls back to ready data if getIssueDetails throws', async () => {
@@ -161,7 +161,31 @@ describe('runLoop normal', () => {
     const bus = createBus();
     const result = await runLoop({}, bus);
     expect(result.exitCode).toBe(0);
-    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, false, false, true, false);
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, false, false, true, false, undefined);
+  });
+
+  it('forwards launch customPrompt into assemblePrompt', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockFindPR.mockResolvedValue({ number: 42, title: 'Fix', html_url: 'https://gh/pr/42' } as never);
+    mockPollForMerge.mockResolvedValue({ status: 'merged', pr: { html_url: 'https://gh/pr/42' } } as never);
+
+    const bus = createBus();
+    const result = await runLoop({ customPrompt: 'Prefer immutable helpers.' }, bus);
+    expect(result.exitCode).toBe(0);
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(
+      baseIssue,
+      '',
+      baseConfig,
+      false,
+      false,
+      true,
+      false,
+      'Prefer immutable helpers.',
+    );
   });
 
   it('returns exitCode 1 if git pull fails', async () => {
@@ -364,7 +388,7 @@ describe('runLoop local-commits', () => {
 
     const bus = createBus();
     await runLoop({localCommits: true }, bus);
-    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, true, false, true, false);
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, true, false, true, false, undefined);
   });
 
   it('emits loop:commit_landed when agent commits', async () => {
@@ -437,7 +461,7 @@ describe('runLoop amend', () => {
 
     const bus = createBus();
     await runLoop({amend: true }, bus);
-    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, false, true, true, false);
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(baseIssue, '', baseConfig, false, true, true, false, undefined);
   });
 
   it('passes isFirstIssue=false to assemblePrompt on second issue after commit', async () => {
@@ -454,8 +478,8 @@ describe('runLoop amend', () => {
 
     const bus = createBus();
     await runLoop({amend: true }, bus);
-    expect(mockAssemblePrompt).toHaveBeenNthCalledWith(1, baseIssue, '', baseConfig, false, true, true, false);
-    expect(mockAssemblePrompt).toHaveBeenNthCalledWith(2, issue2, '', baseConfig, false, true, false, false);
+    expect(mockAssemblePrompt).toHaveBeenNthCalledWith(1, baseIssue, '', baseConfig, false, true, true, false, undefined);
+    expect(mockAssemblePrompt).toHaveBeenNthCalledWith(2, issue2, '', baseConfig, false, true, false, false, undefined);
   });
 
   it('keeps isFirstIssue=true when agent makes no commit', async () => {
@@ -475,7 +499,7 @@ describe('runLoop amend', () => {
     const bus = createBus();
     await runLoop({amend: true }, bus);
     // Second call should still have isFirstIssue=true since first had no commit
-    expect(mockAssemblePrompt).toHaveBeenNthCalledWith(2, issue2, '', baseConfig, false, true, true, false);
+    expect(mockAssemblePrompt).toHaveBeenNthCalledWith(2, issue2, '', baseConfig, false, true, true, false, undefined);
   });
 
   it('emits loop:warning when agent creates multiple commits', async () => {

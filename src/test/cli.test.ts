@@ -152,6 +152,7 @@ describe('main', () => {
         localCommits: true,
         amend: false,
         simulate: true,
+        customPrompt: undefined,
       },
       bus,
     );
@@ -214,6 +215,7 @@ describe('main', () => {
         localCommits: false,
         amend: false,
         simulate: true,
+        customPrompt: undefined,
       },
       bus,
     );

@@ -109,6 +109,7 @@ export async function runLoop(
     localCommits?: boolean;
     amend?: boolean;
     simulate?: boolean;
+    customPrompt?: string;
   },
   bus?: QuetzBus
 ): Promise<LoopResult> {
@@ -267,7 +268,16 @@ export async function runLoop(
     // 4. Assemble prompt
     if (bus) bus.emit('loop:phase', { phase: 'assembling', detail: 'prompt context' });
     const bdPrime = simulate ? '' : getPrimeContext();
-    const prompt = assemblePrompt(issueDetails, bdPrime, config, localCommits, amend, isFirstIssue, simulate);
+    const prompt = assemblePrompt(
+      issueDetails,
+      bdPrime,
+      config,
+      localCommits,
+      amend,
+      isFirstIssue,
+      simulate,
+      opts.customPrompt,
+    );
 
     // 5. Spawn agent
     const agentStart = Date.now();

@@ -26,12 +26,14 @@ const WARNING_FG = '#FF8400';
 const DANGER_FG = '#FF5C33';
 const CHIP_SELECTED_FG = '#FAFAFA';
 const FOCUS_FG = c.cyan;
-const HERO_SUBTITLE = '// autonomous_code_agent';
-const CUSTOM_PROMPT_ROWS = 3;
-const CUSTOM_PROMPT_GUTTER_COLS = 12;
+const HERO_SUBTITLE = '// the feathered serpent dev loop';
+const CUSTOM_PROMPT_ROWS = 2;
+const CUSTOM_PROMPT_GUTTER_COLS = 8;
 
 const TEXTAREA_FOCUS = {
   indicator: 'none' as const,
+  style: { underline: false },
+  contentStyle: { underline: false },
 };
 
 const BUTTON_FOCUS = {
@@ -352,7 +354,6 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
   };
 
   app.keys({
-    q: () => settle(null),
     esc: () => settle(null),
     'ctrl+c': () => settle(null),
   });
@@ -478,13 +479,13 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
             fieldShell(
               [
                 ui.row({ width: 'full', items: 'start', gap: 1 }, [
-                  ui.box({ flex: 1, overflow: 'hidden' }, [
+                  ui.box({ flex: 1 }, [
                     ui.textarea({
                       id: 'launch-custom-prompt',
                       accessibleLabel: 'Custom prompt',
                       value: state.customPrompt,
                       placeholder: 'enter additional instructions...',
-                      style: { fg: fg(c.text) },
+                      style: { fg: fg(c.text), underline: false },
                       onInput: (value, cursor) => app.update(prev => ({
                         ...prev,
                         customPrompt: value,
@@ -652,7 +653,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
         ),
       ]),
       ui.row({ width: 'full', justify: 'center' }, [
-        ui.text('q esc quit  |  ←→ navigate  |  tab switch  |  ↵ select', {
+        ui.text('esc ctrl+c quit  |  ←→ navigate  |  tab switch  |  ↵ select', {
           style: { fg: fg(c.muted) },
         }),
       ]),
