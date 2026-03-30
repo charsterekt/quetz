@@ -2,7 +2,6 @@ import { ui, rgb } from '@rezi-ui/core';
 import { createNodeApp } from '@rezi-ui/node';
 
 import { getProviderDescriptor, type AgentEffortLevel, type AgentProvider } from '../provider.js';
-import { Scrollbar } from './components/Scrollbar.js';
 import { LOGO_LINES } from './logo.js';
 import { c, hexToRgb } from './theme.js';
 
@@ -27,13 +26,10 @@ const DANGER_FG = '#FF5C33';
 const CHIP_SELECTED_FG = '#FAFAFA';
 const FOCUS_FG = c.cyan;
 const HERO_SUBTITLE = '// the feathered serpent dev loop';
-const CUSTOM_PROMPT_ROWS = 2;
-const CUSTOM_PROMPT_GUTTER_COLS = 8;
+const CUSTOM_PROMPT_ROWS = 3;
 
 const TEXTAREA_FOCUS = {
   indicator: 'none' as const,
-  style: { underline: false },
-  contentStyle: { underline: false },
 };
 
 const BUTTON_FOCUS = {
@@ -73,7 +69,6 @@ interface LaunchState {
   model: string;
   effort: AgentEffortLevel;
   customPrompt: string;
-  customPromptCursor: number;
   beadsMode: LaunchBeadsMode;
   epicId: string;
   simulate: boolean;
@@ -146,14 +141,12 @@ function normalizeInitialState(initialSelection: LaunchSelection, issueCounts: L
   const provider = initialSelection.provider;
   const descriptor = getProviderDescriptor(provider);
   const model = canonicalizeLaunchModel(provider, initialSelection.model ?? descriptor.defaultModel);
-  const customPrompt = initialSelection.customPrompt ?? '';
 
   return {
     provider,
     model,
     effort: initialSelection.effort ?? 'medium',
-    customPrompt,
-    customPromptCursor: customPrompt.length,
+    customPrompt: initialSelection.customPrompt ?? '',
     beadsMode: initialSelection.beadsMode,
     epicId: initialSelection.epicId ?? '',
     simulate: initialSelection.simulate,
@@ -188,31 +181,6 @@ function panelWidth(termCols: number, stacked: boolean): number {
   }
 
   return Math.max(60, Math.min(Math.floor((termCols - 14) / 2), 84));
-}
-
-function countWrappedLines(text: string, wrapWidth: number): number {
-  const width = Math.max(1, wrapWidth);
-  const logicalLines = text.split('\n');
-
-  return logicalLines.reduce((total, line) => total + Math.max(1, Math.ceil(line.length / width)), 0);
-}
-
-function wrappedCursorRow(text: string, cursor: number, wrapWidth: number): number {
-  const width = Math.max(1, wrapWidth);
-  const safeCursor = Math.max(0, Math.min(cursor, text.length));
-  const prefix = text.slice(0, safeCursor);
-  const logicalLines = prefix.split('\n');
-  const lineCount = logicalLines.reduce((total, line) => total + Math.max(1, Math.ceil(line.length / width)), 0);
-
-  return Math.max(0, lineCount - 1);
-}
-
-function wrappedScrollOffset(text: string, cursor: number, wrapWidth: number, visibleRows: number): number {
-  const totalLines = countWrappedLines(text, wrapWidth);
-  const maxOffset = Math.max(0, totalLines - visibleRows);
-  const cursorRow = wrappedCursorRow(text, cursor, wrapWidth);
-
-  return Math.max(0, Math.min(cursorRow - visibleRows + 1, maxOffset));
 }
 
 function labelText(label: string) {
@@ -385,17 +353,6 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const issueCount = state.simulate ? state.issueCounts.simulate : state.issueCounts.live;
     const modelChoices = buildModelChoices(state.provider, state.model);
     const simulateActive = state.simulate;
-    const customPromptWrapWidth = Math.max(8, width - CUSTOM_PROMPT_GUTTER_COLS);
-    const customPromptTotalLines = countWrappedLines(state.customPrompt, customPromptWrapWidth);
-    const customPromptCursor = Number.isFinite(state.customPromptCursor)
-      ? state.customPromptCursor
-      : state.customPrompt.length;
-    const customPromptScroll = wrappedScrollOffset(
-      state.customPrompt,
-      customPromptCursor,
-      customPromptWrapWidth,
-      CUSTOM_PROMPT_ROWS,
-    );
 
     const providerOptions = [
       { value: 'claude', label: 'claude' },
@@ -476,38 +433,17 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
             ),
           ]),
           launchSection('custom_prompt', [
-            fieldShell(
-              [
-                ui.row({ width: 'full', items: 'start', gap: 1 }, [
-                  ui.box({ flex: 1 }, [
-                    ui.textarea({
-                      id: 'launch-custom-prompt',
-                      accessibleLabel: 'Custom prompt',
-                      value: state.customPrompt,
-                      placeholder: 'enter additional instructions...',
-                      style: { fg: fg(c.text), underline: false },
-                      onInput: (value, cursor) => app.update(prev => ({
-                        ...prev,
-                        customPrompt: value,
-                        customPromptCursor: cursor,
-                      })),
-                      rows: CUSTOM_PROMPT_ROWS,
-                      wordWrap: true,
-                      focusConfig: TEXTAREA_FOCUS,
-                    }),
-                  ]),
-                  Scrollbar({
-                    totalLines: customPromptTotalLines,
-                    visibleLines: CUSTOM_PROMPT_ROWS,
-                    scrollOffset: customPromptScroll,
-                    height: CUSTOM_PROMPT_ROWS,
-                  }),
-                ]),
-              ],
-              isFocusedId(state.focusedId, 'launch-custom-prompt'),
-              false,
-              c.border
-            ),
+            ui.textarea({
+              id: 'launch-custom-prompt',
+              accessibleLabel: 'Custom prompt',
+              value: state.customPrompt,
+              placeholder: 'enter additional instructions...',
+              style: { fg: fg(c.text) },
+              onInput: value => app.update(prev => ({ ...prev, customPrompt: value })),
+              rows: CUSTOM_PROMPT_ROWS,
+              wordWrap: true,
+              focusConfig: TEXTAREA_FOCUS,
+            }),
           ]),
         ]),
       ],

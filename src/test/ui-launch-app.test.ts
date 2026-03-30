@@ -16,7 +16,6 @@ const {
   focusZoneMock,
   spacerMock,
   textareaMock,
-  scrollbarMock,
 } = vi.hoisted(() => ({
   mockCreateNodeApp: vi.fn(),
   textMock: vi.fn((content: string) => ({ content })),
@@ -30,15 +29,10 @@ const {
   focusZoneMock: vi.fn((_props: Record<string, unknown>, children: unknown) => ({ children })),
   spacerMock: vi.fn((props: Record<string, unknown>) => ({ spacer: true, ...props })),
   textareaMock: vi.fn((props: Record<string, unknown>) => props),
-  scrollbarMock: vi.fn((props: Record<string, unknown>) => ({ scrollbar: true, ...props })),
 }));
 
 vi.mock('@rezi-ui/node', () => ({
   createNodeApp: mockCreateNodeApp,
-}));
-
-vi.mock('../ui/components/Scrollbar.js', () => ({
-  Scrollbar: scrollbarMock,
 }));
 
 vi.mock('@rezi-ui/core', () => ({
@@ -158,7 +152,7 @@ describe('mountLaunchApp', () => {
       id: 'launch-custom-prompt',
       accessibleLabel: 'Custom prompt',
       placeholder: 'enter additional instructions...',
-      rows: 2,
+      rows: 3,
       wordWrap: true,
       focusConfig: expect.objectContaining({ indicator: 'none' }),
     }));
@@ -172,6 +166,24 @@ describe('mountLaunchApp', () => {
       checked: false,
       dsSize: 'lg',
     }));
+  });
+
+  it('uses esc/ctrl+c for launch quit and does not bind q', () => {
+    const appMock = createAppMock();
+    mockCreateNodeApp.mockReturnValue(appMock);
+
+    void mountLaunchApp({
+      version: '0.7.6',
+      initialSelection: baseSelection,
+      issueCounts: { live: 14, simulate: 3 },
+    });
+
+    expect(appMock.keys).toHaveBeenCalledWith(expect.objectContaining({
+      esc: expect.any(Function),
+      'ctrl+c': expect.any(Function),
+    }));
+    const keyBindings = appMock.keys.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(keyBindings.q).toBeUndefined();
   });
 
   it('returns the selected launch values when start is pressed', async () => {
@@ -255,7 +267,7 @@ describe('mountLaunchApp', () => {
     }));
   });
 
-  it('renders an internal custom prompt scrollbar and no overflow status text', () => {
+  it('renders custom prompt as a native textarea with wrapped multiline input', () => {
     let viewFn!: (state: unknown) => unknown;
     mockCreateNodeApp.mockReturnValue(createAppMock({
       view: vi.fn((fn: (state: unknown) => unknown) => {
@@ -274,7 +286,6 @@ describe('mountLaunchApp', () => {
       model: 'sonnet',
       effort: 'medium',
       customPrompt: 'x'.repeat(500),
-      customPromptCursor: 500,
       beadsMode: 'all',
       epicId: '',
       simulate: false,
@@ -283,9 +294,10 @@ describe('mountLaunchApp', () => {
       focusedId: null,
     });
 
-    expect(scrollbarMock).toHaveBeenCalledWith(expect.objectContaining({
-      visibleLines: 2,
-      height: 2,
+    expect(textareaMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'launch-custom-prompt',
+      rows: 3,
+      wordWrap: true,
     }));
     const renderedText = textMock.mock.calls.map(([content]) => content);
     expect(renderedText.some(text => typeof text === 'string' && text.startsWith('overflow: +'))).toBe(false);
