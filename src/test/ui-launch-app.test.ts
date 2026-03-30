@@ -156,10 +156,13 @@ describe('mountLaunchApp', () => {
       wordWrap: true,
       focusConfig: expect.objectContaining({ indicator: 'none' }),
     }));
-    expect(inputMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(textareaMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-epic-id',
       accessibleLabel: 'Epic ID',
       placeholder: 'enter_epic_id...',
+      rows: 1,
+      wordWrap: false,
+      focusConfig: expect.objectContaining({ indicator: 'none' }),
     }));
     expect(checkboxMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-simulate',
@@ -186,7 +189,7 @@ describe('mountLaunchApp', () => {
     expect(keyBindings.q).toBeUndefined();
   });
 
-  it('updates epic id via input onInput (including q) instead of triggering quit', () => {
+  it('updates epic id via textarea onInput (including q) instead of triggering quit', () => {
     let viewFn!: (state: unknown) => unknown;
     const appMock = createAppMock({
       view: vi.fn((fn: (state: unknown) => unknown) => {
@@ -214,12 +217,12 @@ describe('mountLaunchApp', () => {
       focusedId: 'launch-epic-id',
     });
 
-    const epicInputCall = inputMock.mock.calls.find(([props]) => (props as { id?: string }).id === 'launch-epic-id');
-    expect(epicInputCall).toBeTruthy();
+    const epicTextareaCall = textareaMock.mock.calls.find(([props]) => (props as { id?: string }).id === 'launch-epic-id');
+    expect(epicTextareaCall).toBeTruthy();
 
-    const onInput = (epicInputCall?.[0] as { onInput?: (value: string, cursor: number) => void }).onInput;
+    const onInput = (epicTextareaCall?.[0] as { onInput?: (value: string) => void }).onInput;
     expect(onInput).toBeTypeOf('function');
-    onInput?.('q', 1);
+    onInput?.('q');
 
     expect(appMock.update).toHaveBeenCalled();
   });
@@ -375,9 +378,8 @@ describe('mountLaunchApp', () => {
       });
 
       expect(columnMock).toHaveBeenCalledWith(expect.objectContaining({
-        flex: 1,
+        height: 'full',
         overflow: 'scroll',
-        justify: 'start',
       }), expect.anything());
     } finally {
       if (rowsDescriptor) {

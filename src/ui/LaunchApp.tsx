@@ -24,9 +24,10 @@ const SUCCESS_FG = '#0DBC79';
 const WARNING_FG = '#FF8400';
 const DANGER_FG = '#FF5C33';
 const CHIP_SELECTED_FG = '#FAFAFA';
-const FOCUS_FG = c.cyan;
 const HERO_SUBTITLE = '// the feathered serpent dev loop';
 const CUSTOM_PROMPT_ROWS = 6;
+const SINGLE_PANEL_MIN_WIDTH = 60;
+const TWO_PANEL_MIN_COLS = (SINGLE_PANEL_MIN_WIDTH * 2) + 6; // 2 panels + gap + side padding
 
 const TEXTAREA_FOCUS = {
   indicator: 'none' as const,
@@ -180,7 +181,7 @@ function panelWidth(termCols: number, stacked: boolean): number {
     return Math.max(58, Math.min(termCols - 8, 90));
   }
 
-  return Math.max(60, Math.min(Math.floor((termCols - 14) / 2), 84));
+  return Math.max(SINGLE_PANEL_MIN_WIDTH, Math.min(Math.floor((termCols - 14) / 2), 84));
 }
 
 function labelText(label: string) {
@@ -279,20 +280,6 @@ function launchSection(title: string, children: any[]) {
   return ui.column({ width: 'full', gap: 1 }, [labelText(title), ...children]);
 }
 
-function fieldShell(children: any[], focused: boolean, disabled = false, focusColor: string = FOCUS_FG) {
-  return ui.box(
-    {
-      border: 'single',
-      borderStyle: { fg: fg(focused ? focusColor : c.border) },
-      style: { bg: bg(SURFACE_BG), dim: disabled },
-      px: 1,
-      py: 0,
-      width: 'full',
-    },
-    children,
-  );
-}
-
 function simulateToggle(active: boolean, onChange: (checked: boolean) => void) {
   return ui.checkbox({
     id: 'launch-simulate',
@@ -343,7 +330,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const termCols = process.stdout.columns ?? 120;
     const termRows = process.stdout.rows ?? 40;
     const forceContentScroll = termRows < 42;
-    const stacked = termCols < 112;
+    const stacked = termCols < TWO_PANEL_MIN_COLS;
     const width = panelWidth(termCols, stacked);
     const panelGap = stacked ? 1 : 2;
     const baseContentWidth = stacked ? width : (width * 2) + panelGap;
@@ -473,22 +460,19 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
               if (value !== 'all' && value !== 'epic') return;
               app.update(prev => ({ ...prev, beadsMode: value as LaunchBeadsMode }));
             }),
-            fieldShell(
-              [
-                ui.input({
-                  id: 'launch-epic-id',
-                  accessibleLabel: 'Epic ID',
-                  value: state.epicId,
-                  disabled: state.beadsMode !== 'epic',
-                  placeholder: 'enter_epic_id...',
-                  focusable: state.beadsMode === 'epic',
-                  style: { fg: fg(c.text), dim: state.beadsMode !== 'epic' },
-                  onInput: (value, _cursor) => app.update(prev => ({ ...prev, epicId: value })),
-                }),
-              ],
-              isFocusedId(state.focusedId, 'launch-epic-id'),
-              state.beadsMode !== 'epic'
-            ),
+            ui.textarea({
+              id: 'launch-epic-id',
+              accessibleLabel: 'Epic ID',
+              value: state.epicId,
+              disabled: state.beadsMode !== 'epic',
+              placeholder: 'enter_epic_id...',
+              focusable: state.beadsMode === 'epic',
+              style: { fg: fg(c.text), dim: state.beadsMode !== 'epic' },
+              onInput: value => app.update(prev => ({ ...prev, epicId: value })),
+              rows: 1,
+              wordWrap: false,
+              focusConfig: TEXTAREA_FOCUS,
+            }),
           ]),
           ui.box(
             {
@@ -596,6 +580,24 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       ]),
     ]);
 
+    if (forceContentScroll) {
+      return ui.column(
+        {
+          width: 'full',
+          height: 'full',
+          style: { bg: bg(c.bg) },
+          overflow: 'scroll',
+        },
+        [
+          ...(headerBlock ? [headerBlock] : []),
+          ui.column({ width: 'full', items: 'center', gap: 1, pt: 1, pb: 1 }, [
+            mainContent,
+            footerBlock,
+          ]),
+        ],
+      );
+    }
+
     return ui.column(
       {
         width: 'full',
@@ -608,9 +610,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
           width: 'full',
           flex: 1,
           items: 'center',
-          justify: forceContentScroll ? 'start' : 'center',
-          overflow: forceContentScroll ? 'scroll' : 'visible',
-          pt: forceContentScroll ? 1 : 0,
+          justify: 'center',
         }, [
           mainContent,
         ]),
