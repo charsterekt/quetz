@@ -186,6 +186,44 @@ describe('mountLaunchApp', () => {
     expect(keyBindings.q).toBeUndefined();
   });
 
+  it('updates epic id via input onInput (including q) instead of triggering quit', () => {
+    let viewFn!: (state: unknown) => unknown;
+    const appMock = createAppMock({
+      view: vi.fn((fn: (state: unknown) => unknown) => {
+        viewFn = fn;
+      }),
+    });
+    mockCreateNodeApp.mockReturnValue(appMock);
+
+    void mountLaunchApp({
+      version: '0.7.6',
+      initialSelection: baseSelection,
+      issueCounts: { live: 14, simulate: 3 },
+    });
+
+    viewFn({
+      provider: 'claude',
+      model: 'sonnet',
+      effort: 'medium',
+      customPrompt: '',
+      beadsMode: 'epic',
+      epicId: '',
+      simulate: false,
+      runMode: 'pr',
+      issueCounts: { live: 14, simulate: 3 },
+      focusedId: 'launch-epic-id',
+    });
+
+    const epicInputCall = inputMock.mock.calls.find(([props]) => (props as { id?: string }).id === 'launch-epic-id');
+    expect(epicInputCall).toBeTruthy();
+
+    const onInput = (epicInputCall?.[0] as { onInput?: (value: string, cursor: number) => void }).onInput;
+    expect(onInput).toBeTypeOf('function');
+    onInput?.('q', 1);
+
+    expect(appMock.update).toHaveBeenCalled();
+  });
+
   it('returns the selected launch values when start is pressed', async () => {
     let viewFn!: (state: unknown) => unknown;
     mockCreateNodeApp.mockReturnValue(createAppMock({
@@ -301,5 +339,53 @@ describe('mountLaunchApp', () => {
     }));
     const renderedText = textMock.mock.calls.map(([content]) => content);
     expect(renderedText.some(text => typeof text === 'string' && text.startsWith('overflow: +'))).toBe(false);
+  });
+
+  it('enables scrollable center content on short terminals', () => {
+    let viewFn!: (state: unknown) => unknown;
+    mockCreateNodeApp.mockReturnValue(createAppMock({
+      view: vi.fn((fn: (state: unknown) => unknown) => {
+        viewFn = fn;
+      }),
+    }));
+
+    const rowsDescriptor = Object.getOwnPropertyDescriptor(process.stdout, 'rows');
+    const colsDescriptor = Object.getOwnPropertyDescriptor(process.stdout, 'columns');
+    Object.defineProperty(process.stdout, 'rows', { value: 30, configurable: true });
+    Object.defineProperty(process.stdout, 'columns', { value: 120, configurable: true });
+
+    try {
+      void mountLaunchApp({
+        version: '0.7.6',
+        initialSelection: baseSelection,
+        issueCounts: { live: 14, simulate: 3 },
+      });
+
+      viewFn({
+        provider: 'claude',
+        model: 'sonnet',
+        effort: 'medium',
+        customPrompt: '',
+        beadsMode: 'all',
+        epicId: '',
+        simulate: false,
+        runMode: 'pr',
+        issueCounts: { live: 14, simulate: 3 },
+        focusedId: null,
+      });
+
+      expect(columnMock).toHaveBeenCalledWith(expect.objectContaining({
+        flex: 1,
+        overflow: 'scroll',
+        justify: 'start',
+      }), expect.anything());
+    } finally {
+      if (rowsDescriptor) {
+        Object.defineProperty(process.stdout, 'rows', rowsDescriptor);
+      }
+      if (colsDescriptor) {
+        Object.defineProperty(process.stdout, 'columns', colsDescriptor);
+      }
+    }
   });
 });

@@ -342,6 +342,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
   app.view((state: LaunchState) => {
     const termCols = process.stdout.columns ?? 120;
     const termRows = process.stdout.rows ?? 40;
+    const forceContentScroll = termRows < 42;
     const stacked = termCols < 112;
     const width = panelWidth(termCols, stacked);
     const panelGap = stacked ? 1 : 2;
@@ -482,7 +483,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
                   placeholder: 'enter_epic_id...',
                   focusable: state.beadsMode === 'epic',
                   style: { fg: fg(c.text), dim: state.beadsMode !== 'epic' },
-                  onInput: value => app.update(prev => ({ ...prev, epicId: value })),
+                  onInput: (value, _cursor) => app.update(prev => ({ ...prev, epicId: value })),
                 }),
               ],
               isFocusedId(state.focusedId, 'launch-epic-id'),
@@ -603,7 +604,14 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       },
       [
         ...(headerBlock ? [headerBlock] : []),
-        ui.column({ width: 'full', flex: 1, items: 'center', justify: 'center' }, [
+        ui.column({
+          width: 'full',
+          flex: 1,
+          items: 'center',
+          justify: forceContentScroll ? 'start' : 'center',
+          overflow: forceContentScroll ? 'scroll' : 'visible',
+          pt: forceContentScroll ? 1 : 0,
+        }, [
           mainContent,
         ]),
         footerBlock,
