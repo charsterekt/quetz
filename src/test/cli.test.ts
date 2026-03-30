@@ -10,15 +10,21 @@ vi.mock('../loop.js', () => ({
 vi.mock('../ui/App.js', () => ({
   mountApp: vi.fn(),
 }));
+vi.mock('../ui/LaunchApp.js', () => ({
+  mountLaunchApp: vi.fn(),
+}));
 
 import { createBus } from '../events.js';
 import { runLoop } from '../loop.js';
 import { mountApp } from '../ui/App.js';
+import { mountLaunchApp } from '../ui/LaunchApp.js';
+import type { LaunchSelection } from '../ui/LaunchApp.js';
 import { EXIT_SUCCESS, EXIT_FAILURE, EXIT_CONFIG_ERROR, EXIT_PREFLIGHT_FAILURE, main } from '../cli.js';
 
 const mockCreateBus = vi.mocked(createBus);
 const mockRunLoop = vi.mocked(runLoop);
 const mockMountApp = vi.mocked(mountApp);
+const mockMountLaunchApp = vi.mocked(mountLaunchApp);
 
 class ExitError extends Error {
   constructor(readonly code: number | undefined) {
@@ -58,6 +64,23 @@ function stdoutText(): string {
     .join('');
 }
 
+function mockLaunchSelection(selection: Partial<LaunchSelection> = {}): void {
+  mockMountLaunchApp.mockReturnValue({
+    ready: Promise.resolve(),
+    result: Promise.resolve({
+      provider: 'claude',
+      model: 'sonnet',
+      effort: 'medium',
+      simulate: false,
+      localCommits: false,
+      amend: false,
+      beadsMode: 'all',
+      ...selection,
+    }),
+    unmount: vi.fn(() => Promise.resolve()),
+  } as never);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   originalArgv = [...process.argv];
@@ -86,17 +109,30 @@ describe('exit codes', () => {
 });
 
 describe('main', () => {
-  it('launches the TUI on small terminals without warning or blocking', async () => {
+  it('shows the zero-arg launch screen before starting the TUI loop', async () => {
     const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
-    const unmount = vi.fn();
-    const ready = Promise.resolve();
+    const unmountLaunch = vi.fn(() => Promise.resolve());
+    const unmount = vi.fn(() => Promise.resolve());
     let quit!: () => void;
 
     mockCreateBus.mockReturnValue(bus as never);
     mockRunLoop.mockResolvedValue({ exitCode: 0, reason: 'no_issues' } as never);
+    mockMountLaunchApp.mockReturnValue({
+      ready: Promise.resolve(),
+      result: Promise.resolve({
+        provider: 'codex',
+        model: 'gpt-5-codex',
+        effort: 'high',
+        simulate: true,
+        localCommits: true,
+        amend: false,
+        beadsMode: 'all',
+      }),
+      unmount: unmountLaunch,
+    } as never);
     mockMountApp.mockImplementation((opts) => {
       quit = opts.onQuit;
-      return { ready, unmount } as never;
+      return { ready: Promise.resolve(), unmount } as never;
     });
 
     process.argv = ['node', 'quetz', 'run'];
@@ -104,15 +140,19 @@ describe('main', () => {
 
     await expect(main()).rejects.toMatchObject({ code: 0 });
 
+    expect(mockMountLaunchApp).toHaveBeenCalledTimes(1);
+    expect(unmountLaunch).toHaveBeenCalledTimes(1);
     expect(mockMountApp).toHaveBeenCalledTimes(1);
     expect(mockRunLoop).toHaveBeenCalledWith(
       {
-        model: undefined,
-        effort: undefined,
+        provider: 'codex',
+        model: 'gpt-5-codex',
+        effort: 'high',
         timeout: undefined,
-        localCommits: false,
+        localCommits: true,
         amend: false,
-        simulate: false,
+        simulate: true,
+        customPrompt: undefined,
       },
       bus,
     );
@@ -123,6 +163,63 @@ describe('main', () => {
       .join('');
     expect(stderrOutput).not.toContain('Terminal too small');
     expect(stderrOutput).not.toContain('below recommended');
+    expect(quit).toBeTypeOf('function');
+  });
+
+  it('exits cleanly when the launch screen is dismissed before start', async () => {
+    const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
+    const unmountLaunch = vi.fn(() => Promise.resolve());
+
+    mockCreateBus.mockReturnValue(bus as never);
+    mockMountLaunchApp.mockReturnValue({
+      ready: Promise.resolve(),
+      result: Promise.resolve(null),
+      unmount: unmountLaunch,
+    } as never);
+
+    process.argv = ['node', 'quetz', 'run'];
+    setStdoutSize(true, 120, 40);
+
+    await expect(main()).rejects.toMatchObject({ code: 0 });
+
+    expect(mockMountLaunchApp).toHaveBeenCalledTimes(1);
+    expect(unmountLaunch).toHaveBeenCalledTimes(1);
+    expect(mockRunLoop).not.toHaveBeenCalled();
+    expect(mockMountApp).not.toHaveBeenCalled();
+  });
+
+  it('bypasses the launch screen when explicit run flags are provided', async () => {
+    const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
+    const unmount = vi.fn(() => Promise.resolve());
+    let quit!: () => void;
+
+    mockCreateBus.mockReturnValue(bus as never);
+    mockRunLoop.mockResolvedValue({ exitCode: 0, reason: 'no_issues' } as never);
+    mockMountApp.mockImplementation((opts) => {
+      quit = opts.onQuit;
+      return { ready: Promise.resolve(), unmount } as never;
+    });
+
+    process.argv = ['node', 'quetz', 'run', '--simulate'];
+    setStdoutSize(true, 80, 24);
+
+    await expect(main()).rejects.toMatchObject({ code: 0 });
+
+    expect(mockMountLaunchApp).not.toHaveBeenCalled();
+    expect(mockMountApp).toHaveBeenCalledTimes(1);
+    expect(mockRunLoop).toHaveBeenCalledWith(
+      {
+        model: undefined,
+        effort: undefined,
+        timeout: undefined,
+        localCommits: false,
+        amend: false,
+        simulate: true,
+        customPrompt: undefined,
+      },
+      bus,
+    );
+    expect(unmount).toHaveBeenCalledTimes(1);
     expect(quit).toBeTypeOf('function');
   });
 
@@ -214,6 +311,7 @@ describe('main', () => {
 
     mockCreateBus.mockReturnValue(bus as never);
     mockRunLoop.mockResolvedValue({ exitCode: 0, reason: 'victory' } as never);
+    mockLaunchSelection();
     mockMountApp.mockImplementation((opts) => {
       quit = opts.onQuit;
       return { ready: Promise.resolve(), unmount } as never;
@@ -244,6 +342,7 @@ describe('main', () => {
 
     mockCreateBus.mockReturnValue(bus as never);
     mockRunLoop.mockResolvedValue({ exitCode: 0, reason: 'victory' } as never);
+    mockLaunchSelection();
     mockMountApp.mockReturnValue({ ready: Promise.resolve(), unmount } as never);
 
     process.argv = ['node', 'quetz', 'run'];
@@ -269,6 +368,7 @@ describe('main', () => {
 
     mockCreateBus.mockReturnValue(bus as never);
     mockRunLoop.mockResolvedValue({ exitCode: 1, reason: 'error' } as never);
+    mockLaunchSelection();
     mockMountApp.mockImplementation((opts) => {
       quit = opts.onQuit;
       return { ready: Promise.resolve(), unmount } as never;

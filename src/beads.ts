@@ -37,21 +37,24 @@ export function disableMockMode(): void {
 
 // ── bd wrappers ───────────────────────────────────────────────────────────────
 
-function exec(cmd: string): string {
+function execBd(args: string[]): string {
   try {
-    return execSync(cmd, { encoding: 'utf-8' });
+    return execFileSync('bd', args, { encoding: 'utf-8' });
   } catch (err) {
     const msg = (err as { stderr?: string; message?: string }).stderr
       ?? (err as Error).message
       ?? String(err);
-    throw new Error(`bd command failed: ${cmd}\n${msg}`);
+    throw new Error(`bd command failed: bd ${args.join(' ')}\n${msg}`);
   }
+}
+
+function execBdJson(args: string[]): unknown {
+  return JSON.parse(execBd([...args, '--json']));
 }
 
 export function getReadyIssues(): BeadsIssue[] {
   if (mockMode) return MOCK_ISSUES.filter(i => i.status === 'ready');
-  const output = exec('bd ready --json');
-  const parsed: unknown = JSON.parse(output);
+  const parsed = execBdJson(['ready']);
   if (!Array.isArray(parsed)) return [];
   return parsed as BeadsIssue[];
 }
@@ -59,11 +62,20 @@ export function getReadyIssues(): BeadsIssue[] {
 export function listAllIssues(): BeadsIssue[] {
   if (mockMode) return MOCK_ISSUES;
   try {
-    const output = execSync('bd list --json', { encoding: 'utf-8' });
-    const parsed: unknown = JSON.parse(output);
+    const parsed = execBdJson(['list', '--flat']);
     return Array.isArray(parsed) ? (parsed as BeadsIssue[]) : [];
   } catch {
     return [];
+  }
+}
+
+export function countOpenIssues(): number {
+  if (mockMode) return MOCK_ISSUES.filter(issue => issue.status === 'ready').length;
+  try {
+    const parsed = execBdJson(['count', '--status', 'open']) as { count?: unknown };
+    return typeof parsed?.count === 'number' ? parsed.count : 0;
+  } catch {
+    return 0;
   }
 }
 
@@ -78,8 +90,7 @@ export function getIssueDetails(id: string): BeadsIssue {
     return issue;
   }
   try {
-    const output = execFileSync('bd', ['show', id, '--json'], { encoding: 'utf-8' });
-    const parsed: unknown = JSON.parse(output);
+    const parsed = execBdJson(['show', id]);
     const issue = Array.isArray(parsed) ? parsed[0] : parsed;
     return issue as BeadsIssue;
   } catch (err) {

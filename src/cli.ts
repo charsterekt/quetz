@@ -1,12 +1,61 @@
 #!/usr/bin/env node
 
-import { CLAUDE_EFFORT_LEVELS, isClaudeEffortLevel } from './config.js';
-import { AGENT_PROVIDERS, isAgentProvider, renderModelListing } from './provider.js';
+import { countOpenIssues } from './beads.js';
+import { CLAUDE_EFFORT_LEVELS, DEFAULTS, isClaudeEffortLevel, loadConfig } from './config.js';
+import { MOCK_ISSUES } from './mock-data.js';
+import { AGENT_PROVIDERS, getProviderDescriptor, isAgentProvider, renderModelListing, type AgentProvider } from './provider.js';
+import type { LaunchIssueCounts, LaunchSelection } from './ui/LaunchApp.js';
 
 export const EXIT_SUCCESS = 0;
 export const EXIT_FAILURE = 1;
 export const EXIT_CONFIG_ERROR = 2;
 export const EXIT_PREFLIGHT_FAILURE = 3;
+
+function getLaunchIssueCounts(): LaunchIssueCounts {
+  try {
+    return {
+      live: countOpenIssues(),
+      simulate: MOCK_ISSUES.filter(issue => issue.status === 'ready').length,
+    };
+  } catch {
+    return {
+      live: 0,
+      simulate: MOCK_ISSUES.filter(issue => issue.status === 'ready').length,
+    };
+  }
+}
+
+function getLaunchDefaults(): LaunchSelection {
+  let provider: AgentProvider = DEFAULTS.agent.provider;
+  let model = DEFAULTS.agent.model ?? getProviderDescriptor(provider).defaultModel;
+  let effort = DEFAULTS.agent.effort;
+
+  try {
+    const config = loadConfig();
+    provider = config.agent.provider;
+
+    const providerConfig = provider === 'claude'
+      ? config.agent.providers.claude
+      : config.agent.providers.codex;
+
+    model = providerConfig.model ?? config.agent.model ?? getProviderDescriptor(provider).defaultModel;
+    effort = providerConfig.effort ?? config.agent.effort;
+  } catch {
+    // Launch screen falls back to defaults when config is not ready yet.
+  }
+
+  return {
+    provider,
+    model,
+    effort,
+    simulate: false,
+    localCommits: false,
+    amend: false,
+    customPrompt: undefined,
+    beadsMode: 'all',
+    epicId: undefined,
+  };
+}
 
 export async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -102,9 +151,10 @@ export async function main(): Promise<void> {
       break;
     }
     case 'run': {
-      const localCommits = args.includes('--local-commits');
-      const amend = args.includes('--amend');
-      const simulate = args.includes('--simulate');
+      let localCommits = args.includes('--local-commits');
+      let amend = args.includes('--amend');
+      let simulate = args.includes('--simulate');
+      let customPrompt: string | undefined;
 
       if (amend && localCommits) {
         process.stderr.write('Error: --amend and --local-commits are mutually exclusive. Use one or the other.\n');
@@ -167,6 +217,31 @@ export async function main(): Promise<void> {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const pkg = require('../package.json');
 
+        if (args.length === 1) {
+          const { mountLaunchApp } = await import('./ui/LaunchApp.js');
+          const launchApp = mountLaunchApp({
+            version: pkg.version,
+            initialSelection: getLaunchDefaults(),
+            issueCounts: getLaunchIssueCounts(),
+          });
+          await launchApp.ready;
+
+          const launchSelection = await launchApp.result;
+          await launchApp.unmount();
+
+          if (!launchSelection) {
+            process.exit(EXIT_SUCCESS);
+          }
+
+          provider = launchSelection.provider;
+          model = launchSelection.model;
+          effort = launchSelection.effort;
+          simulate = launchSelection.simulate;
+          localCommits = launchSelection.localCommits;
+          amend = launchSelection.amend;
+          customPrompt = launchSelection.customPrompt;
+        }
+
         let resolveQuit!: () => void;
         const quitPromise = new Promise<void>(resolve => {
           resolveQuit = resolve;
@@ -217,7 +292,7 @@ export async function main(): Promise<void> {
 
         let userQuit = false;
         const exitSignal = new Promise<void>(resolve => {
-          runLoop({ provider, model, effort, timeout, localCommits, amend, simulate }, bus)
+          runLoop({ provider, model, effort, timeout, localCommits, amend, simulate, customPrompt }, bus)
             .then(result => {
               loopResult = result;
               loopTerminalResult = result;
@@ -239,7 +314,7 @@ export async function main(): Promise<void> {
         process.off('SIGINT', onSigint);
         await cleanupTui(userQuit || sigintRequested);
       } else {
-        const result = await runLoop({ provider, model, effort, timeout, localCommits, amend, simulate }, bus);
+        const result = await runLoop({ provider, model, effort, timeout, localCommits, amend, simulate, customPrompt }, bus);
         process.exit(result.exitCode);
       }
       break;
