@@ -19,6 +19,8 @@ function fg(hex: string) {
 }
 
 const headerBg = rgb(15, 15, 15);
+const MAIN_MIN_COLS = 230;
+const MAIN_MIN_ROWS = 55;
 
 interface HeaderProps {
   mode: ScreenMode;
@@ -32,6 +34,16 @@ interface HeaderProps {
 export const Header = defineWidget<HeaderProps>((props, ctx) => {
   const { mode, issueCount, bgStatus, version } = props;
   const [frameIdx, setFrameIdx] = ctx.useState(0);
+  const termCols = process.stdout.columns ?? 120;
+  const termRows = process.stdout.rows ?? 40;
+  const mainSizeWarnings = [
+    ...(termCols < MAIN_MIN_COLS
+      ? [`warning: terminal width ${termCols} < ${MAIN_MIN_COLS}`]
+      : []),
+    ...(termRows < MAIN_MIN_ROWS
+      ? [`warning: terminal height ${termRows} < ${MAIN_MIN_ROWS}`]
+      : []),
+  ];
 
   useInterval(ctx, () => {
     if (mode === 'running' || mode === 'polling') {
@@ -47,6 +59,16 @@ export const Header = defineWidget<HeaderProps>((props, ctx) => {
     ),
   ]);
 
+  const rightColFooter = ui.column({ items: 'end', gap: 0 }, [
+    ui.text(logoSubtitle(version), { style: { fg: fg(c.muted) } }),
+    ...mainSizeWarnings.map((warning, index) =>
+      ui.text(warning, {
+        key: `main-size-warning-${index}`,
+        style: { fg: fg(c.error), bold: true },
+      }),
+    ),
+  ]);
+
   const rightCol =
     mode === 'session_detail'
       ? ui.column({ items: 'end', justify: 'between', height: LOGO_LINES.length }, [
@@ -57,7 +79,7 @@ export const Header = defineWidget<HeaderProps>((props, ctx) => {
               ui.text(bgStatus, { style: { fg: fg(c.accent) } }),
             ]),
           ]),
-          ui.text(logoSubtitle(version), { style: { fg: fg(c.muted) } }),
+          rightColFooter,
         ])
       : ui.column({ items: 'end', justify: 'between', height: LOGO_LINES.length }, [
           ui.column({ items: 'end', gap: 0 }, [
@@ -72,7 +94,7 @@ export const Header = defineWidget<HeaderProps>((props, ctx) => {
               style: { fg: fg(counterColor(mode)), bold: true },
             }),
           ]),
-          ui.text(logoSubtitle(version), { style: { fg: fg(c.muted) } }),
+          rightColFooter,
         ]);
 
   return ui.box(

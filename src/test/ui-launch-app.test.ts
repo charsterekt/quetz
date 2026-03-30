@@ -160,7 +160,7 @@ describe('mountLaunchApp', () => {
       id: 'launch-epic-id',
       accessibleLabel: 'Epic ID',
       placeholder: 'enter_epic_id...',
-      rows: 1,
+      rows: 3,
       wordWrap: false,
       focusConfig: expect.objectContaining({ indicator: 'none' }),
     }));
@@ -377,10 +377,58 @@ describe('mountLaunchApp', () => {
         focusedId: null,
       });
 
+      const renderedText = textMock.mock.calls.map(([content]) => content);
+      expect(renderedText).toContain('warning: terminal width 120 < 175');
+      expect(renderedText).toContain('warning: terminal height 30 < 55');
       expect(columnMock).toHaveBeenCalledWith(expect.objectContaining({
         height: 'full',
         overflow: 'scroll',
       }), expect.anything());
+    } finally {
+      if (rowsDescriptor) {
+        Object.defineProperty(process.stdout, 'rows', rowsDescriptor);
+      }
+      if (colsDescriptor) {
+        Object.defineProperty(process.stdout, 'columns', colsDescriptor);
+      }
+    }
+  });
+
+  it('hides launch terminal-size warnings when terminal meets minimums', () => {
+    let viewFn!: (state: unknown) => unknown;
+    mockCreateNodeApp.mockReturnValue(createAppMock({
+      view: vi.fn((fn: (state: unknown) => unknown) => {
+        viewFn = fn;
+      }),
+    }));
+
+    const rowsDescriptor = Object.getOwnPropertyDescriptor(process.stdout, 'rows');
+    const colsDescriptor = Object.getOwnPropertyDescriptor(process.stdout, 'columns');
+    Object.defineProperty(process.stdout, 'rows', { value: 55, configurable: true });
+    Object.defineProperty(process.stdout, 'columns', { value: 175, configurable: true });
+
+    try {
+      void mountLaunchApp({
+        version: '0.7.6',
+        initialSelection: baseSelection,
+        issueCounts: { live: 14, simulate: 3 },
+      });
+
+      viewFn({
+        provider: 'claude',
+        model: 'sonnet',
+        effort: 'medium',
+        customPrompt: '',
+        beadsMode: 'all',
+        epicId: '',
+        simulate: false,
+        runMode: 'pr',
+        issueCounts: { live: 14, simulate: 3 },
+        focusedId: null,
+      });
+
+      const renderedText = textMock.mock.calls.map(([content]) => content);
+      expect(renderedText.some(text => typeof text === 'string' && text.startsWith('warning: terminal'))).toBe(false);
     } finally {
       if (rowsDescriptor) {
         Object.defineProperty(process.stdout, 'rows', rowsDescriptor);

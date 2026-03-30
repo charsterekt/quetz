@@ -28,6 +28,8 @@ const HERO_SUBTITLE = '// the feathered serpent dev loop';
 const CUSTOM_PROMPT_ROWS = 6;
 const SINGLE_PANEL_MIN_WIDTH = 60;
 const TWO_PANEL_MIN_COLS = (SINGLE_PANEL_MIN_WIDTH * 2) + 6; // 2 panels + gap + side padding
+const LAUNCH_MIN_COLS = 175;
+const LAUNCH_MIN_ROWS = 55;
 
 const TEXTAREA_FOCUS = {
   indicator: 'none' as const,
@@ -341,6 +343,14 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const issueCount = state.simulate ? state.issueCounts.simulate : state.issueCounts.live;
     const modelChoices = buildModelChoices(state.provider, state.model);
     const simulateActive = state.simulate;
+    const launchSizeWarnings = [
+      ...(termCols < LAUNCH_MIN_COLS
+        ? [`warning: terminal width ${termCols} < ${LAUNCH_MIN_COLS}`]
+        : []),
+      ...(termRows < LAUNCH_MIN_ROWS
+        ? [`warning: terminal height ${termRows} < ${LAUNCH_MIN_ROWS}`]
+        : []),
+    ];
 
     const providerOptions = [
       { value: 'claude', label: 'claude' },
@@ -469,7 +479,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
               focusable: state.beadsMode === 'epic',
               style: { fg: fg(c.text), dim: state.beadsMode !== 'epic' },
               onInput: value => app.update(prev => ({ ...prev, epicId: value })),
-              rows: 1,
+              rows: 3,
               wordWrap: false,
               focusConfig: TEXTAREA_FOCUS,
             }),
@@ -544,6 +554,12 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const mainContent = ui.column({ width: contentWidth, gap: 1 }, [
       ui.column({ width: 'full', gap: 0, items: 'center' }, [
         ui.text(HERO_SUBTITLE, { style: { fg: fg(c.dim) } }),
+        ...launchSizeWarnings.map((warning, index) =>
+          ui.text(warning, {
+            key: `launch-size-warning-${index}`,
+            style: { fg: fg(DANGER_FG), bold: true },
+          }),
+        ),
         ui.text(`v${version}`, { style: { fg: fg(c.muted) } }),
       ]),
       ui.row({ width: 'full', justify: 'center' }, [
