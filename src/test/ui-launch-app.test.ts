@@ -152,6 +152,7 @@ describe('mountLaunchApp', () => {
       id: 'launch-custom-prompt',
       accessibleLabel: 'Custom prompt',
       placeholder: 'enter additional instructions...',
+      rows: 2,
     }));
     expect(inputMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-epic-id',
@@ -244,5 +245,36 @@ describe('mountLaunchApp', () => {
       id: 'launch-model',
       value: 'gpt-5-codex',
     }));
+  });
+
+  it('shows a custom prompt overflow indicator when wrapped text exceeds visible rows', () => {
+    let viewFn!: (state: unknown) => unknown;
+    mockCreateNodeApp.mockReturnValue(createAppMock({
+      view: vi.fn((fn: (state: unknown) => unknown) => {
+        viewFn = fn;
+      }),
+    }));
+
+    void mountLaunchApp({
+      version: '0.7.6',
+      initialSelection: baseSelection,
+      issueCounts: { live: 14, simulate: 3 },
+    });
+
+    viewFn({
+      provider: 'claude',
+      model: 'sonnet',
+      effort: 'medium',
+      customPrompt: 'x'.repeat(500),
+      beadsMode: 'all',
+      epicId: '',
+      simulate: false,
+      runMode: 'pr',
+      issueCounts: { live: 14, simulate: 3 },
+      focusedId: null,
+    });
+
+    const renderedText = textMock.mock.calls.map(([content]) => content);
+    expect(renderedText.some(text => typeof text === 'string' && text.startsWith('overflow: +'))).toBe(true);
   });
 });

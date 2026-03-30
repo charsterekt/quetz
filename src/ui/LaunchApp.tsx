@@ -26,6 +26,8 @@ const DANGER_FG = '#FF5C33';
 const CHIP_SELECTED_FG = '#FAFAFA';
 const FOCUS_FG = c.cyan;
 const HERO_SUBTITLE = '// autonomous_code_agent';
+const CUSTOM_PROMPT_ROWS = 2;
+const CUSTOM_PROMPT_GUTTER_COLS = 8;
 
 const BUTTON_FOCUS = {
   indicator: 'underline' as const,
@@ -176,6 +178,13 @@ function panelWidth(termCols: number, stacked: boolean): number {
   }
 
   return Math.max(60, Math.min(Math.floor((termCols - 14) / 2), 84));
+}
+
+function countWrappedLines(text: string, wrapWidth: number): number {
+  const width = Math.max(1, wrapWidth);
+  const logicalLines = text.split('\n');
+
+  return logicalLines.reduce((total, line) => total + Math.max(1, Math.ceil(line.length / width)), 0);
 }
 
 function labelText(label: string) {
@@ -349,6 +358,9 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const issueCount = state.simulate ? state.issueCounts.simulate : state.issueCounts.live;
     const modelChoices = buildModelChoices(state.provider, state.model);
     const simulateActive = state.simulate;
+    const customPromptWrapWidth = Math.max(8, width - CUSTOM_PROMPT_GUTTER_COLS);
+    const customPromptTotalLines = countWrappedLines(state.customPrompt, customPromptWrapWidth);
+    const customPromptOverflowLines = Math.max(0, customPromptTotalLines - CUSTOM_PROMPT_ROWS);
 
     const providerOptions = [
       { value: 'claude', label: 'claude' },
@@ -438,13 +450,20 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
                   placeholder: 'enter additional instructions...',
                   style: { fg: fg(c.text) },
                   onInput: value => app.update(prev => ({ ...prev, customPrompt: value })),
-                  rows: 3,
+                  rows: CUSTOM_PROMPT_ROWS,
                 }),
               ],
               isFocusedId(state.focusedId, 'launch-custom-prompt'),
               false,
               c.border
             ),
+            ...(customPromptOverflowLines > 0
+              ? [
+                  ui.text(`overflow: +${customPromptOverflowLines} line${customPromptOverflowLines === 1 ? '' : 's'}`, {
+                    style: { fg: fg(WARNING_FG) },
+                  }),
+                ]
+              : []),
           ]),
         ]),
       ],
