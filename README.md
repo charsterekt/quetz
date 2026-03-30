@@ -57,7 +57,7 @@ quetz version
 ```bash
 quetz version     # Confirm installation
 quetz init        # First-time setup (run once per project)
-quetz run         # Start the loop
+quetz run         # Open launch UI (TTY) and start from there
 quetz run --simulate # Full visual test with actual agents and mock issues
 quetz run --local-commits # The full Quetz loop but commit-only (no PRs)
 quetz run --amend # The full Quetz loop but with a single rolling commit (no PRs)
@@ -93,18 +93,32 @@ Start the dev loop. Runs until all issues are resolved or a failure occurs. Comp
 
 <img width="2082" height="1277" alt="image" src="https://github.com/user-attachments/assets/a2da2281-e0d5-4090-b6b8-214a78e49fb4" /><br><br>
 
+**Launch flow (TTY):**
+
+- `quetz run` with no extra flags opens the pre-run launch screen.
+- Launch controls include provider, model, effort, custom prompt, run mode, beads scope, epic ID input, and simulate toggle.
+- Press `$ quetz start` to run with the selected values.
+- If any run flag is passed (for example `--simulate`), Quetz skips launch and starts the loop directly.
+
+**Run flags:**
+
 
 | Flag | Default | Description |
 |---|---|---|
 | `--provider <provider>` | config | Override agent provider (`claude`, `codex`) |
 | `--model <model>` | `sonnet` | Override agent model (e.g. `haiku`, `sonnet`, `opus`) |
 | `--effort <level>` | config | Override agent effort level (`low`, `medium`, `high`, `max`) |
+| `--thinking-level <level>` | config | Legacy alias for `--effort` |
 | `--timeout <minutes>` | `30` | Kill agent if it runs longer than this |
 | `--local-commits` | — | Skip PR lifecycle; verify local commits only |
 | `--amend` | — | Accumulate all issue work into a single rolling commit (no PR) |
 | `--simulate` | — | Full visual test: mock issues, real agent, simulated PR lifecycle |
 
 `--local-commits` and `--amend` are mutually exclusive. Both skip GitHub API access entirely.
+
+`custom prompt` is currently launch-screen only and gets appended to the generated agent instructions for that run.
+
+`beads mode` epic filtering is not wired into the loop yet; launch labels it as `epic - coming soon`.
 
 ### `quetz status`
 
@@ -117,6 +131,16 @@ Validate `.quetzrc.yml` without running the loop. Exits 0 on success, 2 on confi
 ### `quetz config show`
 
 Display the parsed configuration, including applied defaults.
+
+### `quetz models`
+
+List known model names and defaults.
+
+```bash
+quetz models
+quetz models --provider claude
+quetz models --provider codex
+```
 
 ---
 
@@ -136,6 +160,12 @@ The TUI is built on [Rezi](https://rezitui.dev) (`@rezi-ui/node`), a declarative
 | `esc` | Return from session detail |
 
 The TUI disables itself automatically when stdout is not a TTY (CI, piped output).
+
+Terminal size guidance:
+
+- Launch screen warns when terminal width is below `175` columns or height is below `55` rows.
+- Main run UI warns when terminal width is below `230` columns or height is below `55` rows.
+- These warnings update live while the terminal is resized.
 
 ---
 

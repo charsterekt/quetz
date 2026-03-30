@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-03-30
+
+### Added
+- Zero-arg `quetz run` launch experience with a full pre-run control screen for provider, model, thinking level, run mode, beads scope, custom prompt, and simulate mode.
+- Launch-screen support for additive custom prompt input using native multiline textarea behavior and focus handling.
+- Terminal size guardrails with explicit warning text:
+  - Launch screen warns below `175x55`.
+  - Main loop header warns below `230x55`.
+
+### Changed
+- Launch screen visual system refined for parity with the intended design language (panel chrome, control focus treatment, spacing, and issue counter presentation).
+- Beads scope selector now labels epic mode as `epic - coming soon`.
+- Launch and main TUI warning sizing now tracks Rezi resize events so visibility updates live while resizing.
+- README now documents the zero-arg launch flow, current run/model flags, and terminal-size warning behavior.
+
+### Fixed
+- Short-terminal launch regressions where controls/footer clipped or compressed under low row counts.
+- Header warning clipping in the main TUI caused by fixed right-column height constraints.
+- Epic ID input behavior and styling consistency with the launch form controls.
+
 ## [0.7.6] - 2026-03-28
 
 ### Added
@@ -92,6 +112,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Built-in fake issues for `--mock` / `--simulate` modes (`mock-data.ts`)
 - Exit codes: 0 clean, 1 runtime failure, 2 config error, 3 preflight failure
 
+[0.8.7]: https://github.com/dkchar/quetz/releases/tag/v0.8.7
 [0.7.6]: https://github.com/dkchar/quetz/releases/tag/v0.7.6
 [0.6.4]: https://github.com/dkchar/quetz/releases/tag/v0.6.4
 [0.6.3]: https://github.com/dkchar/quetz/releases/tag/v0.6.3

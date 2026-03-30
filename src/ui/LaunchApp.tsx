@@ -380,7 +380,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     ];
     const beadsOptions = [
       { value: 'all', label: 'all' },
-      { value: 'epic', label: 'epic' },
+      { value: 'epic', label: 'epic - coming soon' },
     ];
 
     const leftPanel = ui.box(
