@@ -15,6 +15,7 @@ const {
   selectMock,
   focusZoneMock,
   spacerMock,
+  textareaMock,
 } = vi.hoisted(() => ({
   mockCreateNodeApp: vi.fn(),
   textMock: vi.fn((content: string) => ({ content })),
@@ -27,6 +28,7 @@ const {
   selectMock: vi.fn((props: Record<string, unknown>) => props),
   focusZoneMock: vi.fn((_props: Record<string, unknown>, children: unknown) => ({ children })),
   spacerMock: vi.fn((props: Record<string, unknown>) => ({ spacer: true, ...props })),
+  textareaMock: vi.fn((props: Record<string, unknown>) => props),
 }));
 
 vi.mock('@rezi-ui/node', () => ({
@@ -46,6 +48,7 @@ vi.mock('@rezi-ui/core', () => ({
     select: selectMock,
     focusZone: focusZoneMock,
     spacer: spacerMock,
+    textarea: textareaMock,
   },
 }));
 
@@ -145,7 +148,7 @@ describe('mountLaunchApp', () => {
       id: 'launch-effort-off',
     }));
 
-    expect(inputMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(textareaMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-custom-prompt',
       accessibleLabel: 'Custom prompt',
       placeholder: 'enter additional instructions...',

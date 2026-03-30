@@ -276,7 +276,7 @@ function fieldShell(children: any[], focused: boolean, disabled = false) {
       borderStyle: { fg: fg(focused ? FOCUS_FG : c.border) },
       style: { bg: bg(SURFACE_BG), dim: disabled },
       px: 1,
-      py: 1,
+      py: 0,
       width: 'full',
     },
     children,
@@ -424,13 +424,14 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
           launchSection('custom_prompt', [
             fieldShell(
               [
-                ui.input({
+                ui.textarea({
                   id: 'launch-custom-prompt',
                   accessibleLabel: 'Custom prompt',
                   value: state.customPrompt,
                   placeholder: 'enter additional instructions...',
                   style: { fg: fg(c.text) },
                   onInput: value => app.update(prev => ({ ...prev, customPrompt: value })),
+                  rows: 3,
                 }),
               ],
               isFocusedId(state.focusedId, 'launch-custom-prompt'),
@@ -526,7 +527,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
 
     const panelRow = stacked
       ? ui.column({ gap: 1, items: 'center' }, [leftPanel, rightPanel])
-      : ui.row({ gap: panelGap, items: 'stretch', justify: 'center' }, [leftPanel, rightPanel]);
+      : ui.row({ gap: panelGap, items: 'start', justify: 'center' }, [leftPanel, rightPanel]);
 
     const logoBlock = ui.column(
       { width: logoWidth, gap: 0 },
