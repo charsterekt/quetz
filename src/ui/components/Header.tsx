@@ -71,7 +71,7 @@ export const Header = defineWidget<HeaderProps>((props, ctx) => {
 
   const rightCol =
     mode === 'session_detail'
-      ? ui.column({ items: 'end', justify: 'between', height: LOGO_LINES.length }, [
+      ? ui.column({ items: 'end', justify: 'between' }, [
           ui.column({ items: 'end', gap: 0 }, [
             ui.text('[ viewing session ]', { style: { fg: fg(c.cyan) } }),
             ui.row({ gap: 1, items: 'center' }, [
@@ -81,7 +81,7 @@ export const Header = defineWidget<HeaderProps>((props, ctx) => {
           ]),
           rightColFooter,
         ])
-      : ui.column({ items: 'end', justify: 'between', height: LOGO_LINES.length }, [
+      : ui.column({ items: 'end', justify: 'between' }, [
           ui.column({ items: 'end', gap: 0 }, [
             ui.row({ items: 'center' }, [
               ui.text(snakeHead(mode, frame), { style: { fg: fg(c.brand) } }),

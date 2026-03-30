@@ -297,6 +297,8 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
   const app = createNodeApp<LaunchState>({
     initialState: normalizeInitialState(initialSelection, issueCounts),
   });
+  let viewportCols = process.stdout.columns ?? 120;
+  let viewportRows = process.stdout.rows ?? 40;
 
   let resolveResult!: (value: LaunchSelection | null) => void;
   const result = new Promise<LaunchSelection | null>(resolve => {
@@ -328,12 +330,18 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
       return;
     }
 
+    if ('cols' in ev.event && typeof ev.event.cols === 'number') {
+      viewportCols = ev.event.cols;
+    }
+    if ('rows' in ev.event && typeof ev.event.rows === 'number') {
+      viewportRows = ev.event.rows;
+    }
     app.update(prev => ({ ...prev }));
   });
 
   app.view((state: LaunchState) => {
-    const termCols = process.stdout.columns ?? 120;
-    const termRows = process.stdout.rows ?? 40;
+    const termCols = viewportCols;
+    const termRows = viewportRows;
     const forceContentScroll = termRows < 42;
     const stacked = termCols < TWO_PANEL_MIN_COLS;
     const width = panelWidth(termCols, stacked);
