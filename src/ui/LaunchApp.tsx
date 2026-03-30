@@ -221,7 +221,7 @@ function launchChip(
     {
       border: 'single',
       borderStyle: { fg: fg(selected ? selectedFg : c.border), bold: selected },
-      style: { bg: bg(selected ? toneBackground(tone) : PANEL_BG) },
+      style: { bg: bg(PANEL_BG) },
       px: 1,
       py: 0,
     },
@@ -266,7 +266,7 @@ function launchGroupRow(
 }
 
 function launchSection(title: string, children: any[]) {
-  return ui.column({ width: 'full', gap: 0 }, [labelText(title), ...children]);
+  return ui.column({ width: 'full', gap: 1 }, [labelText(title), ...children]);
 }
 
 function fieldShell(children: any[], focused: boolean, disabled = false) {
@@ -276,7 +276,7 @@ function fieldShell(children: any[], focused: boolean, disabled = false) {
       borderStyle: { fg: fg(focused ? FOCUS_FG : c.border) },
       style: { bg: bg(SURFACE_BG), dim: disabled },
       px: 1,
-      py: 0,
+      py: 1,
       width: 'full',
     },
     children,
@@ -371,11 +371,11 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
         borderStyle: { fg: fg(c.border) },
         style: { bg: bg(PANEL_BG) },
         px: 2,
-        py: 0,
+        py: 1,
         width,
       },
       [
-        ui.column({ width: 'full', gap: 0, justify: 'start' }, [ // Reduced gap to 0
+        ui.column({ width: 'full', gap: 1, justify: 'start' }, [
           ui.text('// model_configuration', { style: { fg: fg(c.dim) } }),
           launchSection('provider', [
             launchGroupRow('launch-provider', state.provider, 'success', providerOptions, value => {
@@ -447,11 +447,11 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
         borderStyle: { fg: fg(c.border) },
         style: { bg: bg(PANEL_BG) },
         px: 2,
-        py: 0,
+        py: 1,
         width,
       },
       [
-        ui.column({ width: 'full', gap: 0, justify: 'start' }, [ // Reduced gap to 0
+        ui.column({ width: 'full', gap: 1, justify: 'start' }, [
           ui.text('// run_mode', { style: { fg: fg(c.dim) } }),
           launchSection('mode', [
             launchGroupRow('launch-run-mode', state.runMode, 'success', runModeOptions, value => {
@@ -485,9 +485,9 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
             {
               border: 'single',
               borderStyle: { fg: fg(simulateActive ? DANGER_FG : c.border) },
-              style: { bg: bg(simulateActive ? DANGER_BG : SURFACE_BG) },
+              style: { bg: bg(PANEL_BG) },
               px: 2,
-              py: 0,
+              py: 1,
               width: 'full',
             },
             [
@@ -514,22 +514,10 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
               ]),
             ],
           ),
-          ui.row({ items: 'center', gap: 2 }, [
-            ui.box(
-              {
-                border: 'single',
-                borderStyle: { fg: fg(WARNING_FG) },
-                style: { bg: bg(PANEL_BG) },
-                px: 4,
-                py: 0,
-              },
-              [
-                ui.text(String(issueCount), {
-                  variant: 'heading',
-                  style: { fg: fg(WARNING_FG), bold: true },
-                }),
-              ],
-            ),
+          ui.row({ items: 'center', gap: 2, pt: 1 }, [
+            ui.text(String(issueCount), {
+              style: { fg: fg(WARNING_FG), bold: true },
+            }),
             ui.text('total_issues', { style: { fg: fg(c.dim) } }),
           ]),
         ]),
@@ -572,7 +560,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
             border: 'none',
             style: { bg: bg(SUCCESS_FG) },
             px: 5,
-            py: 0,
+            py: 1,
           },
           [
             ui.button({
@@ -580,7 +568,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
               label: '$ quetz start',
               dsVariant: 'ghost',
               focusConfig: BUTTON_FOCUS,
-              style: { fg: fg(SUCCESS_BG), bold: true },
+              style: { fg: fg(c.bg), bg: bg(SUCCESS_FG), bold: true },
               onPress: () => settle(toSelection(state)),
             }),
           ],
