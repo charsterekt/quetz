@@ -16,6 +16,7 @@ const {
   focusZoneMock,
   spacerMock,
   textareaMock,
+  scrollbarMock,
 } = vi.hoisted(() => ({
   mockCreateNodeApp: vi.fn(),
   textMock: vi.fn((content: string) => ({ content })),
@@ -29,10 +30,15 @@ const {
   focusZoneMock: vi.fn((_props: Record<string, unknown>, children: unknown) => ({ children })),
   spacerMock: vi.fn((props: Record<string, unknown>) => ({ spacer: true, ...props })),
   textareaMock: vi.fn((props: Record<string, unknown>) => props),
+  scrollbarMock: vi.fn((props: Record<string, unknown>) => ({ scrollbar: true, ...props })),
 }));
 
 vi.mock('@rezi-ui/node', () => ({
   createNodeApp: mockCreateNodeApp,
+}));
+
+vi.mock('../ui/components/Scrollbar.js', () => ({
+  Scrollbar: scrollbarMock,
 }));
 
 vi.mock('@rezi-ui/core', () => ({
@@ -152,7 +158,9 @@ describe('mountLaunchApp', () => {
       id: 'launch-custom-prompt',
       accessibleLabel: 'Custom prompt',
       placeholder: 'enter additional instructions...',
-      rows: 2,
+      rows: 3,
+      wordWrap: true,
+      focusConfig: expect.objectContaining({ indicator: 'none' }),
     }));
     expect(inputMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-epic-id',
@@ -247,7 +255,7 @@ describe('mountLaunchApp', () => {
     }));
   });
 
-  it('shows a custom prompt overflow indicator when wrapped text exceeds visible rows', () => {
+  it('renders an internal custom prompt scrollbar and no overflow status text', () => {
     let viewFn!: (state: unknown) => unknown;
     mockCreateNodeApp.mockReturnValue(createAppMock({
       view: vi.fn((fn: (state: unknown) => unknown) => {
@@ -266,6 +274,7 @@ describe('mountLaunchApp', () => {
       model: 'sonnet',
       effort: 'medium',
       customPrompt: 'x'.repeat(500),
+      customPromptCursor: 500,
       beadsMode: 'all',
       epicId: '',
       simulate: false,
@@ -274,7 +283,11 @@ describe('mountLaunchApp', () => {
       focusedId: null,
     });
 
+    expect(scrollbarMock).toHaveBeenCalledWith(expect.objectContaining({
+      visibleLines: 3,
+      height: 3,
+    }));
     const renderedText = textMock.mock.calls.map(([content]) => content);
-    expect(renderedText.some(text => typeof text === 'string' && text.startsWith('overflow: +'))).toBe(true);
+    expect(renderedText.some(text => typeof text === 'string' && text.startsWith('overflow: +'))).toBe(false);
   });
 });
