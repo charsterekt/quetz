@@ -212,15 +212,17 @@ function launchChip(
   id: string,
   label: string,
   selected: boolean,
+  focused: boolean,
   tone: LaunchTone,
   onPress: () => void,
 ) {
   const selectedFg = toneForeground(tone);
+  const highlighted = selected || focused;
 
   return ui.box(
     {
       border: 'single',
-      borderStyle: { fg: fg(selected ? selectedFg : c.border), bold: selected },
+      borderStyle: { fg: fg(highlighted ? selectedFg : c.border), bold: highlighted },
       style: { bg: bg(PANEL_BG) },
       px: 1,
       py: 0,
@@ -241,6 +243,7 @@ function launchChip(
 
 function launchGroupRow(
   groupId: string,
+  focusedId: string | null,
   selectedValue: string,
   tone: LaunchTone,
   options: ReadonlyArray<{ value: string; label: string }>,
@@ -251,15 +254,17 @@ function launchGroupRow(
     [
       ui.row(
         { gap: 1, wrap: true },
-        options.map(option =>
-          launchChip(
-            `${groupId}-${sanitizeIdSegment(option.value)}`,
+        options.map(option => {
+          const optionId = `${groupId}-${sanitizeIdSegment(option.value)}`;
+          return launchChip(
+            optionId,
             option.label,
             selectedValue === option.value,
+            isFocusedId(focusedId, optionId),
             tone,
             () => onSelect(option.value),
-          ),
-        ),
+          );
+        }),
       ),
     ],
   );
@@ -269,11 +274,11 @@ function launchSection(title: string, children: any[]) {
   return ui.column({ width: 'full', gap: 1 }, [labelText(title), ...children]);
 }
 
-function fieldShell(children: any[], focused: boolean, disabled = false) {
+function fieldShell(children: any[], focused: boolean, disabled = false, focusColor: string = FOCUS_FG) {
   return ui.box(
     {
       border: 'single',
-      borderStyle: { fg: fg(focused ? FOCUS_FG : c.border) },
+      borderStyle: { fg: fg(focused ? focusColor : c.border) },
       style: { bg: bg(SURFACE_BG), dim: disabled },
       px: 1,
       py: 0,
@@ -378,7 +383,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
         ui.column({ width: 'full', gap: 1, justify: 'start' }, [
           ui.text('// model_configuration', { style: { fg: fg(c.dim) } }),
           launchSection('provider', [
-            launchGroupRow('launch-provider', state.provider, 'success', providerOptions, value => {
+            launchGroupRow('launch-provider', state.focusedId, state.provider, 'success', providerOptions, value => {
               if (value !== 'claude' && value !== 'codex') return;
               app.update(prev => {
                 const provider = value as AgentProvider;
@@ -399,7 +404,9 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
             ui.box(
               {
                 border: 'single',
-                borderStyle: { fg: fg(c.border) },
+                borderStyle: {
+                  fg: fg(isFocusedId(state.focusedId, 'launch-model') ? SUCCESS_FG : c.border),
+                },
                 style: { bg: bg(SURFACE_BG) },
                 px: 1,
                 py: 0,
@@ -417,7 +424,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
             ),
           ]),
           launchSection('thinking', [
-            launchGroupRow('launch-effort', state.effort, 'warning', effortOptions, value =>
+            launchGroupRow('launch-effort', state.focusedId, state.effort, 'warning', effortOptions, value =>
               app.update(prev => ({ ...prev, effort: value as AgentEffortLevel }))
             ),
           ]),
@@ -435,7 +442,8 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
                 }),
               ],
               isFocusedId(state.focusedId, 'launch-custom-prompt'),
-              false
+              false,
+              c.border
             ),
           ]),
         ]),
@@ -455,13 +463,13 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
         ui.column({ width: 'full', gap: 1, justify: 'start' }, [
           ui.text('// run_mode', { style: { fg: fg(c.dim) } }),
           launchSection('mode', [
-            launchGroupRow('launch-run-mode', state.runMode, 'success', runModeOptions, value => {
+            launchGroupRow('launch-run-mode', state.focusedId, state.runMode, 'success', runModeOptions, value => {
               if (value !== 'pr' && value !== 'commit' && value !== 'amend') return;
               app.update(prev => ({ ...prev, runMode: value as LaunchRunMode }));
             }),
           ]),
           launchSection('beads_mode', [
-            launchGroupRow('launch-beads-mode', state.beadsMode, 'success', beadsOptions, value => {
+            launchGroupRow('launch-beads-mode', state.focusedId, state.beadsMode, 'success', beadsOptions, value => {
               if (value !== 'all' && value !== 'epic') return;
               app.update(prev => ({ ...prev, beadsMode: value as LaunchBeadsMode }));
             }),
@@ -485,7 +493,13 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
           ui.box(
             {
               border: 'single',
-              borderStyle: { fg: fg(isFocusedId(state.focusedId, 'launch-simulate') ? FOCUS_FG : (simulateActive ? DANGER_FG : c.border)) },
+              borderStyle: {
+                fg: fg(
+                  isFocusedId(state.focusedId, 'launch-simulate')
+                    ? WARNING_FG
+                    : (simulateActive ? DANGER_FG : c.border)
+                ),
+              },
               style: { bg: bg(PANEL_BG) },
               px: 2,
               py: 1,
