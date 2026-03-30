@@ -40,6 +40,8 @@ describe('Header', () => {
       phase: 'agent_running',
       bgStatus: 'bd-1  |  running  |  0m 12s',
       version: '0.5.3',
+      termCols: 230,
+      termRows: 55,
     }, ctx as never);
 
     expect(boxMock).toHaveBeenCalledTimes(1);
@@ -70,65 +72,41 @@ describe('Header', () => {
   });
 
   it('shows split width/height warning lines when terminal is below minimum size', () => {
-    const rowsDescriptor = Object.getOwnPropertyDescriptor(process.stdout, 'rows');
-    const colsDescriptor = Object.getOwnPropertyDescriptor(process.stdout, 'columns');
-    Object.defineProperty(process.stdout, 'rows', { value: 40, configurable: true });
-    Object.defineProperty(process.stdout, 'columns', { value: 120, configurable: true });
+    const ctx = {
+      useState: vi.fn(() => [0, vi.fn()]),
+    };
 
-    try {
-      const ctx = {
-        useState: vi.fn(() => [0, vi.fn()]),
-      };
+    Header({
+      mode: 'running',
+      issueCount: { current: 2, total: 5 },
+      phase: 'agent_running',
+      bgStatus: 'bd-1  |  running  |  0m 12s',
+      version: '0.5.3',
+      termCols: 120,
+      termRows: 40,
+    }, ctx as never);
 
-      Header({
-        mode: 'running',
-        issueCount: { current: 2, total: 5 },
-        phase: 'agent_running',
-        bgStatus: 'bd-1  |  running  |  0m 12s',
-        version: '0.5.3',
-      }, ctx as never);
-
-      const renderedText = textMock.mock.calls.map(([content]) => content);
-      expect(renderedText).toContain('warning: terminal width 120 < 230');
-      expect(renderedText).toContain('warning: terminal height 40 < 55');
-    } finally {
-      if (rowsDescriptor) {
-        Object.defineProperty(process.stdout, 'rows', rowsDescriptor);
-      }
-      if (colsDescriptor) {
-        Object.defineProperty(process.stdout, 'columns', colsDescriptor);
-      }
-    }
+    const renderedText = textMock.mock.calls.map(([content]) => content);
+    expect(renderedText).toContain('warning: terminal width 120 < 230');
+    expect(renderedText).toContain('warning: terminal height 40 < 55');
   });
 
   it('hides header terminal-size warnings when terminal meets minimums', () => {
-    const rowsDescriptor = Object.getOwnPropertyDescriptor(process.stdout, 'rows');
-    const colsDescriptor = Object.getOwnPropertyDescriptor(process.stdout, 'columns');
-    Object.defineProperty(process.stdout, 'rows', { value: 55, configurable: true });
-    Object.defineProperty(process.stdout, 'columns', { value: 230, configurable: true });
+    const ctx = {
+      useState: vi.fn(() => [0, vi.fn()]),
+    };
 
-    try {
-      const ctx = {
-        useState: vi.fn(() => [0, vi.fn()]),
-      };
+    Header({
+      mode: 'running',
+      issueCount: { current: 2, total: 5 },
+      phase: 'agent_running',
+      bgStatus: 'bd-1  |  running  |  0m 12s',
+      version: '0.5.3',
+      termCols: 230,
+      termRows: 55,
+    }, ctx as never);
 
-      Header({
-        mode: 'running',
-        issueCount: { current: 2, total: 5 },
-        phase: 'agent_running',
-        bgStatus: 'bd-1  |  running  |  0m 12s',
-        version: '0.5.3',
-      }, ctx as never);
-
-      const renderedText = textMock.mock.calls.map(([content]) => content);
-      expect(renderedText.some(text => typeof text === 'string' && text.startsWith('warning: terminal'))).toBe(false);
-    } finally {
-      if (rowsDescriptor) {
-        Object.defineProperty(process.stdout, 'rows', rowsDescriptor);
-      }
-      if (colsDescriptor) {
-        Object.defineProperty(process.stdout, 'columns', colsDescriptor);
-      }
-    }
+    const renderedText = textMock.mock.calls.map(([content]) => content);
+    expect(renderedText.some(text => typeof text === 'string' && text.startsWith('warning: terminal'))).toBe(false);
   });
 });

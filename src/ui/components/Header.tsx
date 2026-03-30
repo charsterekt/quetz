@@ -28,14 +28,14 @@ interface HeaderProps {
   phase: string;
   bgStatus: string;
   version: string;
+  termCols: number;
+  termRows: number;
   key?: string;
 }
 
 export const Header = defineWidget<HeaderProps>((props, ctx) => {
-  const { mode, issueCount, bgStatus, version } = props;
+  const { mode, issueCount, bgStatus, version, termCols, termRows } = props;
   const [frameIdx, setFrameIdx] = ctx.useState(0);
-  const termCols = process.stdout.columns ?? 120;
-  const termRows = process.stdout.rows ?? 40;
   const mainSizeWarnings = [
     ...(termCols < MAIN_MIN_COLS
       ? [`warning: terminal width ${termCols} < ${MAIN_MIN_COLS}`]

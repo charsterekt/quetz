@@ -138,6 +138,8 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
   const app = createNodeApp<AppState>({
     initialState: INITIAL_STATE,
   });
+  let viewportCols = process.stdout.columns ?? 120;
+  let viewportRows = process.stdout.rows ?? 40;
 
   const cleanupWire = wireState(bus, app.update);
 
@@ -146,7 +148,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     'ctrl+c': () => onQuit(),
 
     up: () => app.update(s => {
-      const termRows = process.stdout.rows ?? 40;
+      const termRows = viewportRows;
       if (s.mode === 'session_detail') {
         return { ...s, sessionLogScrollOffset: Math.max(0, s.sessionLogScrollOffset - 3) };
       }
@@ -163,7 +165,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     }),
 
     down: () => app.update(s => {
-      const termRows = process.stdout.rows ?? 40;
+      const termRows = viewportRows;
       if (s.mode === 'session_detail') {
         const maxOffset = Math.max(0, (s.viewingSession?.lines.length ?? 0) - detailVisibleRows(termRows));
         return { ...s, sessionLogScrollOffset: clampScrollOffset(s.sessionLogScrollOffset + 3, maxOffset) };
@@ -193,7 +195,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
       return {
         ...s,
         agentHorizontalScrollOffset: Math.min(
-          maxAgentHorizontalOffset(s, process.stdout.columns ?? 120),
+          maxAgentHorizontalOffset(s, viewportCols),
           s.agentHorizontalScrollOffset + 8,
         ),
       };
@@ -220,7 +222,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     }),
 
     h: () => app.update(s => {
-      const termRows = process.stdout.rows ?? 40;
+      const termRows = viewportRows;
       if (s.mode === 'session_detail') {
         return syncSessionViewport({
           ...s,
@@ -263,7 +265,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
           mode: s.priorMode,
           viewingSession: null,
           focusedPane: 'sessions',
-        }, process.stdout.rows ?? 40);
+        }, viewportRows);
       }
       if (isOutcomeMode(s.mode)) {
         return s;
@@ -279,7 +281,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
         selectedSessionIdx: s.selectedSessionIdx >= 0
           ? s.selectedSessionIdx
           : s.completedSessions.length - 1,
-      }, process.stdout.rows ?? 40);
+      }, viewportRows);
     }),
 
     left: () => app.update(s => {
@@ -288,7 +290,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     }),
 
     '[': () => app.update(s => {
-      const rows = process.stdout.rows ?? 40;
+      const rows = viewportRows;
       const bodyRows = bodyRowCount(rows);
       const sessionsRows = sessionPanelRows(bodyRows);
       const logVisibleRows = Math.max(1, bodyRows - sessionsRows - 3);
@@ -299,7 +301,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     }),
 
     ']': () => app.update(s => {
-      const rows = process.stdout.rows ?? 40;
+      const rows = viewportRows;
       const visibleRows = logVisibleRows(rows);
       const currentOffset = s.logAutoScroll
         ? Math.max(0, s.logLines.length - visibleRows)
@@ -319,10 +321,13 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     }
 
     if (ev.event.kind === 'resize') {
-      const rows = 'rows' in ev.event && typeof ev.event.rows === 'number'
-        ? ev.event.rows
-        : (process.stdout.rows ?? 40);
-      app.update(s => syncSessionViewport({ ...s }, rows));
+      if ('cols' in ev.event && typeof ev.event.cols === 'number') {
+        viewportCols = ev.event.cols;
+      }
+      if ('rows' in ev.event && typeof ev.event.rows === 'number') {
+        viewportRows = ev.event.rows;
+      }
+      app.update(s => syncSessionViewport({ ...s }, viewportRows));
       return;
     }
 
@@ -340,7 +345,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     const detailRect = app.measureElement(SCROLL_REGION_IDS.sessionDetail);
 
     app.update(s => {
-      const termRows = process.stdout.rows ?? 40;
+      const termRows = viewportRows;
 
       if (s.mode === 'session_detail' && pointInRect(x, y, detailRect) && s.viewingSession) {
         const maxOffset = Math.max(0, s.viewingSession.lines.length - detailVisibleRows(termRows));
@@ -378,8 +383,8 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
 
   app.view((state: AppState) => {
     const rootBg = bgColor(c.bg);
-    const termCols = process.stdout.columns ?? 120;
-    const termRows = process.stdout.rows ?? 40;
+    const termCols = viewportCols;
+    const termRows = viewportRows;
     const rightCols = rightRailWidth(termCols);
     const leftCols = Math.max(1, termCols - rightCols);
     const bodyRows = bodyRowCount(termRows);
@@ -401,7 +406,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
 
     if (state.mode === 'victory' && !state.viewingSession) {
       return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
-        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version }),
+        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version, termCols, termRows }),
         VictoryCard({ data: state.victoryData, version }),
         footerNode,
       ]);
@@ -409,7 +414,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
 
     if (state.mode === 'failure' && !state.viewingSession) {
       return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
-        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version }),
+        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version, termCols, termRows }),
         FailureCard({ data: state.failureData }),
         footerNode,
       ]);
@@ -417,14 +422,14 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
 
     if (state.mode === 'session_detail' && state.viewingSession) {
       return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
-        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version }),
+        Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version, termCols, termRows }),
         SessionDetail({ session: state.viewingSession, scrollOffset: state.sessionLogScrollOffset }),
         footerNode,
       ]);
     }
 
     return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
-      Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version }),
+      Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version, termCols, termRows }),
       ui.row({ width: 'full', flex: 1 }, [
         AgentPanel({
           width: leftCols,
