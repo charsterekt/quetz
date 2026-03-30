@@ -152,7 +152,7 @@ describe('mountLaunchApp', () => {
       id: 'launch-custom-prompt',
       accessibleLabel: 'Custom prompt',
       placeholder: 'enter additional instructions...',
-      rows: 3,
+      rows: 6,
       wordWrap: true,
       focusConfig: expect.objectContaining({ indicator: 'none' }),
     }));
@@ -296,7 +296,7 @@ describe('mountLaunchApp', () => {
 
     expect(textareaMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-custom-prompt',
-      rows: 3,
+      rows: 6,
       wordWrap: true,
     }));
     const renderedText = textMock.mock.calls.map(([content]) => content);

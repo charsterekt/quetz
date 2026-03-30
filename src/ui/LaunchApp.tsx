@@ -26,7 +26,7 @@ const DANGER_FG = '#FF5C33';
 const CHIP_SELECTED_FG = '#FAFAFA';
 const FOCUS_FG = c.cyan;
 const HERO_SUBTITLE = '// the feathered serpent dev loop';
-const CUSTOM_PROMPT_ROWS = 3;
+const CUSTOM_PROMPT_ROWS = 6;
 
 const TEXTAREA_FOCUS = {
   indicator: 'none' as const,
@@ -528,7 +528,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
               ]),
             ],
           ),
-          ui.row({ items: 'center', gap: 2, pt: 1 }, [
+          ui.row({ items: 'center', gap: 2, pt: 1, pl: 1 }, [
             ui.text(String(issueCount), {
               style: { fg: fg(WARNING_FG), bold: true },
             }),
