@@ -485,7 +485,7 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
           ui.box(
             {
               border: 'single',
-              borderStyle: { fg: fg(simulateActive ? DANGER_FG : c.border) },
+              borderStyle: { fg: fg(isFocusedId(state.focusedId, 'launch-simulate') ? FOCUS_FG : (simulateActive ? DANGER_FG : c.border)) },
               style: { bg: bg(PANEL_BG) },
               px: 2,
               py: 1,
