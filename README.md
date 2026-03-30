@@ -80,7 +80,7 @@ Print the installed version. Use this to confirm installation.
 
 ```bash
 quetz version
-# quetz v0.1.0
+# quetz v0.8.7
 ```
 
 ### `quetz init`
@@ -91,6 +91,7 @@ First-time setup. Runs preflight checks, generates `.quetzrc.yml`, and optionall
 
 Start the dev loop. Runs until all issues are resolved or a failure occurs. Completed agent runs can be viewed through the TUI to track what was done.
 
+<img width="1649" height="941" alt="image" src="https://github.com/user-attachments/assets/f1718774-f299-4d4b-8ca6-566de13968c2" /><br><br>
 <img width="2082" height="1277" alt="image" src="https://github.com/user-attachments/assets/a2da2281-e0d5-4090-b6b8-214a78e49fb4" /><br><br>
 
 **Launch flow (TTY):**
