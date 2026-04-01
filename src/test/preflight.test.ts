@@ -91,7 +91,6 @@ describe('checkClaudeCode (via runPreflight)', () => {
       if (String(cmd).includes('bd --version')) return 'bd 1.0.0\n';
       if (String(cmd).includes('bd ready')) return '[]\n';
       if (String(cmd).includes('claude --version')) return 'claude 1.0.0\n';
-      if (String(cmd).includes('codex --version')) throw new Error('not found');
       return '';
     });
   });
@@ -99,7 +98,6 @@ describe('checkClaudeCode (via runPreflight)', () => {
   it('throws PreflightError when claude is not installed', async () => {
     mockExecSync.mockImplementation((cmd: string) => {
       if (String(cmd).includes('claude --version')) throw new Error('not found');
-      if (String(cmd).includes('codex --version')) throw new Error('not found');
       if (String(cmd).includes('gh --version')) return 'gh version 2.0.0\n';
       if (String(cmd).includes('gh auth status')) return 'Logged in\n';
       if (String(cmd).includes('bd --version')) return 'bd 1.0.0\n';
@@ -109,14 +107,14 @@ describe('checkClaudeCode (via runPreflight)', () => {
     mockExistsSync.mockReturnValue(false);
 
     expect(() => runPreflight()).toThrow(PreflightError);
-    expect(() => runPreflight()).toThrow(/not found/i);
+    expect(() => runPreflight()).toThrow(/runtime unavailable/i);
   });
 
   it('throws PreflightError when claude is installed but no auth token exists', async () => {
     mockExistsSync.mockReturnValue(false);
 
     expect(() => runPreflight()).toThrow(PreflightError);
-    expect(() => runPreflight()).toThrow(/not authenticated/i);
+    expect(() => runPreflight()).toThrow(/Claude Code is installed but not authenticated/i);
   });
 
   it('passes when ANTHROPIC_API_KEY is set (no credentials file needed)', async () => {
@@ -130,6 +128,23 @@ describe('checkClaudeCode (via runPreflight)', () => {
     mockExistsSync.mockReturnValue(true);
 
     expect(() => runPreflight()).not.toThrow();
+  });
+
+  it('accepts Codex auth from ~/.codex/auth.json when explicitly selected', () => {
+    mockExistsSync.mockImplementation((target: fs.PathLike) =>
+      String(target).includes('@openai\\codex-sdk') || String(target).includes('.codex\\auth.json')
+    );
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (String(cmd).includes('gh --version')) return 'gh version 2.0.0\n';
+      if (String(cmd).includes('gh auth status')) return 'Logged in\n';
+      if (String(cmd).includes('bd --version')) return 'bd 1.0.0\n';
+      if (String(cmd).includes('bd ready')) return '[]\n';
+      if (String(cmd).includes('claude --version')) throw new Error('not found');
+      return '';
+    });
+
+    const result = runPreflight('codex');
+    expect(result.preferredProvider).toBe('codex');
   });
 
   it('does not run claude --print inference command', () => {
@@ -146,18 +161,31 @@ describe('checkClaudeCode (via runPreflight)', () => {
 
   it('accepts Codex as the selected provider when installed and authenticated', () => {
     process.env['OPENAI_API_KEY'] = 'sk-openai-test';
-    mockExistsSync.mockReturnValue(false);
+    mockExistsSync.mockImplementation((target: fs.PathLike) => String(target).includes('@openai\\codex-sdk'));
     mockExecSync.mockImplementation((cmd: string) => {
       if (String(cmd).includes('gh --version')) return 'gh version 2.0.0\n';
       if (String(cmd).includes('gh auth status')) return 'Logged in\n';
       if (String(cmd).includes('bd --version')) return 'bd 1.0.0\n';
       if (String(cmd).includes('bd ready')) return '[]\n';
       if (String(cmd).includes('claude --version')) throw new Error('not found');
-      if (String(cmd).includes('codex --version')) return 'codex 1.0.0\n';
       return '';
     });
 
     const result = runPreflight('codex');
     expect(result.preferredProvider).toBe('codex');
+  });
+
+  it('reports installed unauthenticated Codex instead of asking for Claude when Claude is absent', () => {
+    mockExistsSync.mockImplementation((target: fs.PathLike) => String(target).includes('@openai\\codex-sdk'));
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (String(cmd).includes('gh --version')) return 'gh version 2.0.0\n';
+      if (String(cmd).includes('gh auth status')) return 'Logged in\n';
+      if (String(cmd).includes('bd --version')) return 'bd 1.0.0\n';
+      if (String(cmd).includes('bd ready')) return '[]\n';
+      if (String(cmd).includes('claude --version')) throw new Error('not found');
+      return '';
+    });
+
+    expect(() => runPreflight()).toThrow(/Installed but unauthenticated: Codex SDK/i);
   });
 });

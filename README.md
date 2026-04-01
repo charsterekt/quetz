@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@dkchar/quetz)](https://www.npmjs.com/package/@dkchar/quetz)
 
-**Quetz** is a local npm package that wraps a supported agent CLI into a self-feeding development loop. It reads prioritized issues from an issue graph, spawns a fully autonomous agent for each one sequentially, monitors the resulting GitHub PR through to merge, and repeats until done.
+**Quetz** is a local npm package that wraps a supported agent runtime into a self-feeding development loop. It reads prioritized issues from an issue graph, spawns a fully autonomous agent for each one sequentially, monitors the resulting GitHub PR through to merge, and repeats until done.
 
 > *Quetzalcoatl, the feathered serpent — a winged reptile that bridges earth and sky.*
 
@@ -25,16 +25,16 @@
 
 ## Prerequisites
 
-Quetz requires GitHub CLI, Beads CLI, and at least one supported agent CLI installed. Today the shared runtime path is implemented for Claude, with provider-neutral config and preflight groundwork in place for future adapters.
+Quetz requires GitHub CLI, Beads CLI, and at least one supported agent runtime. Claude runs through Claude Code. Codex runs through the official bundled Codex SDK runtime.
 
 | Tool | Purpose | Check |
 |---|---|---|
-| **Claude Code** (`claude`) | Current runtime-backed agent provider | `claude --version` |
-| **Codex CLI** (`codex`) | Detected during preflight for upcoming provider support | `codex --version` |
+| **Claude Code** (`claude`) | Claude runtime-backed agent provider | `claude --version` |
+| **Codex SDK** (`codex`) | Bundled SDK-backed agent provider | `OPENAI_API_KEY`, `CODEX_API_KEY`, or existing Codex auth |
 | **GitHub CLI** (`gh`) | PR detection, GitHub API | `gh auth status` |
 | **Beads CLI** (`bd`) | Issue tracking | `bd --version` |
 
-`quetz init` verifies GitHub, Beads, and the available agent providers before generating config.
+`quetz init` verifies GitHub, Beads, and provider runtime/auth readiness before generating config.
 
 ---
 
@@ -209,7 +209,11 @@ agent:
   providers:
     claude:
       settingSources: ["user", "project", "local"]
-    codex: {}
+    codex:
+      approvalPolicy: "never"           # optional; normal runs default here
+      sandboxMode: "danger-full-access" # optional; simulate forces read-only
+      networkAccessEnabled: true        # optional; simulate forces false
+      webSearchMode: "cached"           # optional: disabled|cached|live
 
 poll:
   interval: 30              # seconds between merge-status checks
@@ -222,6 +226,14 @@ Runtime overrides:
 ```bash
 quetz run --provider claude --model haiku --effort low --timeout 60
 ```
+
+Codex SDK notes:
+
+- Normal Codex runs default to `approvalPolicy: never` and `sandboxMode: danger-full-access`.
+- `--simulate` forces Codex into `approvalPolicy: never`, `sandboxMode: read-only`, and `networkAccessEnabled: false`.
+- Optional `agent.providers.codex` fields are `baseUrl`, `approvalPolicy`, `sandboxMode`, `networkAccessEnabled`, and `webSearchMode`.
+- Legacy `agent.providers.codex.profile` is no longer supported under the SDK runtime.
+- The runtime decision and tradeoffs are documented in [docs/codex-sdk-runtime.md](https://github.com/dkchar/quetz/blob/main/docs/codex-sdk-runtime.md).
 
 ### GitHub Actions for automerge
 
@@ -271,6 +283,6 @@ jobs:
 | `0` | All issues resolved, or clean exit (no issues ready) |
 | `1` | Runtime failure — CI failed, timeout, missing PR, git error |
 | `2` | Config error — missing or invalid `.quetzrc.yml` |
-| `3` | Preflight failure — missing tool (`claude`, `gh`, `bd`) or auth not configured |
+| `3` | Preflight failure — missing runtime/tooling (`claude`, `codex`, `gh`, `bd`) or auth not configured |
 
 ---

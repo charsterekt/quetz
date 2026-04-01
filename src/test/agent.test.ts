@@ -1,25 +1,25 @@
-import { EventEmitter } from 'events';
-import { PassThrough } from 'stream';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createBus } from '../events.js';
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn(),
 }));
-vi.mock('child_process', () => ({
-  spawn: vi.fn(),
+vi.mock('../codex-sdk.js', () => ({
+  loadCodexSdk: vi.fn(),
 }));
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import { spawn } from 'child_process';
+import { loadCodexSdk } from '../codex-sdk.js';
 import { spawnAgent } from '../agent.js';
 
 const mockQuery = vi.mocked(query);
-const mockSpawn = vi.mocked(spawn);
+const mockLoadCodexSdk = vi.mocked(loadCodexSdk);
 
 afterEach(() => {
   vi.clearAllMocks();
   vi.restoreAllMocks();
+  delete process.env['OPENAI_API_KEY'];
+  delete process.env['CODEX_API_KEY'];
 });
 
 /**
@@ -33,36 +33,19 @@ function mockQueryResult(messages: any[]): any {
   return gen();
 }
 
-function createMockCodexProcess(exitCode: number = 0) {
-  const stdout = new PassThrough();
-  const stderr = new PassThrough();
-  const stdin = new PassThrough();
-  const child = new EventEmitter() as EventEmitter & {
-    stdout: PassThrough;
-    stderr: PassThrough;
-    stdin: PassThrough;
-    kill: ReturnType<typeof vi.fn>;
-  };
-
-  child.stdout = stdout;
-  child.stderr = stderr;
-  child.stdin = stdin;
-  child.kill = vi.fn(() => {
-    child.emit('close', exitCode);
-    return true;
-  });
-
+function createMockCodexThread(events: any[] = []) {
   return {
-    child,
-    finish(code: number = exitCode) {
-      stdout.end();
-      stderr.end();
-      child.emit('close', code);
-    },
-    stdout,
-    stderr,
-    stdin,
+    runStreamed: vi.fn(async () => ({ events: mockQueryResult(events) })),
   };
+}
+
+function mockCodexRuntime(thread: ReturnType<typeof createMockCodexThread>) {
+  const startThread = vi.fn(() => thread);
+  const Codex = vi.fn(function MockCodex() {
+    return { startThread };
+  });
+  mockLoadCodexSdk.mockResolvedValue({ Codex } as never);
+  return { Codex, startThread };
 }
 
 describe('spawnAgent', () => {
@@ -465,60 +448,54 @@ describe('spawnAgent', () => {
     }));
   });
 
-  it('dispatches Codex runs through codex exec JSON mode', async () => {
-    const proc = createMockCodexProcess();
-    mockSpawn.mockReturnValue(proc.child as never);
-    const bus = createBus();
+  it('dispatches Codex runs through the Codex SDK runtime', async () => {
+    process.env['OPENAI_API_KEY'] = 'sk-openai-test';
+    const thread = createMockCodexThread([
+      { type: 'item.completed', item: { id: 'item_0', type: 'agent_message', text: 'Done' } },
+      { type: 'turn.completed', usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 } },
+    ]);
+    const { Codex, startThread } = mockCodexRuntime(thread);
 
-    const run = spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex', {
-      profile: 'ci',
-    });
-
-    proc.stdout.write('{"type":"thread.started","thread_id":"abc"}\n');
-    proc.stdout.write('{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Done"}}\n');
-    proc.finish(0);
-
-    await expect(run).resolves.toBe(0);
-    expect(mockSpawn).toHaveBeenCalledWith(
-      'codex',
-      [
-        'exec',
-        '--json',
-        '--color',
-        'never',
-        '--cd',
-        '/tmp',
-        '--model',
-        'gpt-5-codex',
-        '--profile',
-        'ci',
-        '--dangerously-bypass-approvals-and-sandbox',
-      ],
-      expect.objectContaining({
-        cwd: '/tmp',
-        stdio: ['pipe', 'pipe', 'pipe'],
+    await expect(
+      spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', createBus(), 'medium', false, 'codex', {
+        baseUrl: 'https://api.example.test/v1',
       })
-    );
-    expect(proc.stdin.read()?.toString()).toBe('do stuff');
+    ).resolves.toBe(0);
+
+    expect(Codex).toHaveBeenCalledWith({
+      apiKey: expect.any(String),
+      baseUrl: 'https://api.example.test/v1',
+    });
+    expect(startThread).toHaveBeenCalledWith({
+      approvalPolicy: 'never',
+      model: 'gpt-5-codex',
+      modelReasoningEffort: 'medium',
+      sandboxMode: 'danger-full-access',
+      workingDirectory: '/tmp',
+    });
+    expect(thread.runStreamed).toHaveBeenCalledWith('do stuff', {
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it('uses a read-only Codex sandbox in simulate mode', async () => {
-    const proc = createMockCodexProcess();
-    mockSpawn.mockReturnValue(proc.child as never);
-    const bus = createBus();
+    const thread = createMockCodexThread([
+      { type: 'turn.completed', usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 } },
+    ]);
+    const { startThread } = mockCodexRuntime(thread);
 
-    const run = spawnAgent('inspect only', '/repo', 30, 'gpt-5-codex', bus, 'medium', true, 'codex');
+    await expect(
+      spawnAgent('inspect only', '/repo', 30, 'gpt-5-codex', createBus(), 'max', true, 'codex')
+    ).resolves.toBe(0);
 
-    proc.stdout.write('{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Done"}}\n');
-    proc.finish(0);
-
-    await expect(run).resolves.toBe(0);
-    expect(mockSpawn).toHaveBeenCalledWith(
-      'codex',
-      expect.arrayContaining(['--sandbox', 'read-only']),
-      expect.any(Object)
-    );
-    expect(mockSpawn.mock.calls[0][1]).not.toContain('--dangerously-bypass-approvals-and-sandbox');
+    expect(startThread).toHaveBeenCalledWith({
+      approvalPolicy: 'never',
+      model: 'gpt-5-codex',
+      modelReasoningEffort: 'xhigh',
+      networkAccessEnabled: false,
+      sandboxMode: 'read-only',
+      workingDirectory: '/repo',
+    });
   });
 
   it('normalizes Codex command_execution items into tool events', async () => {
@@ -528,16 +505,33 @@ describe('spawnAgent', () => {
     bus.on('agent:tool_start', startHandler);
     bus.on('agent:tool_done', doneHandler);
 
-    const proc = createMockCodexProcess();
-    mockSpawn.mockReturnValue(proc.child as never);
+    const thread = createMockCodexThread([
+      {
+        type: 'item.started',
+        item: {
+          id: 'item_1',
+          type: 'command_execution',
+          command: '"C:\\\\windows\\\\system32\\\\windowspowershell\\\\v1.0\\\\powershell.exe" -Command "Get-ChildItem -Name"',
+          aggregated_output: '',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.completed',
+        item: {
+          id: 'item_1',
+          type: 'command_execution',
+          command: '"C:\\\\windows\\\\system32\\\\windowspowershell\\\\v1.0\\\\powershell.exe" -Command "Get-ChildItem -Name"',
+          aggregated_output: 'src',
+          exit_code: 0,
+          status: 'completed',
+        },
+      },
+      { type: 'turn.completed', usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 } },
+    ]);
+    mockCodexRuntime(thread);
 
-    const run = spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex');
-
-    proc.stdout.write('{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"\\"C:\\\\\\\\windows\\\\\\\\system32\\\\\\\\windowspowershell\\\\\\\\v1.0\\\\\\\\powershell.exe\\" -Command \\"Get-ChildItem -Name\\"","status":"in_progress"}}\n');
-    proc.stdout.write('{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"\\"C:\\\\\\\\windows\\\\\\\\system32\\\\\\\\windowspowershell\\\\\\\\v1.0\\\\\\\\powershell.exe\\" -Command \\"Get-ChildItem -Name\\"","aggregated_output":"src","exit_code":0,"status":"completed"}}\n');
-    proc.finish(0);
-
-    await expect(run).resolves.toBe(0);
+    await expect(spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex')).resolves.toBe(0);
     expect(startHandler).toHaveBeenCalledWith({ index: 0, name: 'Bash' });
     expect(doneHandler).toHaveBeenCalledWith({ index: 0, name: 'Bash', summary: 'Get-ChildItem -Name' });
   });
@@ -547,40 +541,59 @@ describe('spawnAgent', () => {
     const textHandler = vi.fn();
     bus.on('agent:text', textHandler);
 
-    const proc = createMockCodexProcess();
-    mockSpawn.mockReturnValue(proc.child as never);
+    const thread = createMockCodexThread([
+      { type: 'item.completed', item: { id: 'item_0', type: 'agent_message', text: 'OK' } },
+      { type: 'turn.completed', usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 } },
+    ]);
+    mockCodexRuntime(thread);
 
-    const run = spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex');
-
-    proc.stdout.write('{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"OK"}}\n');
-    proc.finish(0);
-
-    await expect(run).resolves.toBe(0);
+    await expect(spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex')).resolves.toBe(0);
     expect(textHandler).toHaveBeenCalledWith({ text: 'OK' });
   });
 
-  it('rejects when Codex emits invalid JSONL', async () => {
-    const proc = createMockCodexProcess();
-    mockSpawn.mockReturnValue(proc.child as never);
+  it('emits Codex error items through agent:stderr', async () => {
+    const bus = createBus();
+    const stderrHandler = vi.fn();
+    bus.on('agent:stderr', stderrHandler);
 
-    const run = spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', undefined, 'medium', false, 'codex');
+    const thread = createMockCodexThread([
+      {
+        type: 'item.completed',
+        item: {
+          id: 'item_2',
+          type: 'error',
+          message: 'tests failed',
+        },
+      },
+      { type: 'turn.completed', usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 } },
+    ]);
+    mockCodexRuntime(thread);
 
-    proc.stdout.write('not-json\n');
-    proc.finish(0);
-
-    await expect(run).rejects.toThrow('invalid JSONL');
+    await expect(spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex')).resolves.toBe(0);
+    expect(stderrHandler).toHaveBeenCalledWith({ data: 'tests failed' });
   });
 
-  it('rejects when Codex exits non-zero', async () => {
-    const proc = createMockCodexProcess();
-    mockSpawn.mockReturnValue(proc.child as never);
-    const bus = createBus();
+  it('rejects when the Codex SDK stream fails the turn', async () => {
+    const thread = createMockCodexThread([
+      { type: 'turn.failed', error: { message: 'stream broke' } },
+    ]);
+    mockCodexRuntime(thread);
 
-    const run = spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex');
+    await expect(spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', createBus(), 'medium', false, 'codex')).rejects.toThrow('stream broke');
+  });
 
-    proc.stderr.write('boom');
-    proc.finish(1);
+  it('rejects when the Codex SDK runtime throws before streaming starts', async () => {
+    const Codex = vi.fn(function MockCodex() {
+      return {
+        startThread: vi.fn(() => ({
+          runStreamed: vi.fn(async () => {
+            throw new Error('invalid payload from runtime');
+          }),
+        })),
+      };
+    });
+    mockLoadCodexSdk.mockResolvedValue({ Codex } as never);
 
-    await expect(run).rejects.toThrow('Codex exited with code 1');
+    await expect(spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', undefined, 'medium', false, 'codex')).rejects.toThrow('invalid payload from runtime');
   });
 });

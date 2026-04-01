@@ -9,11 +9,13 @@ export interface ProviderCapabilities {
   runtimeImplemented: boolean;
 }
 
-export interface ProviderCliDescriptor {
-  command: string;
-  authStatusCommand: string;
+export interface ProviderRuntimeDescriptor {
+  kind: 'cli' | 'sdk';
+  checkCommand?: string;
+  packageName?: string;
   installHint: string;
   loginHint: string;
+  unavailableLabel: string;
 }
 
 export interface ProviderDescriptor {
@@ -23,7 +25,7 @@ export interface ProviderDescriptor {
   knownModels: string[];
   modelNote?: string;
   capabilities: ProviderCapabilities;
-  cli: ProviderCliDescriptor;
+  runtime: ProviderRuntimeDescriptor;
 }
 
 export const PROVIDER_DESCRIPTORS: Record<AgentProvider, ProviderDescriptor> = {
@@ -37,28 +39,31 @@ export const PROVIDER_DESCRIPTORS: Record<AgentProvider, ProviderDescriptor> = {
       supportsEffort: true,
       runtimeImplemented: true,
     },
-    cli: {
-      command: 'claude',
-      authStatusCommand: 'claude --version',
+    runtime: {
+      kind: 'cli',
+      checkCommand: 'claude --version',
       installHint: 'Install it: https://docs.claude.ai/en/docs/claude-code',
       loginHint: 'Run `claude` and complete login.',
+      unavailableLabel: 'CLI not found',
     },
   },
   codex: {
     id: 'codex',
-    displayName: 'Codex CLI',
+    displayName: 'Codex SDK',
     defaultModel: 'gpt-5-codex',
     knownModels: ['gpt-5-codex', 'gpt-5', 'gpt-5.1'],
-    modelNote: 'Codex CLI can also target other account-enabled Responses API models.',
+    modelNote: 'Quetz uses the official Codex SDK; the local runtime still requires the Codex CLI.',
     capabilities: {
       supportsEffort: true,
       runtimeImplemented: true,
     },
-    cli: {
-      command: 'codex',
-      authStatusCommand: 'codex login status',
-      installHint: 'Install it: https://developers.openai.com/codex/cli',
-      loginHint: 'Run `codex login` and complete login.',
+    runtime: {
+      kind: 'sdk',
+      checkCommand: 'codex --version',
+      packageName: '@openai/codex-sdk',
+      installHint: 'Install the Codex CLI runtime and ensure @openai/codex-sdk is available.',
+      loginHint: 'Run `codex login` or set `OPENAI_API_KEY` / `CODEX_API_KEY`.',
+      unavailableLabel: 'CLI or SDK missing',
     },
   },
 };
@@ -78,6 +83,17 @@ export function getProviderDescriptor(provider: AgentProvider): ProviderDescript
 export function formatProviderModel(provider: AgentProvider, model: string): string {
   const descriptor = getProviderDescriptor(provider);
   return `${descriptor.id} ${model}`.trim();
+}
+
+export function resolveProviderModel(
+  provider: AgentProvider,
+  configuredProvider: AgentProvider,
+  globalModel: string | undefined,
+  providerModel: string | undefined
+): string {
+  return providerModel
+    ?? (configuredProvider === provider ? globalModel : undefined)
+    ?? getProviderDescriptor(provider).defaultModel;
 }
 
 export function renderModelListing(provider?: AgentProvider): string {

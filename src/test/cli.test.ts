@@ -260,7 +260,7 @@ describe('main', () => {
 
     expect(stdoutText()).toContain('claude: Claude Code');
     expect(stdoutText()).toContain('known:   haiku, sonnet, opus');
-    expect(stdoutText()).toContain('codex: Codex CLI');
+    expect(stdoutText()).toContain('codex: Codex SDK');
     expect(stdoutText()).toContain('known:   gpt-5-codex, gpt-5, gpt-5.1');
     expect(mockRunLoop).not.toHaveBeenCalled();
   });
@@ -270,7 +270,7 @@ describe('main', () => {
 
     await expect(main()).rejects.toMatchObject({ code: 0 });
 
-    expect(stdoutText()).toContain('codex: Codex CLI');
+    expect(stdoutText()).toContain('codex: Codex SDK');
     expect(stdoutText()).not.toContain('claude: Claude Code');
     expect(stdoutText()).toContain('default: gpt-5-codex');
   });
