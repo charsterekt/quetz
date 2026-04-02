@@ -1,4 +1,7 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 vi.mock('../events.js', () => ({
   createBus: vi.fn(),
@@ -62,6 +65,10 @@ function stdoutText(): string {
   return stdoutSpy.mock.calls
     .map((call: Parameters<typeof process.stdout.write>) => String(call[0]))
     .join('');
+}
+
+function makeTmpDir(): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'quetz-cli-test-'));
 }
 
 function mockLaunchSelection(selection: Partial<LaunchSelection> = {}): void {
@@ -153,6 +160,7 @@ describe('main', () => {
         amend: false,
         simulate: true,
         customPrompt: undefined,
+        scope: { mode: 'all' },
       },
       bus,
     );
@@ -209,6 +217,7 @@ describe('main', () => {
     expect(mockMountApp).toHaveBeenCalledTimes(1);
     expect(mockRunLoop).toHaveBeenCalledWith(
       {
+        provider: undefined,
         model: undefined,
         effort: undefined,
         timeout: undefined,
@@ -216,6 +225,7 @@ describe('main', () => {
         amend: false,
         simulate: true,
         customPrompt: undefined,
+        scope: { mode: 'all' },
       },
       bus,
     );
@@ -236,9 +246,44 @@ describe('main', () => {
     expect(mockRunLoop).toHaveBeenCalledWith(
       expect.objectContaining({
         effort: 'medium',
+        scope: { mode: 'all' },
       }),
       bus,
     );
+  });
+
+  it('parses --epic and forwards epic scope to runLoop', async () => {
+    const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
+    const unmount = vi.fn(() => Promise.resolve());
+
+    mockCreateBus.mockReturnValue(bus as never);
+    mockRunLoop.mockResolvedValue({ exitCode: 0 } as never);
+    mockMountApp.mockImplementation(() => ({ ready: Promise.resolve(), unmount } as never));
+
+    process.argv = ['node', 'quetz', 'run', '--epic', 'quetz-a0p'];
+    setStdoutSize(false, 120, 40);
+
+    await expect(main()).rejects.toMatchObject({ code: 0 });
+
+    expect(mockMountLaunchApp).not.toHaveBeenCalled();
+    expect(mockRunLoop).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: { mode: 'epic', epicId: 'quetz-a0p' },
+      }),
+      bus,
+    );
+  });
+
+  it('rejects a blank --epic value', async () => {
+    process.argv = ['node', 'quetz', 'run', '--epic', '   '];
+
+    await expect(main()).rejects.toMatchObject({ code: 1 });
+
+    const stderrOutput = stderrSpy.mock.calls
+      .map((call: Parameters<typeof process.stderr.write>) => String(call[0]))
+      .join('');
+    expect(stderrOutput).toContain('--epic requires a value');
+    expect(mockRunLoop).not.toHaveBeenCalled();
   });
 
   it('fails fast on an invalid --effort value', async () => {
@@ -299,6 +344,89 @@ describe('main', () => {
     expect(mockRunLoop).toHaveBeenCalledWith(
       expect.objectContaining({
         effort: 'high',
+        scope: { mode: 'all' },
+      }),
+      bus,
+    );
+  });
+
+  it('prefills launch epic mode from config defaults', async () => {
+    const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
+    const configDir = makeTmpDir();
+    const unmountLaunch = vi.fn(() => Promise.resolve());
+
+    fs.writeFileSync(
+      path.join(configDir, '.quetzrc.yml'),
+      [
+        'github:',
+        '  owner: acme',
+        '  repo: widget',
+        'beads:',
+        '  epic: quetz-a0p',
+      ].join('\n'),
+    );
+
+    mockCreateBus.mockReturnValue(bus as never);
+    mockMountLaunchApp.mockReturnValue({
+      ready: Promise.resolve(),
+      result: Promise.resolve(null),
+      unmount: unmountLaunch,
+    } as never);
+
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(configDir);
+
+    try {
+      process.argv = ['node', 'quetz', 'run'];
+      setStdoutSize(true, 120, 40);
+
+      await expect(main()).rejects.toMatchObject({ code: 0 });
+
+      expect(mockMountLaunchApp).toHaveBeenCalledWith(expect.objectContaining({
+        initialSelection: expect.objectContaining({
+          beadsMode: 'epic',
+          epicId: 'quetz-a0p',
+        }),
+      }));
+      expect(unmountLaunch).toHaveBeenCalledTimes(1);
+    } finally {
+      cwdSpy.mockRestore();
+      fs.rmSync(configDir, { recursive: true, force: true });
+    }
+  });
+
+  it('forwards epic launch selection into runLoop scope', async () => {
+    const bus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() };
+    const unmount = vi.fn(() => Promise.resolve());
+
+    mockCreateBus.mockReturnValue(bus as never);
+    mockRunLoop.mockResolvedValue({ exitCode: 0, reason: 'no_issues' } as never);
+    mockMountLaunchApp.mockReturnValue({
+      ready: Promise.resolve(),
+      result: Promise.resolve({
+        provider: 'claude',
+        model: 'sonnet',
+        effort: 'medium',
+        simulate: false,
+        localCommits: false,
+        amend: false,
+        beadsMode: 'epic',
+        epicId: 'quetz-a0p',
+      }),
+      unmount: vi.fn(() => Promise.resolve()),
+      } as never);
+    mockMountApp.mockImplementation((opts) => {
+      void opts.onQuit;
+      return { ready: Promise.resolve(), unmount } as never;
+    });
+
+    process.argv = ['node', 'quetz', 'run'];
+    setStdoutSize(true, 120, 40);
+
+    await expect(main()).rejects.toMatchObject({ code: 0 });
+    expect(mockMountApp).toHaveBeenCalledTimes(1);
+    expect(mockRunLoop).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: { mode: 'epic', epicId: 'quetz-a0p' },
       }),
       bus,
     );

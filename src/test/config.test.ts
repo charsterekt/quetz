@@ -100,6 +100,20 @@ describe('loadConfig', () => {
     expect(cfg.agent.providers.codex.webSearchMode).toBe('cached');
   });
 
+  it('loads an optional default epic scope', () => {
+    const yaml = [
+      'github:',
+      '  owner: acme',
+      '  repo: widget',
+      'beads:',
+      '  epic: "  quetz-a0p  "',
+    ].join('\n');
+    fs.writeFileSync(path.join(dir, '.quetzrc.yml'), yaml);
+
+    const cfg = loadConfig(dir);
+    expect(cfg.beads?.epic).toBe('quetz-a0p');
+  });
+
   it('honours all explicit config values', () => {
     const yaml = [
       'github:',
@@ -184,6 +198,7 @@ describe('writeConfig', () => {
     const cfg = {
       github: { owner: 'dk', repo: 'aegis', defaultBranch: 'main', automergeLabel: 'automerge' },
       agent: { timeout: 30 },
+      beads: { epic: 'quetz-a0p' },
       poll: { interval: 30, mergeTimeout: 15, prDetectionTimeout: 60 },
       display: { animations: true, colors: true },
     };
@@ -193,5 +208,6 @@ describe('writeConfig', () => {
     expect(loaded.github.owner).toBe('dk');
     expect(loaded.github.repo).toBe('aegis');
     expect(loaded.agent.timeout).toBe(30);
+    expect(loaded.beads?.epic).toBe('quetz-a0p');
   });
 });

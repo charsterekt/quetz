@@ -44,6 +44,10 @@ export interface AgentConfig {
   };
 }
 
+export interface BeadsConfig {
+  epic?: string;
+}
+
 export interface QuetzConfig {
   github: {
     owner: string;
@@ -52,6 +56,7 @@ export interface QuetzConfig {
     automergeLabel: string;
   };
   agent: AgentConfig;
+  beads?: BeadsConfig;
   poll: {
     interval: number;
     mergeTimeout: number;
@@ -170,6 +175,7 @@ function validateAndMerge(raw: unknown): QuetzConfig {
   }
 
   const agent = (obj['agent'] as Record<string, unknown> | undefined) ?? {};
+  const beads = obj['beads'];
   const poll = (obj['poll'] as Record<string, unknown> | undefined) ?? {};
   const display = (obj['display'] as Record<string, unknown> | undefined) ?? {};
   const providerBlocks = (agent['providers'] as Record<string, unknown> | undefined) ?? {};
@@ -222,6 +228,15 @@ function validateAndMerge(raw: unknown): QuetzConfig {
     throw new ConfigError(
       `${CONFIG_FILE}: "agent.providers.codex.webSearchMode" must be one of disabled, cached, live.`
     );
+  }
+  if (beads !== undefined && (typeof beads !== 'object' || Array.isArray(beads))) {
+    throw new ConfigError(`${CONFIG_FILE}: "beads" must be a YAML object.`);
+  }
+
+  const beadsBlock = (beads as Record<string, unknown> | undefined) ?? {};
+  const epic = beadsBlock['epic'];
+  if (epic !== undefined && typeof epic !== 'string') {
+    throw new ConfigError(`${CONFIG_FILE}: "beads.epic" must be a string.`);
   }
 
   return {
@@ -290,6 +305,12 @@ function validateAndMerge(raw: unknown): QuetzConfig {
         },
       },
     },
+    beads:
+      typeof epic === 'string' && epic.trim() !== ''
+        ? {
+            epic: epic.trim(),
+          }
+        : undefined,
     poll: {
       interval:
         typeof poll['interval'] === 'number'
