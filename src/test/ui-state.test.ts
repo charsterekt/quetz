@@ -216,6 +216,20 @@ describe('wireState', () => {
     cleanup();
   });
 
+  it('stores the current run mode for footer and log chrome', () => {
+    const bus = createBus();
+    let state = cloneState();
+    const cleanup = wireState(bus, updater => {
+      state = updater(state);
+    });
+
+    bus.emit('loop:mode', { mode: 'amend' });
+
+    expect(state.runMode).toBe('amend');
+
+    cleanup();
+  });
+
   it('records failed runs in completed session history with failed outcome', () => {
     const bus = createBus();
     let state = cloneState();

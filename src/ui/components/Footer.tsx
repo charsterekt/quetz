@@ -24,6 +24,7 @@ const PHASE_LABELS: Record<QuetzPhase, string> = {
 
 interface FooterProps {
   mode: ScreenMode;
+  runMode: 'pr' | 'commit' | 'amend';
   focusedPane: FocusPane;
   hasHistory: boolean;
   phase: QuetzPhase;
@@ -65,6 +66,7 @@ function detailRightText(issueId: string, phase: QuetzPhase, elapsed: string, ve
 
 export function Footer({
   mode,
+  runMode,
   focusedPane,
   hasHistory,
   phase,
@@ -93,9 +95,11 @@ export function Footer({
     leftColor = fg(c.muted);
     right = detailRightText(issueId, phase, elapsed, version);
   } else {
-    const prStr = prNumber != null ? `pr: #${prNumber}` : 'pr: ---';
+    const runTarget = runMode === 'pr'
+      ? (prNumber != null ? `pr: #${prNumber}` : 'pr: ---')
+      : `mode: ${runMode}`;
     const phaseLabel = PHASE_LABELS[phase] ?? phase;
-    leftText = `\u25c6 issue ${issueCount.current}/${issueCount.total}  |  ${issueId}  |  ${phaseLabel}  |  ${prStr}  |  ${elapsed}`;
+    leftText = `\u25c6 issue ${issueCount.current}/${issueCount.total}  |  ${issueId}  |  ${phaseLabel}  |  ${runTarget}  |  ${elapsed}`;
     leftColor =
       phase === 'error' ? fg(c.error) :
       phase === 'pr_polling' ? fg(c.accent) :

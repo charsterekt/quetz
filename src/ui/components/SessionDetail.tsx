@@ -5,7 +5,6 @@ import { ui, rgb } from '@rezi-ui/core';
 import { c, hexToRgb } from '../theme.js';
 import { Scrollbar } from './Scrollbar.js';
 import type { CompletedSession, AgentLine } from '../state.js';
-import { LOGO_LINES } from '../logo.js';
 
 function fg(hex: string) {
   const [r, g, b] = hexToRgb(hex);
@@ -14,12 +13,12 @@ function fg(hex: string) {
 
 const INFO_BG = rgb(13, 13, 13);
 const CONTENT_BG = rgb(10, 10, 10);
-
-const CHROME_ROWS = LOGO_LINES.length + 6;
+const INFO_BAR_ROWS = 2;
 
 interface SessionDetailProps {
   session: CompletedSession;
   scrollOffset: number;
+  height: number;
   key?: string;
 }
 
@@ -37,9 +36,8 @@ function renderLine(line: AgentLine, i: number) {
   });
 }
 
-export function SessionDetail({ session, scrollOffset }: SessionDetailProps) {
-  const termRows = process.stdout.rows ?? 40;
-  const visibleRows = Math.max(1, termRows - CHROME_ROWS);
+export function SessionDetail({ session, scrollOffset, height }: SessionDetailProps) {
+  const visibleRows = Math.max(1, height - INFO_BAR_ROWS);
   const maxOffset = Math.max(0, session.lines.length - visibleRows);
   const safeOffset = Math.max(0, Math.min(scrollOffset, maxOffset));
 
@@ -83,7 +81,7 @@ export function SessionDetail({ session, scrollOffset }: SessionDetailProps) {
     ]
   );
 
-  return ui.column({ flex: 1, width: 'full', style: { bg: CONTENT_BG } }, [
+  return ui.column({ flex: 1, width: 'full', height, style: { bg: CONTENT_BG } }, [
     infoBar,
     ui.row({ id: 'session-detail-scroll-region', flex: 1, height: 'full', width: 'full' }, [
       ui.column(

@@ -23,6 +23,7 @@ describe('Footer', () => {
   it('renders session-focused controls in running mode', () => {
     Footer({
       mode: 'running',
+      runMode: 'pr',
       focusedPane: 'agent',
       hasHistory: true,
       phase: 'agent_running',
@@ -46,6 +47,7 @@ describe('Footer', () => {
   it('renders background context for session detail mode', () => {
     Footer({
       mode: 'session_detail',
+      runMode: 'pr',
       focusedPane: 'sessions',
       hasHistory: true,
       phase: 'pr_polling',
@@ -74,6 +76,7 @@ describe('Footer', () => {
   it('renders distinct outcome footer text for victory and failure', () => {
     Footer({
       mode: 'victory',
+      runMode: 'pr',
       focusedPane: 'sessions',
       hasHistory: true,
       phase: 'completed',
@@ -87,6 +90,7 @@ describe('Footer', () => {
     });
     Footer({
       mode: 'failure',
+      runMode: 'pr',
       focusedPane: 'sessions',
       hasHistory: true,
       phase: 'error',
@@ -112,5 +116,41 @@ describe('Footer', () => {
     expect(rendered).toContain('q quit  \u25c6  v0.5.3');
     expect(rendered).not.toContain('enter open');
     expect(rendered).not.toContain('esc back');
+  });
+
+  it('shows commit and amend modes instead of an empty PR slot', () => {
+    Footer({
+      mode: 'running',
+      runMode: 'commit',
+      focusedPane: 'agent',
+      hasHistory: false,
+      phase: 'commit_verifying',
+      issueId: 'mock-005',
+      issueCount: { current: 1, total: 2 },
+      prNumber: null,
+      elapsed: '0m 04s',
+      version: '0.5.3',
+      viewingSession: null,
+      failureData: null,
+    });
+    Footer({
+      mode: 'running',
+      runMode: 'amend',
+      focusedPane: 'agent',
+      hasHistory: false,
+      phase: 'amend_verifying',
+      issueId: 'mock-006',
+      issueCount: { current: 2, total: 2 },
+      prNumber: null,
+      elapsed: '0m 08s',
+      version: '0.5.3',
+      viewingSession: null,
+      failureData: null,
+    });
+
+    const rendered = textMock.mock.calls.map(([content]) => content).join(' ');
+    expect(rendered).toContain('mode: commit');
+    expect(rendered).toContain('mode: amend');
+    expect(rendered).not.toContain('pr: ---');
   });
 });

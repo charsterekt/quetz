@@ -67,6 +67,12 @@ export interface LaunchIssueCounts {
   simulate: number;
 }
 
+export interface LaunchIssueCountInput {
+  beadsMode: LaunchBeadsMode;
+  epicId: string;
+  simulate: boolean;
+}
+
 interface LaunchState {
   provider: AgentProvider;
   model: string;
@@ -84,6 +90,7 @@ export interface MountLaunchOptions {
   version: string;
   initialSelection: LaunchSelection;
   issueCounts: LaunchIssueCounts;
+  resolveIssueCount?: (input: LaunchIssueCountInput) => number;
 }
 
 export interface LaunchAppHandle {
@@ -293,7 +300,7 @@ function simulateToggle(active: boolean, onChange: (checked: boolean) => void) {
   });
 }
 
-export function mountLaunchApp({ version, initialSelection, issueCounts }: MountLaunchOptions): LaunchAppHandle {
+export function mountLaunchApp({ version, initialSelection, issueCounts, resolveIssueCount }: MountLaunchOptions): LaunchAppHandle {
   const app = createNodeApp<LaunchState>({
     initialState: normalizeInitialState(initialSelection, issueCounts),
   });
@@ -351,7 +358,13 @@ export function mountLaunchApp({ version, initialSelection, issueCounts }: Mount
     const logoLines = hideLogo ? [] : LOGO_LINES;
     const logoWidth = logoLines.length ? Math.max(...logoLines.map(line => line.length)) : 0;
     const contentWidth = Math.min(termCols - 4, Math.max(baseContentWidth, logoWidth));
-    const issueCount = state.simulate ? state.issueCounts.simulate : state.issueCounts.live;
+    const issueCount = resolveIssueCount
+      ? resolveIssueCount({
+          beadsMode: state.beadsMode,
+          epicId: state.epicId,
+          simulate: state.simulate,
+        })
+      : (state.simulate ? state.issueCounts.simulate : state.issueCounts.live);
     const modelChoices = buildModelChoices(state.provider, state.model);
     const simulateActive = state.simulate;
     const launchSizeWarnings = [

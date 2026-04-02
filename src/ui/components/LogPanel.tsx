@@ -18,12 +18,13 @@ interface LogPanelProps {
   lines: LogLine[];
   scrollOffset: number;
   autoScroll: boolean;
+  runMode: 'pr' | 'commit' | 'amend';
   width: number;
   height: number;
   key?: string;
 }
 
-export function LogPanel({ lines, scrollOffset, autoScroll, width, height }: LogPanelProps) {
+export function LogPanel({ lines, scrollOffset, autoScroll, runMode, width, height }: LogPanelProps) {
   const visibleRows = Math.max(1, height - TITLE_BAR_ROWS);
   const maxOffset = Math.max(0, lines.length - visibleRows);
   const safeOffset = Math.max(0, Math.min(scrollOffset, maxOffset));
@@ -56,7 +57,12 @@ export function LogPanel({ lines, scrollOffset, autoScroll, width, height }: Log
         px: 2,
         width: 'full',
       },
-      [ui.text('quetz log', { style: { fg: fg(c.cyan) } })]
+      [
+        ui.row({ justify: 'between', width: 'full', items: 'center' }, [
+          ui.text('quetz log', { style: { fg: fg(c.cyan) } }),
+          ui.text(`mode: ${runMode}`, { style: { fg: fg(c.dim) } }),
+        ]),
+      ]
     ),
     ui.row({ id: 'log-scroll-region', flex: 1, height: 'full', width: 'full' }, [
       ui.column(

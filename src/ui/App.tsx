@@ -290,12 +290,9 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     }),
 
     '[': () => app.update(s => {
-      const rows = viewportRows;
-      const bodyRows = bodyRowCount(rows);
-      const sessionsRows = sessionPanelRows(bodyRows);
-      const logVisibleRows = Math.max(1, bodyRows - sessionsRows - 3);
+      const visibleRows = logVisibleRows(viewportRows);
       const currentOffset = s.logAutoScroll
-        ? Math.max(0, s.logLines.length - logVisibleRows)
+        ? Math.max(0, s.logLines.length - visibleRows)
         : s.logScrollOffset;
       return { ...s, logAutoScroll: false, logScrollOffset: Math.max(0, currentOffset - 3) };
     }),
@@ -392,6 +389,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     const logRows = Math.max(4, bodyRows - sessionsRows);
     const footerNode = Footer({
       mode: state.mode,
+      runMode: state.runMode,
       focusedPane: state.focusedPane,
       hasHistory: state.completedSessions.length > 0,
       phase: state.phase,
@@ -423,7 +421,11 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
     if (state.mode === 'session_detail' && state.viewingSession) {
       return ui.column({ width: 'full', height: 'full', style: { bg: rootBg } }, [
         Header({ mode: state.mode, issueCount: state.issueCount, phase: state.phase, bgStatus: state.bgStatus, version, termCols, termRows }),
-        SessionDetail({ session: state.viewingSession, scrollOffset: state.sessionLogScrollOffset }),
+        SessionDetail({
+          session: state.viewingSession,
+          scrollOffset: state.sessionLogScrollOffset,
+          height: Math.max(1, termRows - HEADER_ROWS - FOOTER_ROWS),
+        }),
         footerNode,
       ]);
     }
@@ -458,6 +460,7 @@ export function mountApp({ bus, version, onQuit }: MountOptions): AppHandle {
             lines: state.logLines,
             scrollOffset: state.logScrollOffset,
             autoScroll: state.logAutoScroll,
+            runMode: state.runMode,
             width: rightCols,
             height: logRows,
           }),

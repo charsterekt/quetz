@@ -16,6 +16,7 @@ const {
   focusZoneMock,
   spacerMock,
   textareaMock,
+  resolveIssueCountMock,
 } = vi.hoisted(() => ({
   mockCreateNodeApp: vi.fn(),
   textMock: vi.fn((content: string) => ({ content })),
@@ -29,6 +30,7 @@ const {
   focusZoneMock: vi.fn((_props: Record<string, unknown>, children: unknown) => ({ children })),
   spacerMock: vi.fn((props: Record<string, unknown>) => ({ spacer: true, ...props })),
   textareaMock: vi.fn((props: Record<string, unknown>) => props),
+  resolveIssueCountMock: vi.fn(),
 }));
 
 vi.mock('@rezi-ui/node', () => ({
@@ -82,6 +84,7 @@ describe('mountLaunchApp', () => {
 
   it('renders the launch hero subtitle, version, and primary action', () => {
     let viewFn!: (state: unknown) => unknown;
+    resolveIssueCountMock.mockReturnValue(14);
     mockCreateNodeApp.mockReturnValue(createAppMock({
       view: vi.fn((fn: (state: unknown) => unknown) => {
         viewFn = fn;
@@ -95,6 +98,7 @@ describe('mountLaunchApp', () => {
         model: 'claude-sonnet-4-20250514',
       },
       issueCounts: { live: 14, simulate: 3 },
+      resolveIssueCount: resolveIssueCountMock,
     });
 
     expect(mockCreateNodeApp).toHaveBeenCalledWith(expect.objectContaining({
@@ -312,6 +316,45 @@ describe('mountLaunchApp', () => {
       id: 'launch-model',
       value: 'gpt-5-codex',
     }));
+  });
+
+  it('recomputes the live issue total from the selected epic scope', () => {
+    let viewFn!: (state: unknown) => unknown;
+    resolveIssueCountMock.mockReturnValue(2);
+    mockCreateNodeApp.mockReturnValue(createAppMock({
+      view: vi.fn((fn: (state: unknown) => unknown) => {
+        viewFn = fn;
+      }),
+    }));
+
+    void mountLaunchApp({
+      version: '0.7.6',
+      initialSelection: baseSelection,
+      issueCounts: { live: 14, simulate: 3 },
+      resolveIssueCount: resolveIssueCountMock,
+    });
+
+    viewFn({
+      provider: 'claude',
+      model: 'sonnet',
+      effort: 'medium',
+      customPrompt: '',
+      beadsMode: 'epic',
+      epicId: 'quetz-tsma',
+      simulate: false,
+      runMode: 'pr',
+      issueCounts: { live: 14, simulate: 3 },
+      focusedId: null,
+    });
+
+    expect(resolveIssueCountMock).toHaveBeenCalledWith({
+      beadsMode: 'epic',
+      epicId: 'quetz-tsma',
+      simulate: false,
+    });
+    const renderedText = textMock.mock.calls.map(([content]) => content);
+    expect(renderedText).toContain('2');
+    expect(renderedText).not.toContain('14');
   });
 
   it('renders custom prompt as a native textarea with wrapped multiline input', () => {
