@@ -25,7 +25,11 @@ export interface ClaudeProviderConfig {
 export interface CodexProviderConfig {
   model?: string;
   effort?: AgentEffortLevel;
-  profile?: string;
+  baseUrl?: string;
+  approvalPolicy?: 'never' | 'on-request' | 'on-failure' | 'untrusted';
+  sandboxMode?: 'read-only' | 'workspace-write' | 'danger-full-access';
+  networkAccessEnabled?: boolean;
+  webSearchMode?: 'disabled' | 'cached' | 'live';
 }
 
 export interface AgentConfig {
@@ -112,6 +116,18 @@ export function isClaudeEffortLevel(value: unknown): value is ClaudeEffortLevel 
 
 export const isClaudeThinkingLevel = isClaudeEffortLevel;
 
+function isCodexApprovalPolicy(value: unknown): value is NonNullable<CodexProviderConfig['approvalPolicy']> {
+  return value === 'never' || value === 'on-request' || value === 'on-failure' || value === 'untrusted';
+}
+
+function isCodexSandboxMode(value: unknown): value is NonNullable<CodexProviderConfig['sandboxMode']> {
+  return value === 'read-only' || value === 'workspace-write' || value === 'danger-full-access';
+}
+
+function isCodexWebSearchMode(value: unknown): value is NonNullable<CodexProviderConfig['webSearchMode']> {
+  return value === 'disabled' || value === 'cached' || value === 'live';
+}
+
 export function loadConfig(projectRoot: string = process.cwd()): QuetzConfig {
   const configPath = path.join(projectRoot, CONFIG_FILE);
 
@@ -163,6 +179,9 @@ function validateAndMerge(raw: unknown): QuetzConfig {
   const effort = agent['effort'] ?? agent['thinkingLevel'];
   const claudeEffort = claudeProvider['effort'];
   const codexEffort = codexProvider['effort'];
+  const codexApprovalPolicy = codexProvider['approvalPolicy'];
+  const codexSandboxMode = codexProvider['sandboxMode'];
+  const codexWebSearchMode = codexProvider['webSearchMode'];
 
   if (!isAgentProvider(provider)) {
     throw new ConfigError(
@@ -182,6 +201,26 @@ function validateAndMerge(raw: unknown): QuetzConfig {
   if (codexEffort !== undefined && !isAgentEffortLevel(codexEffort)) {
     throw new ConfigError(
       `${CONFIG_FILE}: "agent.providers.codex.effort" must be one of ${AGENT_EFFORT_LEVELS.join(', ')}.`
+    );
+  }
+  if (codexProvider['profile'] !== undefined) {
+    throw new ConfigError(
+      `${CONFIG_FILE}: "agent.providers.codex.profile" is no longer supported with the SDK runtime. Use the SDK-backed fields instead.`
+    );
+  }
+  if (codexApprovalPolicy !== undefined && !isCodexApprovalPolicy(codexApprovalPolicy)) {
+    throw new ConfigError(
+      `${CONFIG_FILE}: "agent.providers.codex.approvalPolicy" must be one of never, on-request, on-failure, untrusted.`
+    );
+  }
+  if (codexSandboxMode !== undefined && !isCodexSandboxMode(codexSandboxMode)) {
+    throw new ConfigError(
+      `${CONFIG_FILE}: "agent.providers.codex.sandboxMode" must be one of read-only, workspace-write, danger-full-access.`
+    );
+  }
+  if (codexWebSearchMode !== undefined && !isCodexWebSearchMode(codexWebSearchMode)) {
+    throw new ConfigError(
+      `${CONFIG_FILE}: "agent.providers.codex.webSearchMode" must be one of disabled, cached, live.`
     );
   }
 
@@ -228,9 +267,25 @@ function validateAndMerge(raw: unknown): QuetzConfig {
               ? codexProvider['model']
               : undefined,
           effort: codexEffort as AgentEffortLevel | undefined,
-          profile:
-            typeof codexProvider['profile'] === 'string'
-              ? codexProvider['profile']
+          baseUrl:
+            typeof codexProvider['baseUrl'] === 'string'
+              ? codexProvider['baseUrl']
+              : undefined,
+          approvalPolicy:
+            isCodexApprovalPolicy(codexApprovalPolicy)
+              ? codexApprovalPolicy
+              : undefined,
+          sandboxMode:
+            isCodexSandboxMode(codexSandboxMode)
+              ? codexSandboxMode
+              : undefined,
+          networkAccessEnabled:
+            typeof codexProvider['networkAccessEnabled'] === 'boolean'
+              ? codexProvider['networkAccessEnabled']
+              : undefined,
+          webSearchMode:
+            isCodexWebSearchMode(codexWebSearchMode)
+              ? codexWebSearchMode
               : undefined,
         },
       },

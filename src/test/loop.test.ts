@@ -188,6 +188,42 @@ describe('runLoop normal', () => {
     );
   });
 
+  it('uses the Codex provider default model when overriding away from a Claude-configured global model', async () => {
+    mockLoadConfig.mockReturnValue({
+      ...baseConfig,
+      agent: {
+        ...baseConfig.agent,
+        provider: 'claude',
+        model: 'sonnet',
+        providers: {
+          claude: {},
+          codex: {},
+        },
+      },
+    } as never);
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockFindPR.mockResolvedValue({ number: 42, title: 'Fix', html_url: 'https://gh/pr/42' } as never);
+    mockPollForMerge.mockResolvedValue({ status: 'merged', pr: { html_url: 'https://gh/pr/42' } } as never);
+
+    const result = await runLoop({ provider: 'codex' }, createBus());
+    expect(result.exitCode).toBe(0);
+    expect(mockSpawnAgent).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.any(Number),
+      'gpt-5-codex',
+      expect.anything(),
+      expect.anything(),
+      false,
+      'codex',
+      {},
+    );
+  });
+
   it('returns exitCode 1 if git pull fails', async () => {
     mockGetReadyIssues.mockReturnValue([baseIssue]);
     mockGetIssueDetails.mockReturnValue(baseIssue as never);

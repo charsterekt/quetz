@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('child_process', () => ({ execSync: vi.fn() }));
+
+import { execSync } from 'child_process';
 import { parseOwnerRepo, getCommitCountAhead } from '../git.js';
+
+const mockExecSync = vi.mocked(execSync);
 
 describe('parseOwnerRepo', () => {
   it('parses HTTPS URL', () => {
@@ -23,11 +29,23 @@ describe('parseOwnerRepo', () => {
 });
 
 describe('getCommitCountAhead', () => {
+  it('returns the parsed commit count when git succeeds', () => {
+    mockExecSync.mockReturnValueOnce('3');
+
+    expect(getCommitCountAhead('main')).toBe(3);
+    expect(mockExecSync).toHaveBeenCalledWith(
+      'git rev-list --count main..HEAD',
+      expect.objectContaining({ encoding: 'utf-8', stdio: 'pipe' })
+    );
+  });
+
   it('returns 0 when execSync throws', () => {
-    // In this test environment there is no real git repo with a "main" branch
-    // so the function either returns a number or 0 on failure — just verify it returns a number
+    mockExecSync.mockImplementationOnce(() => {
+      throw new Error('fatal: ambiguous argument');
+    });
+
     const result = getCommitCountAhead('nonexistent-branch-xyz');
     expect(typeof result).toBe('number');
-    expect(result).toBeGreaterThanOrEqual(0);
+    expect(result).toBe(0);
   });
 });

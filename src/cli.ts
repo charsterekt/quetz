@@ -3,7 +3,7 @@
 import { countOpenIssues } from './beads.js';
 import { CLAUDE_EFFORT_LEVELS, DEFAULTS, isClaudeEffortLevel, loadConfig } from './config.js';
 import { MOCK_ISSUES } from './mock-data.js';
-import { AGENT_PROVIDERS, getProviderDescriptor, isAgentProvider, renderModelListing, type AgentProvider } from './provider.js';
+import { AGENT_PROVIDERS, getProviderDescriptor, isAgentProvider, renderModelListing, resolveProviderModel, type AgentProvider } from './provider.js';
 import type { LaunchIssueCounts, LaunchSelection } from './ui/LaunchApp.js';
 
 export const EXIT_SUCCESS = 0;
@@ -38,7 +38,12 @@ function getLaunchDefaults(): LaunchSelection {
       ? config.agent.providers.claude
       : config.agent.providers.codex;
 
-    model = providerConfig.model ?? config.agent.model ?? getProviderDescriptor(provider).defaultModel;
+    model = resolveProviderModel(
+      provider,
+      config.agent.provider,
+      config.agent.model,
+      providerConfig.model
+    );
     effort = providerConfig.effort ?? config.agent.effort;
   } catch {
     // Launch screen falls back to defaults when config is not ready yet.

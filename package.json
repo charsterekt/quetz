@@ -48,6 +48,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.81",
     "@octokit/rest": "^20.1.1",
+    "@openai/codex-sdk": "^0.118.0",
     "@rezi-ui/core": "0.1.0-alpha.60",
     "@rezi-ui/jsx": "0.1.0-alpha.60",
     "@rezi-ui/node": "0.1.0-alpha.60",

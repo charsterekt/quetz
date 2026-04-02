@@ -79,7 +79,11 @@ describe('loadConfig', () => {
       '      settingSources: [user, project]',
       '    codex:',
       '      model: gpt-5-codex',
-      '      profile: ci',
+      '      baseUrl: https://api.example.test/v1',
+      '      approvalPolicy: on-request',
+      '      sandboxMode: workspace-write',
+      '      networkAccessEnabled: true',
+      '      webSearchMode: cached',
     ].join('\n');
     fs.writeFileSync(path.join(dir, '.quetzrc.yml'), yaml);
 
@@ -89,7 +93,11 @@ describe('loadConfig', () => {
     expect(cfg.agent.providers.claude.effort).toBe('high');
     expect(cfg.agent.providers.claude.settingSources).toEqual(['user', 'project']);
     expect(cfg.agent.providers.codex.model).toBe('gpt-5-codex');
-    expect(cfg.agent.providers.codex.profile).toBe('ci');
+    expect(cfg.agent.providers.codex.baseUrl).toBe('https://api.example.test/v1');
+    expect(cfg.agent.providers.codex.approvalPolicy).toBe('on-request');
+    expect(cfg.agent.providers.codex.sandboxMode).toBe('workspace-write');
+    expect(cfg.agent.providers.codex.networkAccessEnabled).toBe(true);
+    expect(cfg.agent.providers.codex.webSearchMode).toBe('cached');
   });
 
   it('honours all explicit config values', () => {
@@ -150,6 +158,14 @@ describe('loadConfig', () => {
       'github:\n  owner: myorg\n  repo: myrepo\nagent:\n  effort: turbo\n'
     );
     expect(() => loadConfig(dir)).toThrowError(/agent\.effort/i);
+  });
+
+  it('rejects legacy codex profile config under the SDK runtime', () => {
+    fs.writeFileSync(
+      path.join(dir, '.quetzrc.yml'),
+      'github:\n  owner: myorg\n  repo: myrepo\nagent:\n  providers:\n    codex:\n      profile: ci\n'
+    );
+    expect(() => loadConfig(dir)).toThrowError(/codex\.profile/i);
   });
 });
 

@@ -1,5 +1,3 @@
-import { spawn } from 'child_process';
-import * as readline from 'readline';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type {
   Options,
@@ -7,7 +5,19 @@ import type {
   SDKResultMessage,
   SettingSource,
 } from '@anthropic-ai/claude-agent-sdk';
+import type {
+  CommandExecutionItem,
+  CodexModelReasoningEffort,
+  CodexThreadOptions,
+  FileChangeItem,
+  McpToolCallItem,
+  ThreadEvent,
+  ThreadItem,
+  TodoListItem,
+  WebSearchItem,
+} from './codex-sdk.js';
 import type { ClaudeProviderConfig, CodexProviderConfig } from './config.js';
+import { loadCodexSdk } from './codex-sdk.js';
 import type { QuetzBus } from './events.js';
 import { getProviderDescriptor, type AgentEffortLevel, type AgentProvider } from './provider.js';
 
@@ -67,11 +77,12 @@ export function runAgent({
         timeoutMinutes,
       });
     case 'codex':
-      return runCodexExec({
+      return runCodexSdk({
         prompt,
         cwd,
         model,
         bus,
+        effort,
         simulate,
         providerConfig,
         abortController,
@@ -118,11 +129,12 @@ interface ClaudeQueryOptions {
   timeoutMinutes: number;
 }
 
-interface CodexExecOptions {
+interface CodexSdkOptions {
   prompt: string;
   cwd: string;
   model: string;
   bus?: QuetzBus;
+  effort?: AgentEffortLevel;
   simulate: boolean;
   providerConfig?: ProviderConfig;
   abortController: AbortController;
@@ -160,8 +172,7 @@ async function runClaudeQuery({
           includePartialMessages: true,
           ...(effort ? { effort } : {}),
           stderr: (data: string) => {
-            if (bus) bus.emit('agent:stderr', { data });
-            else process.stderr.write(data);
+            emitStderr(data, bus);
           },
         }
       : {
@@ -175,8 +186,7 @@ async function runClaudeQuery({
           includePartialMessages: true,
           ...(effort ? { effort } : {}),
           stderr: (data: string) => {
-            if (bus) bus.emit('agent:stderr', { data });
-            else process.stderr.write(data);
+            emitStderr(data, bus);
           },
         };
 
@@ -208,68 +218,32 @@ async function runClaudeQuery({
   }
 }
 
-async function runCodexExec({
+async function runCodexSdk({
   prompt,
   cwd,
   model,
   bus,
+  effort,
   simulate,
   providerConfig,
   abortController,
   timer,
   timeoutMinutes,
-}: CodexExecOptions): Promise<number> {
-  const codexConfig = providerConfig as CodexProviderConfig | undefined;
-  const args = ['exec', '--json', '--color', 'never', '--cd', cwd, '--model', model];
-
-  if (codexConfig?.profile) {
-    args.push('--profile', codexConfig.profile);
-  }
-
-  if (simulate) {
-    args.push('--sandbox', 'read-only');
-  } else {
-    args.push('--dangerously-bypass-approvals-and-sandbox');
-  }
-
-  return new Promise<number>((resolve, reject) => {
-    const child = spawn('codex', args, {
-      cwd,
-      shell: process.platform === 'win32',
-      stdio: ['pipe', 'pipe', 'pipe'],
+}: CodexSdkOptions): Promise<number> {
+  try {
+    const codexConfig = providerConfig as CodexProviderConfig | undefined;
+    const { Codex } = await loadCodexSdk();
+    const apiKey = resolveCodexApiKey();
+    const codex = new Codex({
+      ...(codexConfig?.baseUrl ? { baseUrl: codexConfig.baseUrl } : {}),
+      ...(apiKey ? { apiKey } : {}),
     });
+    const thread = codex.startThread(buildCodexThreadOptions(cwd, model, effort, simulate, codexConfig));
+    const { events } = await thread.runStreamed(prompt, { signal: abortController.signal });
 
-    let settled = false;
-    let stderr = '';
+    let turnCompleted = false;
     let nextToolIndex = 0;
     const toolIndexes = new Map<string, number>();
-
-    const stdoutLines = readline.createInterface({
-      input: child.stdout,
-      crlfDelay: Infinity,
-    });
-
-    const cleanup = () => {
-      abortController.signal.removeEventListener('abort', onAbort);
-      stdoutLines.close();
-    };
-
-    const finishResolve = (exitCode: number) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      clearTimeout(timer);
-      resolve(exitCode);
-    };
-
-    const finishReject = (err: Error) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      clearTimeout(timer);
-      reject(err);
-    };
-
     const toolIndexFor = (itemId: string): number => {
       const existing = toolIndexes.get(itemId);
       if (existing !== undefined) return existing;
@@ -278,58 +252,29 @@ async function runCodexExec({
       return index;
     };
 
-    const onAbort = () => {
-      child.kill();
-    };
-
-    stdoutLines.on('line', line => {
-      if (!line.trim()) return;
-
-      let event: CodexEvent;
-      try {
-        event = JSON.parse(line) as CodexEvent;
-      } catch {
-        finishReject(new Error(`Codex emitted invalid JSONL: ${line}`));
-        return;
+    for await (const event of events) {
+      if (event.type === 'turn.completed') {
+        turnCompleted = true;
+      } else if (event.type === 'turn.failed') {
+        emitStderr(event.error.message, bus);
+        throw new Error(event.error.message);
+      } else if (event.type === 'error') {
+        emitStderr(event.message, bus);
+        throw new Error(event.message);
       }
 
       handleCodexEvent(event, toolIndexFor, bus);
-    });
+    }
 
-    child.stderr.setEncoding('utf-8');
-    child.stderr.on('data', (chunk: string | Buffer) => {
-      const data = typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
-      stderr += data;
-      if (bus) bus.emit('agent:stderr', { data });
-      else process.stderr.write(data);
-    });
-
-    child.on('error', err => {
-      finishReject(new Error(`Agent process error: ${err.message}`));
-    });
-
-    child.on('close', code => {
-      if (abortController.signal.aborted) {
-        finishReject(new Error(`Agent timed out after ${timeoutMinutes} minutes`));
-        return;
-      }
-
-      if (code === 0) {
-        finishResolve(0);
-        return;
-      }
-
-      const detail = stderr.trim();
-      finishReject(
-        new Error(
-          `Agent process error: Codex exited with code ${code ?? 'unknown'}${detail ? `: ${detail}` : ''}`
-        )
-      );
-    });
-
-    abortController.signal.addEventListener('abort', onAbort, { once: true });
-    child.stdin.end(prompt);
-  });
+    clearTimeout(timer);
+    return turnCompleted ? 0 : 1;
+  } catch (err) {
+    clearTimeout(timer);
+    if (abortController.signal.aborted) {
+      throw new Error(`Agent timed out after ${timeoutMinutes} minutes`);
+    }
+    throw new Error(`Agent process error: ${(err as Error).message}`);
+  }
 }
 
 function normalizeClaudeSettingSources(settingSources?: string[]): SettingSource[] {
@@ -341,35 +286,55 @@ function normalizeClaudeSettingSources(settingSources?: string[]): SettingSource
   );
 }
 
+function buildCodexThreadOptions(
+  cwd: string,
+  model: string,
+  effort: AgentEffortLevel | undefined,
+  simulate: boolean,
+  providerConfig?: CodexProviderConfig
+): CodexThreadOptions {
+  const approvalPolicy = simulate ? 'never' : providerConfig?.approvalPolicy ?? 'never';
+  const sandboxMode = simulate ? 'read-only' : providerConfig?.sandboxMode ?? 'danger-full-access';
+
+  return {
+    model,
+    workingDirectory: cwd,
+    approvalPolicy,
+    sandboxMode,
+    ...(simulate ? { networkAccessEnabled: false } : {}),
+    ...(providerConfig?.networkAccessEnabled !== undefined && !simulate
+      ? { networkAccessEnabled: providerConfig.networkAccessEnabled }
+      : {}),
+    ...(providerConfig?.webSearchMode && !simulate
+      ? { webSearchMode: providerConfig.webSearchMode }
+      : {}),
+    ...(mapCodexEffort(effort) ? { modelReasoningEffort: mapCodexEffort(effort) } : {}),
+  };
+}
+
+function mapCodexEffort(effort?: AgentEffortLevel): CodexModelReasoningEffort | undefined {
+  switch (effort) {
+    case 'low':
+      return 'low';
+    case 'medium':
+      return 'medium';
+    case 'high':
+      return 'high';
+    case 'max':
+      return 'xhigh';
+    default:
+      return undefined;
+  }
+}
+
+function resolveCodexApiKey(): string | undefined {
+  return process.env['CODEX_API_KEY'] || process.env['OPENAI_API_KEY'] || undefined;
+}
+
 interface BlockState {
   name: string;
   inputChunks: string[];
 }
-
-interface CodexEvent {
-  type: string;
-  item?: CodexItem;
-}
-
-type CodexItem =
-  | {
-      id: string;
-      type: 'agent_message';
-      text?: string;
-    }
-  | {
-      id: string;
-      type: 'command_execution';
-      command?: string;
-      aggregated_output?: string;
-      exit_code?: number | null;
-      status?: string;
-    }
-  | {
-      id: string;
-      type: string;
-      [key: string]: unknown;
-    };
 
 function renderStreamEvent(event: any, blocks: Map<number, BlockState>, bus?: QuetzBus): void {
   switch (event.type) {
@@ -413,43 +378,100 @@ function renderStreamEvent(event: any, blocks: Map<number, BlockState>, bus?: Qu
 }
 
 function handleCodexEvent(
-  event: CodexEvent,
+  event: ThreadEvent,
   toolIndexFor: (itemId: string) => number,
   bus?: QuetzBus
 ): void {
-  if (!event.item) return;
+  if (!('item' in event)) return;
 
-  if (event.type === 'item.started' && event.item.type === 'command_execution') {
-    emitToolStart(toolIndexFor(event.item.id), 'Bash', bus);
+  const item = event.item;
+
+  if (event.type === 'item.started' && isCodexToolItem(item)) {
+    emitToolStart(toolIndexFor(item.id), codexToolName(item), bus);
     return;
   }
 
   if (event.type !== 'item.completed') return;
 
-  switch (event.item.type) {
-    case 'agent_message': {
-      const item = event.item as Extract<CodexItem, { type: 'agent_message' }>;
+  switch (item.type) {
+    case 'agent_message':
       if (item.text) emitAgentText(item.text, bus);
       return;
-    }
-    case 'command_execution': {
-      const item = event.item as Extract<CodexItem, { type: 'command_execution' }>;
-      emitToolDone(
-        toolIndexFor(item.id),
-        'Bash',
-        summarizeCodexCommand(item.command ?? ''),
-        bus
-      );
+    case 'reasoning':
       return;
-    }
-    default:
+    case 'error':
+      emitStderr(item.message || 'Unknown Codex error', bus);
+      return;
+    case 'command_execution':
+      emitToolDone(toolIndexFor(item.id), codexToolName(item), summarizeCodexItem(item), bus);
+      return;
+    case 'mcp_tool_call':
+    case 'file_change':
+    case 'web_search':
+    case 'todo_list':
+      emitToolDone(toolIndexFor(item.id), codexToolName(item), summarizeCodexItem(item), bus);
       return;
   }
+}
+
+function isCodexToolItem(item: ThreadItem): item is CommandExecutionItem | FileChangeItem | McpToolCallItem | WebSearchItem | TodoListItem {
+  return item.type === 'command_execution'
+    || item.type === 'file_change'
+    || item.type === 'mcp_tool_call'
+    || item.type === 'web_search'
+    || item.type === 'todo_list';
+}
+
+function codexToolName(item: CommandExecutionItem | FileChangeItem | McpToolCallItem | WebSearchItem | TodoListItem): string {
+  switch (item.type) {
+    case 'command_execution':
+      return 'Bash';
+    case 'mcp_tool_call':
+      return `${item.server}.${item.tool}`;
+    case 'file_change':
+      return 'ApplyPatch';
+    case 'web_search':
+      return 'WebSearch';
+    case 'todo_list':
+      return 'Plan';
+  }
+}
+
+function summarizeCodexItem(item: CommandExecutionItem | FileChangeItem | McpToolCallItem | WebSearchItem | TodoListItem): string {
+  switch (item.type) {
+    case 'command_execution':
+      return summarizeCodexCommand(item.command ?? '');
+    case 'mcp_tool_call':
+      return summarizeToolInput(item.arguments);
+    case 'file_change':
+      return item.changes.map(change => shortPath(change.path)).join(', ');
+    case 'web_search':
+      return item.query;
+    case 'todo_list': {
+      const pending = item.items.find(todo => !todo.completed) ?? item.items[0];
+      return pending ? truncate(pending.text, 60) : 'updated';
+    }
+  }
+}
+
+function summarizeToolInput(value: unknown): string {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return typeof value === 'string' ? truncate(value, 60) : '';
+  }
+
+  const firstValue = Object.values(value as Record<string, unknown>).find(candidate => typeof candidate === 'string');
+  return firstValue ? truncate(String(firstValue), 60) : '';
 }
 
 function emitAgentText(text: string, bus?: QuetzBus): void {
   if (bus) bus.emit('agent:text', { text });
   else process.stdout.write(text);
+}
+
+function emitStderr(data: string, bus?: QuetzBus): void {
+  if (!data) return;
+  if (bus) bus.emit('agent:stderr', { data });
+  else process.stderr.write(data);
 }
 
 function emitToolStart(index: number, name: string, bus?: QuetzBus): void {

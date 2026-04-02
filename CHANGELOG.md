@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Bundled `@openai/codex-sdk` as the official Codex runtime dependency.
+- In-repo research notes for `quetz-6gm` documenting the Codex SDK decision and migration tradeoffs.
+
+### Changed
+- Codex runs now load the ESM-only SDK through a runtime-safe loader and use the SDK-backed thread/event contract instead of direct `codex exec --json` plumbing in Quetz.
+- Codex preflight now checks the bundled SDK runtime plus Codex auth readiness, and `.quetzrc.yml` now exposes SDK-backed Codex settings for approval policy, sandbox mode, network access, and web search.
+- `quetz init`, README, and provider metadata now describe Codex as an SDK-backed runtime rather than an upcoming CLI adapter.
+
+### Fixed
+- Built CommonJS output no longer crashes when importing the ESM-only Codex SDK package.
+- Codex runtime tests now mock the SDK loader instead of accidentally invoking the real local runtime during unit tests.
+
 ## [0.8.8] - 2026-03-31
 
 ### Changed

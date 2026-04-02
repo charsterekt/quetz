@@ -37,10 +37,10 @@ describe('formatPreflightChecklist', () => {
     expect(lines).toContain('  ✓  Beads CLI ready');
     expect(lines).toContain('  ✓  Git remote origin -> acme/quetz (main)');
     expect(lines).toContain('  ✗  Claude Code: installed, not authenticated');
-    expect(lines).toContain('  ✓  Codex CLI: ready (selected)');
+    expect(lines).toContain('  ✓  Codex SDK: ready (selected)');
   });
 
-  it('marks unavailable provider CLIs with a cross', () => {
+  it('marks unavailable provider runtimes with a cross', () => {
     const lines = formatPreflightChecklist(buildPreflightResult({
       preferredProvider: 'claude',
       providerStatuses: [
@@ -62,6 +62,6 @@ describe('formatPreflightChecklist', () => {
     }));
 
     expect(lines).toContain('  ✓  Claude Code: ready (selected)');
-    expect(lines).toContain('  ✗  Codex CLI: CLI not found');
+    expect(lines).toContain('  ✗  Codex SDK: CLI or SDK missing');
   });
 });

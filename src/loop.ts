@@ -8,7 +8,7 @@ import { createOctokit, findPR, pollForMerge } from './github.js';
 import { setVerbose, log } from './verbose.js';
 import { brand, success, waiting, error, dim } from './display/terminal.js';
 import { execSync } from 'child_process';
-import { getProviderDescriptor } from './provider.js';
+import { getProviderDescriptor, resolveProviderModel } from './provider.js';
 
 function formatElapsed(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -288,9 +288,12 @@ export async function runLoop(
       {};
     const agentModel =
       opts.model ??
-      providerConfig.model ??
-      config.agent.model ??
-      getProviderDescriptor(agentProvider).defaultModel;
+      resolveProviderModel(
+        agentProvider,
+        config.agent.provider ?? 'claude',
+        config.agent.model,
+        providerConfig.model
+      );
     const agentEffort =
       opts.effort ??
       providerConfig.effort ??

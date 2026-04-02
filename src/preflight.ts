@@ -1,5 +1,6 @@
 import { execSync } from 'child_process';
 import * as fs from 'fs';
+import { createRequire } from 'module';
 import * as os from 'os';
 import * as path from 'path';
 import { getRemoteUrl, parseOwnerRepo, getDefaultBranch } from './git.js';
@@ -56,8 +57,8 @@ export function claudeAuthTokenExists(): boolean {
 function codexAuthTokenExists(): boolean {
   if (process.env['OPENAI_API_KEY']) return true;
   if (process.env['CODEX_API_KEY']) return true;
-  const status = tryExec('codex login status');
-  return status.ok;
+  const authPath = path.join(os.homedir(), '.codex', 'auth.json');
+  return fs.existsSync(authPath);
 }
 
 function isProviderAuthenticated(provider: AgentProvider): boolean {
@@ -69,10 +70,36 @@ function isProviderAuthenticated(provider: AgentProvider): boolean {
   }
 }
 
+const runtimeRequire = createRequire(__filename);
+
+function isProviderInstalled(provider: AgentProvider): boolean {
+  const descriptor = getProviderDescriptor(provider);
+
+  if (descriptor.runtime.kind === 'sdk') {
+    const packageName = descriptor.runtime.packageName;
+    const checkCommand = descriptor.runtime.checkCommand;
+    if (!packageName || !checkCommand) return false;
+    const packagePath = path.join(process.cwd(), 'node_modules', ...packageName.split('/'));
+    const packageInstalled = fs.existsSync(packagePath) || (() => {
+      try {
+        runtimeRequire.resolve(packageName);
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    return packageInstalled && tryExec(checkCommand).ok;
+  }
+
+  const checkCommand = descriptor.runtime.checkCommand;
+  if (!checkCommand) return false;
+  return tryExec(checkCommand).ok;
+}
+
 function getProviderStatuses(): ProviderStatus[] {
   return AGENT_PROVIDERS.map(provider => {
     const descriptor = getProviderDescriptor(provider);
-    const installed = tryExec(`${descriptor.cli.command} --version`).ok;
+    const installed = isProviderInstalled(provider);
     const authenticated = installed ? isProviderAuthenticated(provider) : false;
     const warnings: string[] = [];
 
@@ -106,13 +133,13 @@ function assertSupportedProvider(statuses: ProviderStatus[], selectedProvider?: 
     if (!selectedStatus?.installed) {
       const descriptor = getProviderDescriptor(selectedProvider);
       throw new PreflightError(
-        `${descriptor.displayName} CLI not found. ${descriptor.cli.installHint}`
+        `${descriptor.displayName} runtime unavailable. ${descriptor.runtime.installHint}`
       );
     }
     if (!selectedStatus.authenticated) {
       const descriptor = getProviderDescriptor(selectedProvider);
       throw new PreflightError(
-        `${descriptor.displayName} is installed but not authenticated. ${descriptor.cli.loginHint}`
+        `${descriptor.displayName} is installed but not authenticated. ${descriptor.runtime.loginHint}`
       );
     }
     if (!selectedStatus.runtimeImplemented) {
@@ -125,16 +152,10 @@ function assertSupportedProvider(statuses: ProviderStatus[], selectedProvider?: 
   }
 
   if (usable.length === 0) {
-    if (claudeStatus && !claudeStatus.installed) {
-      const descriptor = getProviderDescriptor('claude');
-      throw new PreflightError(
-        `${descriptor.displayName} CLI not found. ${descriptor.cli.installHint}`
-      );
-    }
     if (claudeStatus && claudeStatus.installed && !claudeStatus.authenticated) {
       const descriptor = getProviderDescriptor('claude');
       throw new PreflightError(
-        `${descriptor.displayName} is installed but not authenticated. ${descriptor.cli.loginHint}`
+        `${descriptor.displayName} is installed but not authenticated. ${descriptor.runtime.loginHint}`
       );
     }
 
@@ -144,12 +165,19 @@ function assertSupportedProvider(statuses: ProviderStatus[], selectedProvider?: 
         .map(status => getProviderDescriptor(status.provider).displayName)
         .join(', ');
       throw new PreflightError(
-        `No supported agent CLI is ready. Installed but unauthenticated: ${providerNames}. Authenticate one provider and rerun init.`
+        `No supported agent runtime is ready. Installed but unauthenticated: ${providerNames}. Authenticate one provider and rerun init.`
+      );
+    }
+
+    if (claudeStatus && !claudeStatus.installed) {
+      const descriptor = getProviderDescriptor('claude');
+      throw new PreflightError(
+        `${descriptor.displayName} runtime unavailable. ${descriptor.runtime.installHint}`
       );
     }
 
     throw new PreflightError(
-      `No supported agent CLI found. Install one of: ${AGENT_PROVIDERS.join(', ')}.`
+      `No supported agent runtime found. Install one of: ${AGENT_PROVIDERS.join(', ')}.`
     );
   }
 

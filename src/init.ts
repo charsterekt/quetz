@@ -1,12 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
-import { execSync } from 'child_process';
 import chalk from 'chalk';
 import { runPreflight, type PreflightResult, type ProviderStatus } from './preflight.js';
 import { writeConfig, DEFAULTS } from './config.js';
 import { printLogo } from './display/quetz.js';
 import type { QuetzConfig } from './config.js';
+import { runAgent } from './agent.js';
 import { getProviderDescriptor } from './provider.js';
 
 const AUTOMERGE_TEMPLATE = `# .github/workflows/quetz-automerge.yml
@@ -75,6 +75,7 @@ async function gatherConfig(rl: readline.Interface, preflight: PreflightResult):
     agent: {
       ...DEFAULTS.agent,
       provider: preflight.preferredProvider,
+      model: getProviderDescriptor(preflight.preferredProvider).defaultModel,
     },
   };
 }
@@ -83,19 +84,18 @@ function getAutomergeYaml(automergeLabel: string): string {
   return AUTOMERGE_TEMPLATE.replace('{{automergeLabel}}', automergeLabel);
 }
 
-function runWorkflowAgent(providerId: PreflightResult['preferredProvider'], prompt: string, projectRoot: string): void {
-  if (providerId === 'claude') {
-    execSync(`claude -p ${JSON.stringify(prompt)} --dangerously-skip-permissions`, {
-      stdio: 'inherit',
-      cwd: projectRoot,
-    });
-    return;
-  }
-
-  execSync(`codex exec --dangerously-bypass-approvals-and-sandbox ${JSON.stringify(prompt)}`, {
-    stdio: 'inherit',
+async function runWorkflowAgent(providerId: PreflightResult['preferredProvider'], prompt: string, projectRoot: string): Promise<void> {
+  const exitCode = await runAgent({
+    provider: providerId,
+    prompt,
     cwd: projectRoot,
+    model: getProviderDescriptor(providerId).defaultModel,
+    timeoutMinutes: DEFAULTS.agent.timeout,
   });
+
+  if (exitCode !== 0) {
+    throw new Error(`${getProviderDescriptor(providerId).displayName} exited with code ${exitCode}`);
+  }
 }
 
 async function setupGitHubActions(
@@ -132,7 +132,7 @@ async function setupGitHubActions(
       yaml +
       '\n\nCommit it, push to a new branch, and open a pull request.';
     try {
-      runWorkflowAgent(preferredProvider, prompt, projectRoot);
+      await runWorkflowAgent(preferredProvider, prompt, projectRoot);
     } catch {
       process.stderr.write(`\n${provider.displayName} session ended.\n`);
     }
@@ -156,7 +156,7 @@ function formatProviderChecklistLine(status: ProviderStatus, preferredProvider: 
   const selected = status.provider === preferredProvider ? ' (selected)' : '';
 
   if (!status.installed) {
-    return `  ${chalk.red('✗')}  ${descriptor.displayName}: CLI not found${selected}`;
+    return `  ${chalk.red('✗')}  ${descriptor.displayName}: ${descriptor.runtime.unavailableLabel}${selected}`;
   }
 
   if (!status.authenticated) {
