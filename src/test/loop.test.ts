@@ -56,6 +56,7 @@ import { checkoutDefault, pullDefault, countNewCommits, getCommitCountAhead, get
 import { assemblePrompt } from '../prompt.js';
 import { spawnAgent } from '../agent.js';
 import { createOctokit, findPR, pollForMerge } from '../github.js';
+import { execSync } from 'child_process';
 import { runLoop, showStatus } from '../loop.js';
 
 const mockLoadConfig = vi.mocked(loadConfig);
@@ -78,6 +79,7 @@ const mockSpawnAgent = vi.mocked(spawnAgent);
 const mockCreateOctokit = vi.mocked(createOctokit);
 const mockFindPR = vi.mocked(findPR);
 const mockPollForMerge = vi.mocked(pollForMerge);
+const mockExecSync = vi.mocked(execSync);
 
 const baseConfig = {
   github: { owner: 'acme', repo: 'myapp', defaultBranch: 'main', automergeLabel: 'automerge' },
@@ -116,6 +118,7 @@ beforeEach(() => {
   mockPullDefault.mockReturnValue(undefined as never);
   mockCountNewCommits.mockReturnValue(1);
   mockGetCommitCountAhead.mockReturnValue(1);
+  mockExecSync.mockReturnValue('abc1234 Add auth middleware' as never);
   stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
   stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 });
@@ -695,6 +698,30 @@ describe('runLoop amend', () => {
     const result = await runLoop({amend: true }, bus);
     expect(result.exitCode).toBe(0);
     expect(victoryHandler).toHaveBeenCalledWith(expect.objectContaining({ mode: 'amend' }));
+  });
+
+  it('quotes git log format when building amend victory payload', async () => {
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockGetCommitCountAhead.mockReturnValue(1);
+
+    const bus = createBus();
+    const victoryHandler = vi.fn();
+    bus.on('loop:victory', victoryHandler);
+
+    await runLoop({ amend: true }, bus);
+
+    expect(mockExecSync).toHaveBeenCalledWith(
+      'git log -1 --format="%H %s"',
+      expect.objectContaining({ encoding: 'utf-8', cwd: process.cwd() }),
+    );
+    expect(victoryHandler).toHaveBeenCalledWith(expect.objectContaining({
+      commitHash: 'abc1234',
+      commitMsg: 'Add auth middleware',
+    }));
   });
 });
 
