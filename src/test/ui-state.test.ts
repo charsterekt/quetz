@@ -176,6 +176,46 @@ describe('wireState', () => {
     cleanup();
   });
 
+  it('adds warning messages to the log rail', () => {
+    const bus = createBus();
+    let state = cloneState();
+    const cleanup = wireState(bus, updater => {
+      state = updater(state);
+    });
+
+    bus.emit('loop:warning', { message: 'ready fronts: 2' });
+
+    expect(state.logLines.map(line => line.text)).toContain('WARN ready fronts: 2');
+
+    cleanup();
+  });
+
+  it('logs dependency context without resetting the scoped counter', () => {
+    const bus = createBus();
+    let state = cloneState();
+    const cleanup = wireState(bus, updater => {
+      state = updater(state);
+    });
+
+    bus.emit('loop:start', { total: 7 });
+    bus.emit('loop:issue_pickup', {
+      id: 'bd-707',
+      title: 'Keep counters scoped',
+      priority: 1,
+      type: 'feature',
+      iteration: 1,
+      total: 7,
+    });
+    bus.emit('loop:dependency_context', {
+      message: 'scope: 2 done  1 active  1 ready  4 blocked',
+    });
+
+    expect(state.issueCount).toEqual({ current: 1, total: 7 });
+    expect(state.logLines.map(line => line.text)).toContain('scope: 2 done  1 active  1 ready  4 blocked');
+
+    cleanup();
+  });
+
   it('records failed runs in completed session history with failed outcome', () => {
     const bus = createBus();
     let state = cloneState();
