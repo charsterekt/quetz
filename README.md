@@ -113,13 +113,19 @@ Start the dev loop. Runs until all issues are resolved or a failure occurs. Comp
 | `--timeout <minutes>` | `30` | Kill agent if it runs longer than this |
 | `--local-commits` | — | Skip PR lifecycle; verify local commits only |
 | `--amend` | — | Accumulate all issue work into a single rolling commit (no PR) |
-| `--simulate` | — | Full visual test: mock issues, real agent, simulated PR lifecycle |
+| `--epic <id>` | - | Restrict beads pickup and counts to children of the given epic |
+| `--simulate` | - | Full visual test: mock issues, real agent, simulated PR lifecycle |
 
 `--local-commits` and `--amend` are mutually exclusive. Both skip GitHub API access entirely.
 
 `custom prompt` is currently launch-screen only and gets appended to the generated agent instructions for that run.
 
-`beads mode` epic filtering is not wired into the loop yet; launch labels it as `epic - coming soon`.
+Beads scope notes:
+
+- `quetz run --epic <id>` scopes the run to the children of that epic.
+- `quetz run` still defaults to all open work unless `.quetzrc.yml` sets `beads.epic`.
+- Quetz always defers to `bd ready` for issue ordering. If only one issue is ready, that is normal for a dependency chain.
+- Progress totals come from open work in scope, not the current `bd ready` result length.
 
 ### `quetz status`
 
@@ -215,6 +221,9 @@ agent:
       networkAccessEnabled: true        # optional; simulate forces false
       webSearchMode: "cached"           # optional: disabled|cached|live
 
+beads:
+  epic: "quetz-a0p"         # optional default scope for non-interactive runs
+
 poll:
   interval: 30              # seconds between merge-status checks
   mergeTimeout: 15          # minutes to wait for PR to merge
@@ -225,6 +234,7 @@ Runtime overrides:
 
 ```bash
 quetz run --provider claude --model haiku --effort low --timeout 60
+quetz run --epic quetz-a0p
 ```
 
 Codex SDK notes:
@@ -286,3 +296,5 @@ jobs:
 | `3` | Preflight failure — missing runtime/tooling (`claude`, `codex`, `gh`, `bd`) or auth not configured |
 
 ---
+
+

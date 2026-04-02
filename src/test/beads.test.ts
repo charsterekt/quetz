@@ -93,9 +93,9 @@ describe('countOpenIssues', () => {
     expect(mockExecFileSync).toHaveBeenCalledWith('bd', ['list', '--all', '--flat', '--json'], expect.any(Object));
   });
 
-  it('returns ready mock issue count in mock mode', () => {
+  it('returns open-like mock issue count in mock mode', () => {
     enableMockMode();
-    expect(countOpenIssues()).toBe(3);
+    expect(countOpenIssues()).toBe(4);
     expect(mockExecFileSync).not.toHaveBeenCalled();
   });
 });
