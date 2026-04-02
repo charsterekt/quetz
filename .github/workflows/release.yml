@@ -19,6 +19,11 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing GitHub Release tag to republish (for example v0.8.12)
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -32,7 +37,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || format('refs/tags/{0}', inputs.tag) }}
+
+      - name: Resolve release target
+        id: release_target
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: node scripts/release-workflow.mjs resolve
+
+      - name: Verify manual release exists
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/github-script@v7
+        env:
+          RELEASE_TAG: ${{ steps.release_target.outputs.tag }}
+        with:
+          script: |
+            const tag = process.env.RELEASE_TAG;
+            const { owner, repo } = context.repo;
+            try {
+              const { data } = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+              if (data.draft) {
+                core.setFailed(`Release ${tag} is still a draft. Publish it before retrying npm publication.`);
+                return;
+              }
+              core.info(`Validated GitHub release ${data.tag_name}.`);
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              core.setFailed(`Manual publish requires an existing GitHub release for ${tag}. ${message}`);
+            }
+          result-encoding: string
+
+      - name: Verify package version matches tag
+        env:
+          RELEASE_TAG: ${{ steps.release_target.outputs.tag }}
+        run: node scripts/release-workflow.mjs verify-package-version
 
       - uses: actions/setup-node@v4
         with:
