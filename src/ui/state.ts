@@ -267,6 +267,13 @@ export function wireState(
     }));
   };
 
+  const onDependencyContext = (p: QuetzEvent['loop:dependency_context']) => {
+    update(s => ({
+      ...s,
+      logLines: [...s.logLines, { icon: '~', color: c.dim, text: p.message }],
+    }));
+  };
+
   const onPhase = (p: QuetzEvent['loop:phase']) => {
     const logLine = phaseLogLine(p, elapsedSeconds);
     update(s => {
@@ -319,6 +326,13 @@ export function wireState(
         prNumber: p.number,
         elapsed,
       },
+    }));
+  };
+
+  const onWarning = (p: QuetzEvent['loop:warning']) => {
+    update(s => ({
+      ...s,
+      logLines: [...s.logLines, { icon: '!', color: c.accent, text: `WARN ${p.message}` }],
     }));
   };
 
@@ -433,10 +447,12 @@ export function wireState(
 
   bus.on('loop:start', onStart);
   bus.on('loop:issue_pickup', onPickup);
+  bus.on('loop:dependency_context', onDependencyContext);
   bus.on('loop:phase', onPhase);
   bus.on('agent:text', onText);
   bus.on('agent:tool_done', onToolDone);
   bus.on('loop:pr_found', onPrFound);
+  bus.on('loop:warning', onWarning);
   bus.on('loop:victory', onVictory);
   bus.on('loop:failure', onFailure);
   bus.on('loop:merged', onMerged);
@@ -447,10 +463,12 @@ export function wireState(
     stopElapsedTimer();
     bus.off('loop:start', onStart);
     bus.off('loop:issue_pickup', onPickup);
+    bus.off('loop:dependency_context', onDependencyContext);
     bus.off('loop:phase', onPhase);
     bus.off('agent:text', onText);
     bus.off('agent:tool_done', onToolDone);
     bus.off('loop:pr_found', onPrFound);
+    bus.off('loop:warning', onWarning);
     bus.off('loop:victory', onVictory);
     bus.off('loop:failure', onFailure);
     bus.off('loop:merged', onMerged);
