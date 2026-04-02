@@ -7,11 +7,17 @@ vi.mock('child_process', () => ({
 
 import * as childProcess from 'child_process';
 import {
+  assertEpicIssue,
   countOpenIssues,
+  getDependencyCycles,
+  getEpicScopeSummary,
   getReadyIssues,
   getIssueDetails,
   getPrimeContext,
+  listScopedIssues,
   listAllIssues,
+  validateEpicGraph,
+  type BeadsScope,
   enableMockMode,
   disableMockMode,
 } from '../beads.js';
@@ -48,13 +54,43 @@ describe('getReadyIssues', () => {
     mockExecFileSync.mockImplementation(() => { throw new Error('bd not found'); });
     expect(() => getReadyIssues()).toThrow('bd command failed');
   });
+
+  it('uses bd ready --parent for epic scope', () => {
+    const scope: BeadsScope = { mode: 'epic', epicId: 'quetz-a0p' };
+    mockExecFileSync.mockReturnValue('[]' as never);
+    expect(getReadyIssues(scope)).toEqual([]);
+    expect(mockExecFileSync).toHaveBeenCalledWith('bd', ['ready', '--parent', 'quetz-a0p', '--json'], expect.any(Object));
+  });
+});
+
+describe('listScopedIssues', () => {
+  it('returns scoped issues from bd list for epic scope', () => {
+    const scope: BeadsScope = { mode: 'epic', epicId: 'quetz-a0p' };
+    const issues = [
+      { id: 'quetz-1', status: 'open' },
+      { id: 'quetz-2', status: 'closed' },
+    ];
+    mockExecFileSync.mockReturnValue(JSON.stringify(issues) as never);
+
+    expect(listScopedIssues(scope)).toEqual(issues);
+    expect(mockExecFileSync).toHaveBeenCalledWith('bd', ['list', '--parent', 'quetz-a0p', '--all', '--flat', '--json'], expect.any(Object));
+  });
+
+  it('surfaces the exact bd command when JSON parsing fails', () => {
+    mockExecFileSync.mockReturnValue('not-json' as never);
+    expect(() => listScopedIssues()).toThrow('bd command failed: bd list --all --flat --json');
+  });
 });
 
 describe('countOpenIssues', () => {
   it('returns the parsed open-issue count', () => {
-    mockExecFileSync.mockReturnValue(JSON.stringify({ count: 16 }) as never);
-    expect(countOpenIssues()).toBe(16);
-    expect(mockExecFileSync).toHaveBeenCalledWith('bd', ['count', '--status', 'open', '--json'], expect.any(Object));
+    mockExecFileSync.mockReturnValue(JSON.stringify([
+      { id: 'bd-001', status: 'open' },
+      { id: 'bd-002', status: 'ready' },
+      { id: 'bd-003', status: 'closed' },
+    ]) as never);
+    expect(countOpenIssues()).toBe(2);
+    expect(mockExecFileSync).toHaveBeenCalledWith('bd', ['list', '--all', '--flat', '--json'], expect.any(Object));
   });
 
   it('returns ready mock issue count in mock mode', () => {
@@ -82,6 +118,70 @@ describe('getIssueDetails', () => {
     expect(() => getIssueDetails('bd-001; rm -rf /')).toThrow('Invalid issue ID format');
     expect(() => getIssueDetails('bd-001 && echo hacked')).toThrow('Invalid issue ID format');
     expect(() => getIssueDetails('bd-001$(cat /etc/passwd)')).toThrow('Invalid issue ID format');
+  });
+});
+
+describe('dependency validation', () => {
+  it('returns dependency cycles from bd dep cycles', () => {
+    const cycles = [{ issues: ['bd-1', 'bd-2'] }];
+    mockExecFileSync.mockReturnValue(JSON.stringify(cycles) as never);
+
+    expect(getDependencyCycles()).toEqual(cycles);
+    expect(mockExecFileSync).toHaveBeenCalledWith('bd', ['dep', 'cycles', '--json'], expect.any(Object));
+  });
+
+  it('parses swarm validation output into errors warnings and info', () => {
+    mockExecSync.mockReturnValue([
+      'warning: child bd-2 is blocked',
+      'Ready fronts: 2',
+      'error: cycle detected',
+    ].join('\n') as never);
+
+    expect(validateEpicGraph('quetz-a0p')).toEqual({
+      errors: ['error: cycle detected'],
+      warnings: ['warning: child bd-2 is blocked'],
+      info: ['Ready fronts: 2'],
+    });
+    expect(mockExecSync).toHaveBeenCalledWith('bd swarm validate quetz-a0p', expect.any(Object));
+  });
+
+  it('throws with the exact bd swarm validate command when validation output is malformed', () => {
+    mockExecSync.mockReturnValue('   ' as never);
+    expect(() => validateEpicGraph('quetz-a0p')).toThrow('bd command failed: bd swarm validate quetz-a0p');
+  });
+});
+
+describe('epic validation helpers', () => {
+  it('asserts epic issues and includes the failing bd show command in errors', () => {
+    expect(() => assertEpicIssue({
+      id: 'quetz-a0p',
+      title: 'Some task',
+      description: '',
+      status: 'open',
+      priority: 1,
+      issue_type: 'task',
+      created_at: '',
+      updated_at: '',
+    }, 'quetz-a0p')).toThrow('bd show quetz-a0p --json');
+  });
+});
+
+describe('epic summary', () => {
+  it('returns swarm status counts mapped from bd swarm status', () => {
+    mockExecFileSync.mockReturnValue(JSON.stringify({
+      completed: 4,
+      active: 2,
+      ready: 3,
+      blocked: 1,
+    }) as never);
+
+    expect(getEpicScopeSummary('quetz-a0p')).toEqual({
+      done: 4,
+      active: 2,
+      ready: 3,
+      blocked: 1,
+    });
+    expect(mockExecFileSync).toHaveBeenCalledWith('bd', ['swarm', 'status', 'quetz-a0p', '--json'], expect.any(Object));
   });
 });
 
