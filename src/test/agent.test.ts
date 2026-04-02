@@ -536,6 +536,131 @@ describe('spawnAgent', () => {
     expect(doneHandler).toHaveBeenCalledWith({ index: 0, name: 'Bash', summary: 'Get-ChildItem -Name' });
   });
 
+  it('emits incremental stderr deltas for Codex command_execution updates without duplicating completion output', async () => {
+    const bus = createBus();
+    const stderrHandler = vi.fn();
+    bus.on('agent:stderr', stderrHandler);
+
+    const thread = createMockCodexThread([
+      {
+        type: 'item.started',
+        item: {
+          id: 'item_1',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: '',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.updated',
+        item: {
+          id: 'item_1',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'hello',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.updated',
+        item: {
+          id: 'item_1',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'hello world',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.completed',
+        item: {
+          id: 'item_1',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'hello world',
+          exit_code: 0,
+          status: 'completed',
+        },
+      },
+      { type: 'turn.completed', usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 } },
+    ]);
+    mockCodexRuntime(thread);
+
+    await expect(spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex')).resolves.toBe(0);
+    expect(stderrHandler).toHaveBeenNthCalledWith(1, { data: 'hello' });
+    expect(stderrHandler).toHaveBeenNthCalledWith(2, { data: ' world' });
+    expect(stderrHandler).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to full Codex command_execution output when aggregated_output is replaced', async () => {
+    const bus = createBus();
+    const stderrHandler = vi.fn();
+    bus.on('agent:stderr', stderrHandler);
+
+    const thread = createMockCodexThread([
+      {
+        type: 'item.started',
+        item: {
+          id: 'item_2',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: '',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.updated',
+        item: {
+          id: 'item_2',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'abc',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.updated',
+        item: {
+          id: 'item_2',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'abX',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.updated',
+        item: {
+          id: 'item_2',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'abXYZ',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.completed',
+        item: {
+          id: 'item_2',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'abXYZ',
+          exit_code: 0,
+          status: 'completed',
+        },
+      },
+      { type: 'turn.completed', usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 } },
+    ]);
+    mockCodexRuntime(thread);
+
+    await expect(spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex')).resolves.toBe(0);
+    expect(stderrHandler).toHaveBeenNthCalledWith(1, { data: 'abc' });
+    expect(stderrHandler).toHaveBeenNthCalledWith(2, { data: 'abX' });
+    expect(stderrHandler).toHaveBeenNthCalledWith(3, { data: 'YZ' });
+    expect(stderrHandler).toHaveBeenCalledTimes(3);
+  });
+
   it('emits Codex agent_message items through agent:text', async () => {
     const bus = createBus();
     const textHandler = vi.fn();

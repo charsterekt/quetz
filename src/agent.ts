@@ -244,6 +244,7 @@ async function runCodexSdk({
     let turnCompleted = false;
     let nextToolIndex = 0;
     const toolIndexes = new Map<string, number>();
+    const commandOutputStates = new Map<string, CodexCommandExecutionState>();
     const toolIndexFor = (itemId: string): number => {
       const existing = toolIndexes.get(itemId);
       if (existing !== undefined) return existing;
@@ -263,7 +264,7 @@ async function runCodexSdk({
         throw new Error(event.message);
       }
 
-      handleCodexEvent(event, toolIndexFor, bus);
+      handleCodexEvent(event, toolIndexFor, commandOutputStates, bus);
     }
 
     clearTimeout(timer);
@@ -380,6 +381,7 @@ function renderStreamEvent(event: any, blocks: Map<number, BlockState>, bus?: Qu
 function handleCodexEvent(
   event: ThreadEvent,
   toolIndexFor: (itemId: string) => number,
+  commandOutputStates: Map<string, CodexCommandExecutionState>,
   bus?: QuetzBus
 ): void {
   if (!('item' in event)) return;
@@ -389,6 +391,10 @@ function handleCodexEvent(
   if (event.type === 'item.started' && isCodexToolItem(item)) {
     emitToolStart(toolIndexFor(item.id), codexToolName(item), bus);
     return;
+  }
+
+  if (item.type === 'command_execution' && (event.type === 'item.updated' || event.type === 'item.completed')) {
+    emitCodexCommandExecutionStderr(item, commandOutputStates, bus);
   }
 
   if (event.type !== 'item.completed') return;
@@ -404,6 +410,7 @@ function handleCodexEvent(
       return;
     case 'command_execution':
       emitToolDone(toolIndexFor(item.id), codexToolName(item), summarizeCodexItem(item), bus);
+      commandOutputStates.delete(item.id);
       return;
     case 'mcp_tool_call':
     case 'file_change':
@@ -412,6 +419,36 @@ function handleCodexEvent(
       emitToolDone(toolIndexFor(item.id), codexToolName(item), summarizeCodexItem(item), bus);
       return;
   }
+}
+
+interface CodexCommandExecutionState {
+  emittedOutput: string;
+}
+
+function emitCodexCommandExecutionStderr(
+  item: CommandExecutionItem,
+  commandOutputStates: Map<string, CodexCommandExecutionState>,
+  bus?: QuetzBus
+): void {
+  const aggregatedOutput = item.aggregated_output ?? '';
+  const previousState = commandOutputStates.get(item.id);
+  const previousOutput = previousState?.emittedOutput ?? '';
+  const delta = computeCommandExecutionDelta(previousOutput, aggregatedOutput);
+
+  if (delta) {
+    emitStderr(delta, bus);
+  }
+
+  commandOutputStates.set(item.id, { emittedOutput: aggregatedOutput });
+}
+
+function computeCommandExecutionDelta(previousOutput: string, currentOutput: string): string {
+  if (!currentOutput) return '';
+  if (!previousOutput) return currentOutput;
+  if (currentOutput.startsWith(previousOutput)) {
+    return currentOutput.slice(previousOutput.length);
+  }
+  return currentOutput;
 }
 
 function isCodexToolItem(item: ThreadItem): item is CommandExecutionItem | FileChangeItem | McpToolCallItem | WebSearchItem | TodoListItem {
