@@ -435,6 +435,11 @@ function emitCodexCommandExecutionStderr(
   const previousOutput = previousState?.emittedOutput ?? '';
   const delta = computeCommandExecutionDelta(previousOutput, aggregatedOutput);
 
+  if (delta === null) {
+    commandOutputStates.set(item.id, { emittedOutput: aggregatedOutput });
+    return;
+  }
+
   if (delta) {
     emitStderr(delta, bus);
   }
@@ -442,13 +447,13 @@ function emitCodexCommandExecutionStderr(
   commandOutputStates.set(item.id, { emittedOutput: aggregatedOutput });
 }
 
-function computeCommandExecutionDelta(previousOutput: string, currentOutput: string): string {
+function computeCommandExecutionDelta(previousOutput: string, currentOutput: string): string | null {
   if (!currentOutput) return '';
   if (!previousOutput) return currentOutput;
   if (currentOutput.startsWith(previousOutput)) {
     return currentOutput.slice(previousOutput.length);
   }
-  return currentOutput;
+  return null;
 }
 
 function isCodexToolItem(item: ThreadItem): item is CommandExecutionItem | FileChangeItem | McpToolCallItem | WebSearchItem | TodoListItem {
