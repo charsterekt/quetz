@@ -1,7 +1,7 @@
 import { execSync } from 'child_process';
 
 function exec(cmd: string, cwd?: string): string {
-  return execSync(cmd, { encoding: 'utf-8', cwd }).trim();
+  return execSync(cmd, { encoding: 'utf-8', cwd, stdio: 'pipe' }).trim();
 }
 
 export function checkoutDefault(branch: string, cwd: string = process.cwd()): void {
