@@ -536,6 +536,230 @@ describe('spawnAgent', () => {
     expect(doneHandler).toHaveBeenCalledWith({ index: 0, name: 'Bash', summary: 'Get-ChildItem -Name' });
   });
 
+  it('emits incremental stderr deltas for Codex command_execution updates without duplicating completion output', async () => {
+    const bus = createBus();
+    const stderrHandler = vi.fn();
+    bus.on('agent:stderr', stderrHandler);
+
+    const thread = createMockCodexThread([
+      {
+        type: 'item.started',
+        item: {
+          id: 'item_1',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: '',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.updated',
+        item: {
+          id: 'item_1',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'hello',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.updated',
+        item: {
+          id: 'item_1',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'hello world',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.completed',
+        item: {
+          id: 'item_1',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'hello world',
+          exit_code: 0,
+          status: 'completed',
+        },
+      },
+      { type: 'turn.completed', usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 } },
+    ]);
+    mockCodexRuntime(thread);
+
+    await expect(spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex')).resolves.toBe(0);
+    expect(stderrHandler).toHaveBeenNthCalledWith(1, { data: 'hello' });
+    expect(stderrHandler).toHaveBeenNthCalledWith(2, { data: ' world' });
+    expect(stderrHandler).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats replaced Codex command_execution output as a reset without emitting stderr', async () => {
+    const bus = createBus();
+    const stderrHandler = vi.fn();
+    bus.on('agent:stderr', stderrHandler);
+
+    const thread = createMockCodexThread([
+      {
+        type: 'item.started',
+        item: {
+          id: 'item_2',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: '',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.updated',
+        item: {
+          id: 'item_2',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'abc',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.updated',
+        item: {
+          id: 'item_2',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'abX',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.updated',
+        item: {
+          id: 'item_2',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'abXYZ',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.completed',
+        item: {
+          id: 'item_2',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'abXYZ',
+          exit_code: 0,
+          status: 'completed',
+        },
+      },
+      { type: 'turn.completed', usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 } },
+    ]);
+    mockCodexRuntime(thread);
+
+    await expect(spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex')).resolves.toBe(0);
+    expect(stderrHandler).toHaveBeenNthCalledWith(1, { data: 'abc' });
+    expect(stderrHandler).toHaveBeenNthCalledWith(2, { data: 'YZ' });
+    expect(stderrHandler).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps Codex command_execution stderr state isolated across interleaved item ids', async () => {
+    const bus = createBus();
+    const stderrHandler = vi.fn();
+    bus.on('agent:stderr', stderrHandler);
+
+    const thread = createMockCodexThread([
+      {
+        type: 'item.started',
+        item: {
+          id: 'item_1',
+          type: 'command_execution',
+          command: 'cmd 1',
+          aggregated_output: '',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.started',
+        item: {
+          id: 'item_2',
+          type: 'command_execution',
+          command: 'cmd 2',
+          aggregated_output: '',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.updated',
+        item: {
+          id: 'item_1',
+          type: 'command_execution',
+          command: 'cmd 1',
+          aggregated_output: 'a',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.updated',
+        item: {
+          id: 'item_2',
+          type: 'command_execution',
+          command: 'cmd 2',
+          aggregated_output: '1',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.updated',
+        item: {
+          id: 'item_1',
+          type: 'command_execution',
+          command: 'cmd 1',
+          aggregated_output: 'ab',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.updated',
+        item: {
+          id: 'item_2',
+          type: 'command_execution',
+          command: 'cmd 2',
+          aggregated_output: '12',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.completed',
+        item: {
+          id: 'item_1',
+          type: 'command_execution',
+          command: 'cmd 1',
+          aggregated_output: 'ab',
+          exit_code: 0,
+          status: 'completed',
+        },
+      },
+      {
+        type: 'item.completed',
+        item: {
+          id: 'item_2',
+          type: 'command_execution',
+          command: 'cmd 2',
+          aggregated_output: '12',
+          exit_code: 0,
+          status: 'completed',
+        },
+      },
+      { type: 'turn.completed', usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 } },
+    ]);
+    mockCodexRuntime(thread);
+
+    await expect(spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex')).resolves.toBe(0);
+    expect(stderrHandler).toHaveBeenNthCalledWith(1, { data: 'a' });
+    expect(stderrHandler).toHaveBeenNthCalledWith(2, { data: '1' });
+    expect(stderrHandler).toHaveBeenNthCalledWith(3, { data: 'b' });
+    expect(stderrHandler).toHaveBeenNthCalledWith(4, { data: '2' });
+    expect(stderrHandler).toHaveBeenCalledTimes(4);
+  });
+
   it('emits Codex agent_message items through agent:text', async () => {
     const bus = createBus();
     const textHandler = vi.fn();
@@ -571,6 +795,62 @@ describe('spawnAgent', () => {
 
     await expect(spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', bus, 'medium', false, 'codex')).resolves.toBe(0);
     expect(stderrHandler).toHaveBeenCalledWith({ data: 'tests failed' });
+  });
+
+  it('writes incremental Codex stderr chunks directly when no bus is provided', async () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+
+    const thread = createMockCodexThread([
+      {
+        type: 'item.started',
+        item: {
+          id: 'item_3',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: '',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.updated',
+        item: {
+          id: 'item_3',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'hello',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.updated',
+        item: {
+          id: 'item_3',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'hello world',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.completed',
+        item: {
+          id: 'item_3',
+          type: 'command_execution',
+          command: 'bash -lc "echo hello"',
+          aggregated_output: 'hello world',
+          exit_code: 0,
+          status: 'completed',
+        },
+      },
+      { type: 'turn.completed', usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 } },
+    ]);
+    mockCodexRuntime(thread);
+
+    await expect(spawnAgent('do stuff', '/tmp', 30, 'gpt-5-codex', undefined, 'medium', false, 'codex')).resolves.toBe(0);
+    expect(stderrSpy).toHaveBeenNthCalledWith(1, 'hello');
+    expect(stderrSpy).toHaveBeenNthCalledWith(2, ' world');
+    expect(stderrSpy).toHaveBeenCalledTimes(2);
+    stderrSpy.mockRestore();
   });
 
   it('rejects when the Codex SDK stream fails the turn', async () => {
