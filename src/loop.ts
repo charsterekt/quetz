@@ -354,7 +354,7 @@ export async function runLoop(
         let finalCommitMsg: string | undefined;
         if (amend && !simulate) {
           try {
-            const gitLog = execSync(`git log -1 --format=%H %s`, { encoding: 'utf-8', cwd: projectRoot }).trim();
+            const gitLog = execSync('git log -1 --format="%H %s"', { encoding: 'utf-8', cwd: projectRoot }).trim();
             const spaceIdx = gitLog.indexOf(' ');
             finalCommitHash = spaceIdx > -1 ? gitLog.slice(0, spaceIdx) : gitLog;
             finalCommitMsg = spaceIdx > -1 ? gitLog.slice(spaceIdx + 1) : '';

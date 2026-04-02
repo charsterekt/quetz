@@ -5,20 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.11] - 2026-04-02
+
+### Changed
+- Launch issue counts now track the active beads scope, including epic-scoped runs selected from the launch screen.
+- The running TUI now shows `pr`, `commit`, or `amend` mode consistently in the footer and quetz log header.
+- Launch, footer, log, and session-detail UI coverage expanded to lock the scoped-count and local-mode behavior in tests.
+
+### Fixed
+- Amend-mode victory handling now quotes the `git log` format string correctly, preventing git revision errors from bleeding into the success screen.
+- Scroll calculations for the running and detail panes now stay aligned with the tracked viewport during navigation and resize events.
+
+## [0.8.10] - 2026-04-02
+
+### Added
+- Epic-scoped beads runs via `quetz run --epic <id>` and launch-screen epic selection, with scoped pickup, validation, and open-count handling.
+
+### Changed
+- Quetz now validates dependency cycles and epic graph shape before the first scoped pickup, and logs dependency context while running.
+- Progress totals now come from the open issue set in scope instead of the current `bd ready` result length.
+
+### Fixed
+- Removed accidental planning/spec artifacts from the repo and ignored the local `docs/superpowers/` workspace so they do not get committed again.
+
+## [0.8.9] - 2026-04-02
 
 ### Added
 - Bundled `@openai/codex-sdk` as the official Codex runtime dependency.
-- In-repo research notes for `quetz-6gm` documenting the Codex SDK decision and migration tradeoffs.
 
 ### Changed
-- Codex runs now load the ESM-only SDK through a runtime-safe loader and use the SDK-backed thread/event contract instead of direct `codex exec --json` plumbing in Quetz.
-- Codex preflight now checks the bundled SDK runtime plus Codex auth readiness, and `.quetzrc.yml` now exposes SDK-backed Codex settings for approval policy, sandbox mode, network access, and web search.
-- `quetz init`, README, and provider metadata now describe Codex as an SDK-backed runtime rather than an upcoming CLI adapter.
+- Codex runs now use the SDK-backed thread and event flow instead of direct `codex exec --json` plumbing.
+- Codex preflight and `.quetzrc.yml` now expose SDK-backed runtime settings for approval policy, sandbox mode, network access, and web search.
+- README and init/provider metadata now describe Codex as a bundled SDK runtime.
 
 ### Fixed
-- Built CommonJS output no longer crashes when importing the ESM-only Codex SDK package.
-- Codex runtime tests now mock the SDK loader instead of accidentally invoking the real local runtime during unit tests.
+- CommonJS builds no longer crash when loading the ESM-only Codex SDK package.
+- Codex live stderr handling and unit-test mocking now match the SDK runtime path.
 
 ## [0.8.8] - 2026-03-31
 
@@ -133,6 +155,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Built-in fake issues for `--mock` / `--simulate` modes (`mock-data.ts`)
 - Exit codes: 0 clean, 1 runtime failure, 2 config error, 3 preflight failure
 
+[0.8.11]: https://github.com/dkchar/quetz/releases/tag/v0.8.11
+[0.8.10]: https://github.com/dkchar/quetz/compare/6810c38...ee84b3d
+[0.8.9]: https://github.com/dkchar/quetz/compare/v0.8.8...6810c38
+[0.8.8]: https://github.com/dkchar/quetz/releases/tag/v0.8.8
 [0.8.7]: https://github.com/dkchar/quetz/releases/tag/v0.8.7
 [0.7.6]: https://github.com/dkchar/quetz/releases/tag/v0.7.6
 [0.6.4]: https://github.com/dkchar/quetz/releases/tag/v0.6.4

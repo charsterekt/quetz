@@ -80,7 +80,7 @@ Print the installed version. Use this to confirm installation.
 
 ```bash
 quetz version
-# quetz v0.8.7
+# quetz v0.8.11
 ```
 
 ### `quetz init`
@@ -98,6 +98,7 @@ Start the dev loop. Runs until all issues are resolved or a failure occurs. Comp
 
 - `quetz run` with no extra flags opens the pre-run launch screen.
 - Launch controls include provider, model, effort, custom prompt, run mode, beads scope, epic ID input, and simulate toggle.
+- The launch issue counter updates live against the selected scope, including epic mode once an epic ID is entered.
 - Press `$ quetz start` to run with the selected values.
 - If any run flag is passed (for example `--simulate`), Quetz skips launch and starts the loop directly.
 
@@ -124,6 +125,7 @@ Beads scope notes:
 
 - `quetz run --epic <id>` scopes the run to the children of that epic.
 - `quetz run` still defaults to all open work unless `.quetzrc.yml` sets `beads.epic`.
+- Epic-scoped runs validate dependency cycles and epic graph shape before the first pickup.
 - Quetz always defers to `bd ready` for issue ordering. If only one issue is ready, that is normal for a dependency chain.
 - Progress totals come from open work in scope, not the current `bd ready` result length.
 
@@ -167,6 +169,8 @@ The TUI is built on [Rezi](https://rezitui.dev) (`@rezi-ui/node`), a declarative
 | `esc` | Return from session detail |
 
 The TUI disables itself automatically when stdout is not a TTY (CI, piped output).
+
+While running, the footer and `quetz log` header reflect the active execution mode: `pr`, `commit`, or `amend`.
 
 Terminal size guidance:
 
