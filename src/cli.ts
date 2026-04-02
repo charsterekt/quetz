@@ -35,6 +35,37 @@ function getLaunchIssueCounts(): LaunchIssueCounts {
   }
 }
 
+function createLaunchIssueCountResolver(): (input: { beadsMode: LaunchSelection['beadsMode']; epicId: string; simulate: boolean }) => number {
+  let lastKey: string | null = null;
+  let lastValue = 0;
+
+  return input => {
+    const epicId = input.epicId.trim();
+    const key = `${input.simulate ? 'simulate' : 'live'}:${input.beadsMode}:${epicId}`;
+    if (key === lastKey) {
+      return lastValue;
+    }
+
+    lastKey = key;
+
+    if (input.simulate) {
+      lastValue = MOCK_ISSUES.filter(issue => issue.status === 'ready').length;
+      return lastValue;
+    }
+
+    try {
+      const scope = input.beadsMode === 'epic' && epicId
+        ? { mode: 'epic', epicId } as const
+        : { mode: 'all' } as const;
+      lastValue = countOpenIssues(scope);
+    } catch {
+      lastValue = 0;
+    }
+
+    return lastValue;
+  };
+}
+
 function getLaunchDefaults(config?: QuetzConfig): LaunchSelection {
   const loadedConfig = config ?? tryLoadConfig();
   let provider: AgentProvider = DEFAULTS.agent.provider;
@@ -283,6 +314,7 @@ export async function main(): Promise<void> {
             version: pkg.version,
             initialSelection: getLaunchDefaults(config),
             issueCounts: getLaunchIssueCounts(),
+            resolveIssueCount: createLaunchIssueCountResolver(),
           });
           await launchApp.ready;
 

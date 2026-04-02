@@ -325,8 +325,12 @@ describe('mountApp', () => {
     }));
     expect(mockFooter).toHaveBeenCalledWith(expect.objectContaining({
       mode: 'running',
+      runMode: 'pr',
       focusedPane: 'agent',
       hasHistory: false,
+    }));
+    expect(mockLogPanel).toHaveBeenCalledWith(expect.objectContaining({
+      runMode: 'pr',
     }));
   });
 
@@ -399,18 +403,46 @@ describe('mountApp', () => {
 
     expect(mockFooter).toHaveBeenCalledWith(expect.objectContaining({
       mode: 'victory',
+      runMode: 'pr',
       phase: 'completed',
       hasHistory: true,
     }));
     expect(mockFooter).toHaveBeenCalledWith(expect.objectContaining({
       mode: 'failure',
+      runMode: 'pr',
       phase: 'error',
       hasHistory: true,
     }));
     expect(mockFooter).toHaveBeenCalledWith(expect.objectContaining({
       mode: 'session_detail',
+      runMode: 'pr',
       focusedPane: 'sessions',
       hasHistory: true,
+    }));
+  });
+
+  it('passes commit mode through to the footer and log header', () => {
+    const bus = createBus();
+    let viewFn!: (state: AppState) => unknown;
+
+    Object.defineProperty(process.stdout, 'columns', { value: 120, configurable: true });
+    Object.defineProperty(process.stdout, 'rows', { value: 40, configurable: true });
+
+    const app = createAppMock({
+      view: vi.fn((fn: (state: AppState) => unknown) => {
+        viewFn = fn;
+      }),
+    });
+    mockCreateNodeApp.mockReturnValue(app);
+
+    void mountApp({ bus, version: '0.5.3', onQuit: vi.fn() });
+    viewFn(makeState({ mode: 'running', runMode: 'commit' as never }));
+
+    expect(mockFooter).toHaveBeenCalledWith(expect.objectContaining({
+      runMode: 'commit',
+    }));
+    expect(mockLogPanel).toHaveBeenCalledWith(expect.objectContaining({
+      runMode: 'commit',
     }));
   });
 

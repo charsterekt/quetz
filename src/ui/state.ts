@@ -44,6 +44,7 @@ export type FailureData = QuetzEvent['loop:failure'] & {
 
 export interface AppState {
   mode: ScreenMode;
+  runMode: 'pr' | 'commit' | 'amend';
   focusedPane: FocusPane;
   issueCount: { current: number; total: number };
   phase: QuetzPhase;
@@ -76,6 +77,7 @@ export interface AppState {
 
 export const INITIAL_STATE: AppState = {
   mode: 'running',
+  runMode: 'pr',
   focusedPane: 'agent',
   issueCount: { current: 0, total: 0 },
   phase: 'idle',
@@ -336,6 +338,13 @@ export function wireState(
     }));
   };
 
+  const onMode = (p: QuetzEvent['loop:mode']) => {
+    update(s => ({
+      ...s,
+      runMode: p.mode,
+    }));
+  };
+
   const onVictory = (p: QuetzEvent['loop:victory']) => {
     stopElapsedTimer();
     update(s => {
@@ -453,6 +462,7 @@ export function wireState(
   bus.on('agent:tool_done', onToolDone);
   bus.on('loop:pr_found', onPrFound);
   bus.on('loop:warning', onWarning);
+  bus.on('loop:mode', onMode);
   bus.on('loop:victory', onVictory);
   bus.on('loop:failure', onFailure);
   bus.on('loop:merged', onMerged);
@@ -469,6 +479,7 @@ export function wireState(
     bus.off('agent:tool_done', onToolDone);
     bus.off('loop:pr_found', onPrFound);
     bus.off('loop:warning', onWarning);
+    bus.off('loop:mode', onMode);
     bus.off('loop:victory', onVictory);
     bus.off('loop:failure', onFailure);
     bus.off('loop:merged', onMerged);
