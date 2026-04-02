@@ -41,6 +41,7 @@ Thumbs.db
 
 # Specs
 plandocs/
+docs/superpowers/
 
 # Git worktrees
 .worktrees/
