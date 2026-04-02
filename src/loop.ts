@@ -1,6 +1,6 @@
 import { loadConfig } from './config.js';
 import type { AgentEffortLevel, AgentProvider } from './provider.js';
-import { getReadyIssues, getIssueDetails, getPrimeContext, listAllIssues, enableMockMode } from './beads.js';
+import * as beadsModule from './beads.js';
 import { checkoutDefault, pullDefault, countNewCommits, getCommitCountAhead, getCurrentBranch, deleteBranch } from './git.js';
 import { assemblePrompt } from './prompt.js';
 import { spawnAgent } from './agent.js';
@@ -24,6 +24,26 @@ export interface LoopResult {
   exitCode: number;
   reason: 'victory' | 'no_issues' | 'error';
 }
+
+type LoopScope =
+  | { kind?: 'all' }
+  | { kind: 'epic'; epicId: string };
+
+type ValidationReport = {
+  warnings?: unknown;
+  errors?: unknown;
+};
+
+type LoopBeadsModule = typeof beadsModule & {
+  getReadyIssues: (scope?: LoopScope) => beadsModule.BeadsIssue[];
+  countOpenIssues?: (scope?: LoopScope) => number;
+  getDependencyCycles?: (scope?: LoopScope) => unknown;
+  assertEpicIssue?: (scope: LoopScope) => void;
+  validateEpicGraph?: (scope: LoopScope) => ValidationReport | void;
+  getEpicScopeSummary?: (scope: LoopScope) => unknown;
+};
+
+const beads = beadsModule as LoopBeadsModule;
 
 // ── Elapsed timer ────────────────────────────────────────────────────────────
 
@@ -52,6 +72,116 @@ function startElapsedTimer(
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getExitCode(error: unknown, fallback = 1): number {
+  const exitCode = (error as { exitCode?: unknown })?.exitCode;
+  return typeof exitCode === 'number' ? exitCode : fallback;
+}
+
+function isEpicScope(scope?: LoopScope): scope is Extract<LoopScope, { kind: 'epic' }> {
+  return scope?.kind === 'epic' && typeof scope.epicId === 'string' && scope.epicId.length > 0;
+}
+
+function toMessages(value: unknown): string[] {
+  if (typeof value === 'string') {
+    const message = value.trim();
+    return message ? [message] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap(item => toMessages(item));
+  }
+
+  return [];
+}
+
+function normalizeValidationReport(result: unknown): { warnings: string[]; errors: string[] } {
+  if (!result || typeof result !== 'object') {
+    return { warnings: [], errors: [] };
+  }
+
+  const report = result as ValidationReport;
+  return {
+    warnings: toMessages(report.warnings),
+    errors: toMessages(report.errors),
+  };
+}
+
+function formatCycleMessage(cycles: unknown[]): string {
+  if (cycles.length === 0) {
+    return 'Dependency cycle detected.';
+  }
+
+  const details = cycles.map(cycle => {
+    if (typeof cycle === 'string') {
+      return cycle;
+    }
+
+    if (Array.isArray(cycle)) {
+      return cycle.map(item => String(item)).join(' -> ');
+    }
+
+    return JSON.stringify(cycle);
+  });
+
+  return `Dependency cycle detected: ${details.join('; ')}`;
+}
+
+function getScopedOpenTotal(scope: LoopScope | undefined, readyCount: number): number {
+  try {
+    const total = beads.countOpenIssues?.(scope);
+    return typeof total === 'number' ? Math.max(total, readyCount) : readyCount;
+  } catch {
+    return readyCount;
+  }
+}
+
+function formatDependencyContext(summary: unknown, readyCount: number, openCount: number): string {
+  if (typeof summary === 'string') {
+    const text = summary.trim();
+    if (text) return text;
+  }
+
+  if (summary && typeof summary === 'object') {
+    const values = summary as Record<string, unknown>;
+    const done =
+      typeof values.done === 'number'
+        ? values.done
+        : (typeof values.completed === 'number' ? values.completed : undefined);
+    const active = typeof values.active === 'number' ? values.active : undefined;
+    const ready = typeof values.ready === 'number' ? values.ready : undefined;
+    const blocked = typeof values.blocked === 'number' ? values.blocked : undefined;
+
+    if (
+      typeof done === 'number' &&
+      typeof active === 'number' &&
+      typeof ready === 'number' &&
+      typeof blocked === 'number'
+    ) {
+      return `scope: ${done} done  ${active} active  ${ready} ready  ${blocked} blocked`;
+    }
+  }
+
+  return `ready: ${readyCount}  open: ${openCount}`;
+}
+
+function emitWarning(bus: QuetzBus | undefined, message: string): void {
+  if (bus) {
+    bus.emit('loop:warning', { message });
+    return;
+  }
+
+  process.stdout.write(waiting(`\n${message}\n`));
+}
+
+function emitDependencyContext(bus: QuetzBus | undefined, message: string): void {
+  if (bus) {
+    bus.emit('loop:dependency_context', { message });
+    return;
+  }
+
+  process.stdout.write(dim(`   ${message}\n`));
 }
 
 function getStatusDisplay(
@@ -83,12 +213,12 @@ export async function showStatus(): Promise<void> {
 
   let readyIssues: { id: string; title: string; priority: number }[] = [];
   try {
-    readyIssues = getReadyIssues();
+    readyIssues = beads.getReadyIssues();
   } catch {
     process.stderr.write(error('Failed to query bd ready.\n'));
     process.exit(1);
   }
-  const allIssues = listAllIssues();
+  const allIssues = beads.listAllIssues();
   const total = allIssues.length;
   const inProgress = allIssues.filter(i => i.status === 'in_progress').length;
   const completed = allIssues.filter(i => i.status === 'closed' || i.status === 'done').length;
@@ -110,6 +240,7 @@ export async function runLoop(
     amend?: boolean;
     simulate?: boolean;
     customPrompt?: string;
+    scope?: LoopScope;
   },
   bus?: QuetzBus
 ): Promise<LoopResult> {
@@ -121,11 +252,51 @@ export async function runLoop(
     log('QUETZ', 'Verbose mode enabled');
   }
   const simulate = opts.simulate ?? false;
-  if (simulate) enableMockMode();
+  if (simulate) beads.enableMockMode();
 
   const projectRoot = process.cwd();
-  const config = loadConfig(projectRoot);
+  let config;
+  try {
+    config = loadConfig(projectRoot);
+  } catch (err) {
+    const reason = (err as Error).message;
+    if (bus) bus.emit('loop:failure', { reason });
+    else process.stderr.write(error(`\n${reason}\n`));
+    return { exitCode: getExitCode(err, 2), reason: 'error' };
+  }
   log('CONFIG', `Loaded: ${config.github.owner}/${config.github.repo} (${config.github.defaultBranch})`);
+  const scope = opts.scope;
+
+  if (!simulate) {
+    try {
+      const cycles = beads.getDependencyCycles?.(scope);
+      if (Array.isArray(cycles) && cycles.length > 0) {
+        const reason = formatCycleMessage(cycles);
+        if (bus) bus.emit('loop:failure', { reason });
+        else process.stderr.write(error(`\n${reason}\n`));
+        return { exitCode: 2, reason: 'error' };
+      }
+
+      if (isEpicScope(scope)) {
+        beads.assertEpicIssue?.(scope);
+        const report = normalizeValidationReport(beads.validateEpicGraph?.(scope));
+        for (const warningMessage of report.warnings) {
+          emitWarning(bus, warningMessage);
+        }
+        if (report.errors.length > 0) {
+          const reason = report.errors.join('\n');
+          if (bus) bus.emit('loop:failure', { reason });
+          else process.stderr.write(error(`\n${reason}\n`));
+          return { exitCode: 2, reason: 'error' };
+        }
+      }
+    } catch (err) {
+      const reason = (err as Error).message;
+      if (bus) bus.emit('loop:failure', { reason });
+      else process.stderr.write(error(`\n${reason}\n`));
+      return { exitCode: getExitCode(err, 2), reason: 'error' };
+    }
+  }
 
   // ── Normal run loop ───────────────────────────────────────────────────────
   const localCommits = opts.localCommits ?? false;
@@ -150,10 +321,10 @@ export async function runLoop(
     iteration++;
 
     // 1. Get next ready issue
-    let issues: ReturnType<typeof getReadyIssues>;
+    let issues: beadsModule.BeadsIssue[];
     try {
       if (bus) bus.emit('loop:phase', { phase: 'fetching', detail: 'bd ready' });
-      issues = getReadyIssues();
+      issues = beads.getReadyIssues(scope);
     } catch (err) {
       if (bus) bus.emit('loop:failure', { reason: `bd ready failed: ${(err as Error).message}` });
       else process.stderr.write(error(`\nbd ready failed: ${(err as Error).message}\n`));
@@ -165,9 +336,11 @@ export async function runLoop(
       issues = issues.filter(i => !simulateCompleted.has(i.id));
     }
 
+    const scopedOpenTotal = getScopedOpenTotal(scope, issues.length);
+
     // Emit loop:start on first successful fetch so UI can show total count
     if (!loopStartEmitted && bus && issues.length > 0) {
-      bus.emit('loop:start', { total: issues.length });
+      bus.emit('loop:start', { total: scopedOpenTotal });
       loopStartEmitted = true;
     }
 
@@ -232,12 +405,12 @@ export async function runLoop(
     }
 
     const issue = issues[0];
-    const issueTotal = issues.length + totalIssuesCompleted;
+    const issueTotal = scopedOpenTotal + totalIssuesCompleted;
 
     // 2. Get full issue details
     let issueDetails = issue;
     try {
-      issueDetails = getIssueDetails(issue.id);
+      issueDetails = beads.getIssueDetails(issue.id);
     } catch {
       // fall back to ready data
     }
@@ -250,6 +423,11 @@ export async function runLoop(
         `   ${dim('──── Summoning agent ────')}\n\n`
       );
     }
+
+    const dependencyContext = isEpicScope(scope)
+      ? formatDependencyContext(beads.getEpicScopeSummary?.(scope), issues.length, scopedOpenTotal)
+      : formatDependencyContext(undefined, issues.length, scopedOpenTotal);
+    emitDependencyContext(bus, dependencyContext);
 
     // 3. Git reset to default branch (skip in amend mode and simulate mode)
     if (!amend && !simulate) {
@@ -267,7 +445,7 @@ export async function runLoop(
 
     // 4. Assemble prompt
     if (bus) bus.emit('loop:phase', { phase: 'assembling', detail: 'prompt context' });
-    const bdPrime = simulate ? '' : getPrimeContext();
+    const bdPrime = simulate ? '' : beads.getPrimeContext();
     const prompt = assemblePrompt(
       issueDetails,
       bdPrime,

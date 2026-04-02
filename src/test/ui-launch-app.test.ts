@@ -124,6 +124,7 @@ describe('mountLaunchApp', () => {
     expect(renderedText).toContain('total_issues');
     expect(renderedText).toContain('esc ctrl+c quit  |  ←→ navigate  |  tab switch  |  ↵ select');
     expect(renderedText).not.toContain('Screen 0 - Entry');
+    expect(renderedText).not.toContain('epic - coming soon');
 
     expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-start',
@@ -136,6 +137,10 @@ describe('mountLaunchApp', () => {
     expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-run-mode-pr',
       label: 'pr',
+    }));
+    expect(buttonMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'launch-beads-mode-epic',
+      label: 'epic',
     }));
     expect(selectMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'launch-model',

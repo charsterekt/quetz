@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { countOpenIssues } from './beads.js';
-import { CLAUDE_EFFORT_LEVELS, DEFAULTS, isClaudeEffortLevel, loadConfig } from './config.js';
+import { CLAUDE_EFFORT_LEVELS, DEFAULTS, isClaudeEffortLevel, loadConfig, type QuetzConfig } from './config.js';
 import { MOCK_ISSUES } from './mock-data.js';
 import { AGENT_PROVIDERS, getProviderDescriptor, isAgentProvider, renderModelListing, resolveProviderModel, type AgentProvider } from './provider.js';
 import type { LaunchIssueCounts, LaunchSelection } from './ui/LaunchApp.js';
@@ -10,6 +10,16 @@ export const EXIT_SUCCESS = 0;
 export const EXIT_FAILURE = 1;
 export const EXIT_CONFIG_ERROR = 2;
 export const EXIT_PREFLIGHT_FAILURE = 3;
+
+type RunScope = { mode: 'all' } | { mode: 'epic'; epicId: string };
+
+function tryLoadConfig(): QuetzConfig | undefined {
+  try {
+    return loadConfig();
+  } catch {
+    return undefined;
+  }
+}
 
 function getLaunchIssueCounts(): LaunchIssueCounts {
   try {
@@ -25,28 +35,34 @@ function getLaunchIssueCounts(): LaunchIssueCounts {
   }
 }
 
-function getLaunchDefaults(): LaunchSelection {
+function getLaunchDefaults(config?: QuetzConfig): LaunchSelection {
+  const loadedConfig = config ?? tryLoadConfig();
   let provider: AgentProvider = DEFAULTS.agent.provider;
   let model = DEFAULTS.agent.model ?? getProviderDescriptor(provider).defaultModel;
   let effort = DEFAULTS.agent.effort;
+  let beadsMode: LaunchSelection['beadsMode'] = 'all';
+  let epicId: string | undefined;
 
-  try {
-    const config = loadConfig();
-    provider = config.agent.provider;
+  if (loadedConfig) {
+    provider = loadedConfig.agent.provider;
 
     const providerConfig = provider === 'claude'
-      ? config.agent.providers.claude
-      : config.agent.providers.codex;
+      ? loadedConfig.agent.providers.claude
+      : loadedConfig.agent.providers.codex;
 
     model = resolveProviderModel(
       provider,
-      config.agent.provider,
-      config.agent.model,
+      loadedConfig.agent.provider,
+      loadedConfig.agent.model,
       providerConfig.model
     );
-    effort = providerConfig.effort ?? config.agent.effort;
-  } catch {
-    // Launch screen falls back to defaults when config is not ready yet.
+    effort = providerConfig.effort ?? loadedConfig.agent.effort;
+
+    const configuredEpic = loadedConfig.beads?.epic?.trim();
+    if (configuredEpic) {
+      beadsMode = 'epic';
+      epicId = configuredEpic;
+    }
   }
 
   return {
@@ -57,9 +73,34 @@ function getLaunchDefaults(): LaunchSelection {
     localCommits: false,
     amend: false,
     customPrompt: undefined,
-    beadsMode: 'all',
-    epicId: undefined,
+    beadsMode,
+    epicId,
   };
+}
+
+function resolveRunScope(
+  config: QuetzConfig | undefined,
+  explicitEpicId: string | undefined,
+  launchSelection?: LaunchSelection,
+): RunScope {
+  const epicId = explicitEpicId?.trim();
+  if (epicId) {
+    return { mode: 'epic', epicId };
+  }
+
+  const launchEpicId = launchSelection?.beadsMode === 'epic'
+    ? launchSelection.epicId?.trim()
+    : undefined;
+  if (launchEpicId) {
+    return { mode: 'epic', epicId: launchEpicId };
+  }
+
+  const configuredEpic = config?.beads?.epic?.trim();
+  if (configuredEpic) {
+    return { mode: 'epic', epicId: configuredEpic };
+  }
+
+  return { mode: 'all' };
 }
 
 export async function main(): Promise<void> {
@@ -83,6 +124,7 @@ export async function main(): Promise<void> {
     process.stdout.write('  run --simulate               Full visual test (mock issues + fake PR lifecycle)\n');
     process.stdout.write('  run --simulate --local-commits  Simulate with fake commits (no PRs)\n');
     process.stdout.write('  run --simulate --amend       Simulate with fake amend commits\n');
+    process.stdout.write('  run --epic <id>              Restrict beads scope to a specific epic\n');
     process.stdout.write(`  run --provider <provider>    Select agent provider (${AGENT_PROVIDERS.join('|')})\n`);
     process.stdout.write('  run --model <model>          Override agent model (e.g. haiku, sonnet, opus)\n');
     process.stdout.write(`  run --effort <level>         Override agent effort (${CLAUDE_EFFORT_LEVELS.join('|')})\n`);
@@ -160,6 +202,7 @@ export async function main(): Promise<void> {
       let amend = args.includes('--amend');
       let simulate = args.includes('--simulate');
       let customPrompt: string | undefined;
+      let epicId: string | undefined;
 
       if (amend && localCommits) {
         process.stderr.write('Error: --amend and --local-commits are mutually exclusive. Use one or the other.\n');
@@ -211,10 +254,22 @@ export async function main(): Promise<void> {
         if (!isNaN(value) && value > 0) timeout = value;
       }
 
+      const epicIdx = args.indexOf('--epic');
+      if (epicIdx !== -1) {
+        const value = args[epicIdx + 1];
+        if (!value || value.startsWith('-') || !value.trim()) {
+          process.stderr.write('Error: --epic requires a value.\n');
+          process.exit(EXIT_FAILURE);
+        }
+        epicId = value.trim();
+      }
+
+      const config = tryLoadConfig();
       const { createBus } = await import('./events.js');
       const { runLoop } = await import('./loop.js');
       const { printLogo } = await import('./display/quetz.js');
       const bus = createBus();
+      let launchSelection: LaunchSelection | null | undefined;
 
       if (process.stdout.isTTY) {
         const { mountApp } = await import('./ui/App.js');
@@ -226,12 +281,12 @@ export async function main(): Promise<void> {
           const { mountLaunchApp } = await import('./ui/LaunchApp.js');
           const launchApp = mountLaunchApp({
             version: pkg.version,
-            initialSelection: getLaunchDefaults(),
+            initialSelection: getLaunchDefaults(config),
             issueCounts: getLaunchIssueCounts(),
           });
           await launchApp.ready;
 
-          const launchSelection = await launchApp.result;
+          launchSelection = await launchApp.result;
           await launchApp.unmount();
 
           if (!launchSelection) {
@@ -246,6 +301,19 @@ export async function main(): Promise<void> {
           amend = launchSelection.amend;
           customPrompt = launchSelection.customPrompt;
         }
+
+        const scope = resolveRunScope(config, epicId, launchSelection ?? undefined);
+        const runOptions = {
+          provider,
+          model,
+          effort,
+          timeout,
+          localCommits,
+          amend,
+          simulate,
+          customPrompt,
+          scope,
+        } as Parameters<typeof runLoop>[0] & { scope: RunScope };
 
         let resolveQuit!: () => void;
         const quitPromise = new Promise<void>(resolve => {
@@ -297,7 +365,7 @@ export async function main(): Promise<void> {
 
         let userQuit = false;
         const exitSignal = new Promise<void>(resolve => {
-          runLoop({ provider, model, effort, timeout, localCommits, amend, simulate, customPrompt }, bus)
+          runLoop(runOptions, bus)
             .then(result => {
               loopResult = result;
               loopTerminalResult = result;
@@ -310,16 +378,28 @@ export async function main(): Promise<void> {
             });
           quitPromise.then(() => {
             userQuit = true;
-            resolveShutdown();
-            resolve();
-          });
+          resolveShutdown();
+          resolve();
         });
+      });
 
         await Promise.race([exitSignal, shutdownPromise]);
         process.off('SIGINT', onSigint);
         await cleanupTui(userQuit || sigintRequested);
       } else {
-        const result = await runLoop({ provider, model, effort, timeout, localCommits, amend, simulate, customPrompt }, bus);
+        const scope = resolveRunScope(config, epicId, launchSelection ?? undefined);
+        const runOptions = {
+          provider,
+          model,
+          effort,
+          timeout,
+          localCommits,
+          amend,
+          simulate,
+          customPrompt,
+          scope,
+        } as Parameters<typeof runLoop>[0] & { scope: RunScope };
+        const result = await runLoop(runOptions, bus);
         process.exit(result.exitCode);
       }
       break;

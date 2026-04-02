@@ -10,6 +10,11 @@ vi.mock('../beads.js', () => ({
   getIssueDetails: vi.fn(),
   getPrimeContext: vi.fn(),
   listAllIssues: vi.fn(() => []),
+  countOpenIssues: vi.fn(),
+  getDependencyCycles: vi.fn(),
+  assertEpicIssue: vi.fn(),
+  validateEpicGraph: vi.fn(),
+  getEpicScopeSummary: vi.fn(),
   enableMockMode: vi.fn(),
   disableMockMode: vi.fn(),
 }));
@@ -37,7 +42,16 @@ vi.mock('child_process', () => ({
 }));
 
 import { loadConfig } from '../config.js';
-import { getReadyIssues, getIssueDetails, getPrimeContext } from '../beads.js';
+import {
+  getReadyIssues,
+  getIssueDetails,
+  getPrimeContext,
+  countOpenIssues,
+  getDependencyCycles,
+  assertEpicIssue,
+  validateEpicGraph,
+  getEpicScopeSummary,
+} from '../beads.js';
 import { checkoutDefault, pullDefault, countNewCommits, getCommitCountAhead, getCurrentBranch, deleteBranch } from '../git.js';
 import { assemblePrompt } from '../prompt.js';
 import { spawnAgent } from '../agent.js';
@@ -48,6 +62,11 @@ const mockLoadConfig = vi.mocked(loadConfig);
 const mockGetReadyIssues = vi.mocked(getReadyIssues);
 const mockGetIssueDetails = vi.mocked(getIssueDetails);
 const mockGetPrimeContext = vi.mocked(getPrimeContext);
+const mockCountOpenIssues = vi.mocked(countOpenIssues);
+const mockGetDependencyCycles = vi.mocked(getDependencyCycles);
+const mockAssertEpicIssue = vi.mocked(assertEpicIssue);
+const mockValidateEpicGraph = vi.mocked(validateEpicGraph);
+const mockGetEpicScopeSummary = vi.mocked(getEpicScopeSummary);
 const mockCheckoutDefault = vi.mocked(checkoutDefault);
 const mockPullDefault = vi.mocked(pullDefault);
 const mockCountNewCommits = vi.mocked(countNewCommits);
@@ -78,6 +97,8 @@ const baseIssue = {
   updated_at: '2026-01-01T00:00:00Z',
 };
 
+const epicScope = { kind: 'epic' as const, epicId: 'quetz-a0p' };
+
 let stdoutSpy: ReturnType<typeof vi.spyOn>;
 let stderrSpy: ReturnType<typeof vi.spyOn>;
 
@@ -85,6 +106,10 @@ beforeEach(() => {
   vi.resetAllMocks();
   mockLoadConfig.mockReturnValue(baseConfig as never);
   mockGetPrimeContext.mockReturnValue('');
+  mockCountOpenIssues.mockReturnValue(0);
+  mockGetDependencyCycles.mockReturnValue([]);
+  mockValidateEpicGraph.mockReturnValue({ warnings: [], errors: [] } as never);
+  mockGetEpicScopeSummary.mockReturnValue(null as never);
   mockAssemblePrompt.mockReturnValue('assembled prompt');
   mockCreateOctokit.mockReturnValue({} as never);
   mockCheckoutDefault.mockReturnValue(undefined as never);
@@ -123,6 +148,61 @@ describe('showStatus', () => {
 // ── runLoop (normal) ─────────────────────────────────────────────────────────
 
 describe('runLoop normal', () => {
+  it('returns exitCode 2 when configuration loading fails with a validation exit code', async () => {
+    const configError = new Error('invalid config') as Error & { exitCode?: number };
+    configError.exitCode = 2;
+    mockLoadConfig.mockImplementation(() => {
+      throw configError;
+    });
+
+    const bus = createBus();
+    const failHandler = vi.fn();
+    bus.on('loop:failure', failHandler);
+
+    const result = await runLoop({}, bus);
+
+    expect(result).toEqual({ exitCode: 2, reason: 'error' });
+    expect(failHandler).toHaveBeenCalledWith(expect.objectContaining({ reason: 'invalid config' }));
+  });
+
+  it('returns exitCode 2 when epic graph validation reports errors before fetching ready work', async () => {
+    mockValidateEpicGraph.mockReturnValue({
+      warnings: [],
+      errors: ['dependency direction is inverted'],
+    } as never);
+
+    const bus = createBus();
+    const failHandler = vi.fn();
+    bus.on('loop:failure', failHandler);
+
+    const result = await runLoop({ scope: epicScope }, bus);
+
+    expect(result).toEqual({ exitCode: 2, reason: 'error' });
+    expect(mockAssertEpicIssue).toHaveBeenCalledWith(epicScope);
+    expect(mockValidateEpicGraph).toHaveBeenCalledWith(epicScope);
+    expect(mockGetReadyIssues).not.toHaveBeenCalled();
+    expect(failHandler).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: expect.stringContaining('dependency direction is inverted') })
+    );
+  });
+
+  it('emits startup validation warnings into the event stream before the first pickup', async () => {
+    mockValidateEpicGraph.mockReturnValue({
+      warnings: ['ready fronts: 2'],
+      errors: [],
+    } as never);
+    mockGetReadyIssues.mockReturnValue([]);
+
+    const bus = createBus();
+    const warningHandler = vi.fn();
+    bus.on('loop:warning', warningHandler);
+
+    const result = await runLoop({ scope: epicScope }, bus);
+
+    expect(result).toEqual({ exitCode: 0, reason: 'no_issues' });
+    expect(warningHandler).toHaveBeenCalledWith({ message: 'ready fronts: 2' });
+  });
+
   it('returns exitCode 0 with no_issues when no issues on first iteration', async () => {
     mockGetReadyIssues.mockReturnValue([]);
     const bus = createBus();
@@ -352,6 +432,37 @@ describe('runLoop normal', () => {
     expect(pickupHandler).toHaveBeenCalledWith(expect.objectContaining({ id: 'quetz-abc', title: 'Add auth middleware' }));
     expect(phaseHandler).toHaveBeenCalledWith(expect.objectContaining({ phase: 'agent_running' }));
     expect(phaseHandler).toHaveBeenCalledWith(expect.objectContaining({ phase: 'pr_detecting' }));
+  });
+
+  it('keeps totals scoped to open issues and emits dependency context after pickup', async () => {
+    mockCountOpenIssues.mockReturnValue(7);
+    mockGetEpicScopeSummary.mockReturnValue('scope: 2 done  1 active  1 ready  4 blocked' as never);
+    mockGetReadyIssues
+      .mockReturnValueOnce([baseIssue])
+      .mockReturnValueOnce([]);
+    mockGetIssueDetails.mockReturnValue(baseIssue as never);
+    mockSpawnAgent.mockResolvedValue(0);
+    mockFindPR.mockResolvedValue({ number: 42, title: 'Fix', html_url: 'https://gh/pr/42' } as never);
+    mockPollForMerge.mockResolvedValue({ status: 'merged', pr: { html_url: 'https://gh/pr/42' } } as never);
+
+    const bus = createBus();
+    const startHandler = vi.fn();
+    const pickupHandler = vi.fn();
+    const dependencyHandler = vi.fn();
+    bus.on('loop:start', startHandler);
+    bus.on('loop:issue_pickup', pickupHandler);
+    bus.on('loop:dependency_context', dependencyHandler);
+
+    const result = await runLoop({ scope: epicScope }, bus);
+
+    expect(result).toEqual({ exitCode: 0, reason: 'victory' });
+    expect(mockGetReadyIssues).toHaveBeenNthCalledWith(1, epicScope);
+    expect(mockCountOpenIssues).toHaveBeenCalledWith(epicScope);
+    expect(startHandler).toHaveBeenCalledWith({ total: 7 });
+    expect(pickupHandler).toHaveBeenCalledWith(expect.objectContaining({ iteration: 1, total: 7 }));
+    expect(dependencyHandler).toHaveBeenCalledWith({
+      message: 'scope: 2 done  1 active  1 ready  4 blocked',
+    });
   });
 
   it('forwards effort to the agent and agent_running event', async () => {

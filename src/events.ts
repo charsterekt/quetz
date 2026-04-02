@@ -9,6 +9,7 @@ export type QuetzPhase =
 export interface QuetzEvent {
   'loop:start':          { total: number };
   'loop:issue_pickup':   { id: string; title: string; priority: number; type: string; iteration: number; total: number };
+  'loop:dependency_context': { message: string };
   'loop:phase':          { phase: QuetzPhase; detail?: string; agentProvider?: string; agentModel?: string; agentEffort?: string };
   'loop:pr_found':       { number: number; title: string; url: string };
   'loop:merged':         { prNumber: number; issueId: string; remaining: number };
